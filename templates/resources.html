@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Resources - R730XD Ops</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d;
+            --text-main: #c9d1d9; --text-muted: #8b949e;
+            --color-cpu: #1f6feb; --color-mem: #a371f7; --color-disk: #d29922; --color-net: #238636;
+        }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: 60px; }
+        .navbar { background-color: rgba(13, 17, 23, 0.8) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; }
+        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .res-box { padding: 1.5rem; text-align: center; }
+        .res-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.2rem; font-weight: 700; letter-spacing: -1px; }
+        .res-unit { font-size: 1rem; color: var(--text-muted); font-weight: normal; margin-left: 4px; }
+        .progress-slim { height: 4px; background-color: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin-top: 15px; }
+        .progress-bar { transition: width 0.5s ease-out; }
+        .text-cpu { color: var(--color-cpu); } .bg-cpu { background-color: var(--color-cpu); }
+        .text-mem { color: var(--color-mem); } .bg-mem { background-color: var(--color-mem); }
+        .text-disk { color: var(--color-disk); } .text-net { color: var(--color-net); }
+        @media (max-width: 768px) { .res-value { font-size: 1.8rem; } }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold">R730XD Ops</span>
+        </a>
+        <div class="navbar-nav flex-row me-auto ms-3">
+            <a class="nav-link me-3" href="/hardware">HW</a>
+            <a class="nav-link active me-3" href="/resources">RES</a>
+            <a class="nav-link" href="/history">HIST</a>
+        </div>
+        <a href="/logout" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+    </div>
+</nav>
+
+<div class="container-fluid mt-4">
+    <div class="row g-3 mb-4">
+        <!-- CPU -->
+        <div class="col-6 col-md-3">
+            <div class="card h-100"><div class="res-box">
+                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-microchip me-1"></i> CPU</div>
+                <div class="res-value text-white"><span id="val-cpu">--</span><span class="res-unit">%</span></div>
+                <div class="progress-slim"><div id="bar-cpu" class="progress-bar bg-cpu" style="width: 0%"></div></div>
+            </div></div>
+        </div>
+        <!-- MEM -->
+        <div class="col-6 col-md-3">
+            <div class="card h-100"><div class="res-box">
+                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-memory me-1"></i> RAM</div>
+                <div class="res-value text-white"><span id="val-mem">--</span><span class="res-unit">%</span></div>
+                <div class="small text-muted mt-1"><span id="val-mem-used">--</span> / <span id="val-mem-total">--</span> GB</div>
+                <div class="progress-slim"><div id="bar-mem" class="progress-bar bg-mem" style="width: 0%"></div></div>
+            </div></div>
+        </div>
+        <!-- DISK -->
+        <div class="col-6 col-md-3">
+            <div class="card h-100"><div class="res-box">
+                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-hdd me-1"></i> Disk R/W</div>
+                <div class="res-value text-disk" style="font-size: 1.6rem">
+                    <span id="str-disk-r">0 B/s</span>
+                </div>
+                <div class="res-value text-white" style="font-size: 1.6rem">
+                    <span id="str-disk-w">0 B/s</span>
+                </div>
+            </div></div>
+        </div>
+        <!-- NET -->
+        <div class="col-6 col-md-3">
+            <div class="card h-100"><div class="res-box">
+                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-network-wired me-1"></i> Net In/Out</div>
+                <div class="res-value text-net" style="font-size: 1.6rem">
+                    <span id="str-net-in">0 B/s</span>
+                </div>
+                <div class="res-value text-white" style="font-size: 1.6rem">
+                    <span id="str-net-out">0 B/s</span>
+                </div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="fas fa-chart-area me-2"></i>CPU & RAM (24h)</div>
+                <div class="card-body"><div style="height: 250px"><canvas id="loadChart"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header"><i class="fas fa-exchange-alt me-2"></i>Net & Disk (24h)</div>
+                <div class="card-body"><div style="height: 250px"><canvas id="ioChart"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let loadChart, ioChart;
+
+    const chartOptions = {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        elements: { point: { radius: 0, hitRadius: 10 } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: '#8b949e' } } },
+        scales: {
+            x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 6 } },
+            y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' }, beginAtZero: true }
+        }
+    };
+
+    function formatBytes(bytes, decimals = 1) {
+        if (!+bytes) return '0 B/s';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
+
+    function init() {
+        loadChart = new Chart(document.getElementById('loadChart'), {
+            type: 'line', data: { labels: [], datasets: [] },
+            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100 } } }
+        });
+
+        ioChart = new Chart(document.getElementById('ioChart'), {
+            type: 'line', data: { labels: [], datasets: [] },
+            options: chartOptions
+        });
+        
+        refreshData(); loadHistory();
+        setInterval(refreshData, 2000); setInterval(loadHistory, 60000);
+    }
+
+    function refreshData() {
+        fetch('/api/status_resources?t=' + Date.now()).then(r => r.json()).then(d => {
+            if (d.cpu === undefined) return;
+            document.getElementById('val-cpu').innerText = d.cpu;
+            document.getElementById('val-mem').innerText = d.mem_percent;
+            document.getElementById('val-mem-used').innerText = d.mem_used;
+            document.getElementById('val-mem-total').innerText = d.mem_total;
+            
+            // 自适应单位显示 (后端传回的是 Bytes/s)
+            document.getElementById('str-disk-r').innerText = formatBytes(d.disk_r);
+            document.getElementById('str-disk-w').innerText = formatBytes(d.disk_w);
+            document.getElementById('str-net-in').innerText = formatBytes(d.net_in);
+            document.getElementById('str-net-out').innerText = formatBytes(d.net_out);
+
+            document.getElementById('bar-cpu').style.width = d.cpu + '%';
+            document.getElementById('bar-mem').style.width = d.mem_percent + '%';
+        });
+    }
+
+    function loadHistory() {
+        fetch('/api/history').then(r => r.json()).then(d => {
+            loadChart.data.labels = d.times;
+            loadChart.data.datasets = [
+                { label: 'CPU %', data: d.res.cpu, borderColor: '#1f6feb', backgroundColor: '#1f6feb20', borderWidth: 2, fill: true },
+                { label: 'Mem %', data: d.res.mem, borderColor: '#a371f7', backgroundColor: '#a371f720', borderWidth: 2, fill: true }
+            ];
+            loadChart.update('none');
+
+            // 包含所有 IO 维度
+            ioChart.data.labels = d.times;
+            ioChart.data.datasets = [
+                { label: 'Net In (KB/s)', data: d.res.net_in, borderColor: '#238636', borderWidth: 1 },
+                { label: 'Net Out (KB/s)', data: d.res.net_in, borderColor: '#2ea043', borderWidth: 1, borderDash: [5,5] },
+                { label: 'Disk R (MB/s)', data: d.res.disk_r, borderColor: '#d29922', borderWidth: 1 },
+                { label: 'Disk W (MB/s)', data: d.res.disk_r, borderColor: '#dbab0a', borderWidth: 1, borderDash: [5,5] }
+            ];
+            ioChart.update('none');
+        });
+    }
+    init();
+</script>
+</body>
+</html>

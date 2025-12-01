@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>History - R730XD Ops</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #c9d1d9; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: -apple-system, sans-serif; padding-bottom: 60px; }
+        .navbar { background-color: rgba(13, 17, 23, 0.8) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .nav-link { color: #8b949e !important; }
+        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); }
+        .btn-check:checked + .btn-outline-secondary { background-color: #30363d; color: #fff; border-color: #8b949e; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#"><i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold">R730XD Ops</span></a>
+        <div class="navbar-nav flex-row me-auto ms-3">
+            <a class="nav-link me-3" href="/hardware">HW</a>
+            <a class="nav-link me-3" href="/resources">RES</a>
+            <a class="nav-link active" href="/history">HIST</a>
+        </div>
+        <a href="/logout" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+    </div>
+</nav>
+
+<div class="container-fluid mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span><i class="fas fa-database me-2"></i>Data Explorer</span>
+            
+            <div class="d-flex gap-2">
+                <select id="timeRange" class="form-select form-select-sm bg-dark text-white border-secondary" style="width: 120px" onchange="loadData()">
+                    <option value="6">Last 6 Hours</option>
+                    <option value="24" selected>Last 24 Hours</option>
+                    <option value="72">Last 3 Days</option>
+                    <option value="168">Last 7 Days</option>
+                </select>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="mb-3 d-flex gap-2 flex-wrap">
+                <!-- 维度选择器 -->
+                <input type="checkbox" class="btn-check" id="chk-temp" checked onchange="updateChart()">
+                <label class="btn btn-sm btn-outline-secondary" for="chk-temp">Temp</label>
+
+                <input type="checkbox" class="btn-check" id="chk-fan" onchange="updateChart()">
+                <label class="btn btn-sm btn-outline-secondary" for="chk-fan">Fan</label>
+
+                <input type="checkbox" class="btn-check" id="chk-pwr" onchange="updateChart()">
+                <label class="btn btn-sm btn-outline-secondary" for="chk-pwr">Power</label>
+
+                <input type="checkbox" class="btn-check" id="chk-cpu" checked onchange="updateChart()">
+                <label class="btn btn-sm btn-outline-secondary" for="chk-cpu">CPU Load</label>
+                
+                <input type="checkbox" class="btn-check" id="chk-net" onchange="updateChart()">
+                <label class="btn btn-sm btn-outline-secondary" for="chk-net">Net In</label>
+            </div>
+            
+            <div style="height: 500px; width: 100%">
+                <canvas id="histChart"></canvas>
+            </div>
+            <div id="loading" class="text-center text-muted mt-3" style="display:none"><i class="fas fa-spinner fa-spin me-2"></i>Loading large dataset...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let chart;
+    let rawData = {};
+
+    function init() {
+        const ctx = document.getElementById('histChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                elements: { point: { radius: 0, hitRadius: 10 } },
+                scales: {
+                    x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 12 } },
+                    y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } }
+                }
+            }
+        });
+        loadData();
+    }
+
+    function loadData() {
+        const hours = document.getElementById('timeRange').value;
+        document.getElementById('loading').style.display = 'block';
+        
+        fetch(`/api/history_custom?hours=${hours}`)
+            .then(r => r.json())
+            .then(d => {
+                rawData = d;
+                document.getElementById('loading').style.display = 'none';
+                updateChart();
+            });
+    }
+
+    function updateChart() {
+        if (!rawData.times) return;
+
+        const datasets = [];
+        
+        if(document.getElementById('chk-temp').checked) 
+            datasets.push({label:'Temp (°C)', data:rawData.cpu_temp, borderColor:'#1f6feb', borderWidth:2, yAxisID:'y'});
+        
+        if(document.getElementById('chk-fan').checked) 
+            datasets.push({label:'Fan (RPM)', data:rawData.fan_rpm, borderColor:'#238636', borderWidth:2, yAxisID:'y1'});
+            
+        if(document.getElementById('chk-pwr').checked) 
+            datasets.push({label:'Power (W)', data:rawData.power, borderColor:'#d29922', borderWidth:2, yAxisID:'y'});
+
+        if(document.getElementById('chk-cpu').checked) 
+            datasets.push({label:'CPU (%)', data:rawData.cpu_load, borderColor:'#a371f7', borderWidth:2, yAxisID:'y'});
+            
+        if(document.getElementById('chk-net').checked) 
+            datasets.push({label:'Net In (KB/s)', data:rawData.net_in, borderColor:'#3fb950', borderWidth:1, yAxisID:'y1'});
+
+        chart.data.labels = rawData.times;
+        chart.data.datasets = datasets;
+        
+        // 动态配置双轴
+        chart.options.scales.y1 = {
+            type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#8b949e' }
+        };
+        
+        chart.update();
+    }
+
+    init();
+</script>
+</body>
+</html>

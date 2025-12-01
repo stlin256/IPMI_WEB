@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hardware - R730XD Ops</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    
+    <style>
+        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #c9d1d9; --text-muted: #8b949e; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: 60px; }
+        .navbar { background-color: rgba(13, 17, 23, 0.8) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; }
+        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .metric-box { padding: 1.5rem; text-align: center; position: relative; overflow: hidden; }
+        .metric-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.5rem; font-weight: 700; letter-spacing: -1px; }
+        .metric-unit { font-size: 0.9rem; color: var(--text-muted); }
+        .metric-icon { position: absolute; top: 10px; right: 10px; font-size: 3rem; opacity: 0.05; transform: rotate(-15deg); }
+        .table-custom { font-size: 0.85rem; font-family: monospace; }
+        .table-custom th { background-color: rgba(255,255,255,0.02); color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+        .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+        .scroll-container { max-height: 500px; overflow-y: auto; scrollbar-width: thin; }
+        /* 手机端防误触 */
+        input[type=range] { touch-action: none; }
+        @media (max-width: 768px) { .metric-value { font-size: 1.8rem; } .hide-mobile { display: none; } }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold">R730XD Ops</span>
+        </a>
+        <div class="navbar-nav flex-row me-auto ms-3">
+            <a class="nav-link active me-3" href="/hardware">HW</a>
+            <a class="nav-link me-3" href="/resources">RES</a>
+            <a class="nav-link" href="/history">HIST</a>
+        </div>
+        <a href="/logout" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+    </div>
+</nav>
+
+<div class="container-fluid mt-4">
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card h-100 metric-box">
+                <i class="fas fa-thermometer-half metric-icon text-primary"></i>
+                <div class="text-uppercase small text-muted mb-2">CPU Max Temp</div>
+                <div class="metric-value text-primary" id="val-temp">--</div>
+                <div class="metric-unit">°C</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card h-100 metric-box">
+                <i class="fas fa-bolt metric-icon text-warning"></i>
+                <div class="text-uppercase small text-muted mb-2">Power Draw</div>
+                <div class="metric-value text-warning" id="val-power">--</div>
+                <div class="metric-unit">Watts</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card h-100 metric-box">
+                <i class="fas fa-fan metric-icon text-success"></i>
+                <div class="text-uppercase small text-muted mb-2">Fan Speed</div>
+                <div class="metric-value text-success" id="val-fan">--</div>
+                <div class="metric-unit">RPM</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card h-100 p-3 d-flex flex-column justify-content-center align-items-center text-center">
+                <div class="text-uppercase small text-muted mb-2">Control Mode</div>
+                <div id="mode-display" class="h4 fw-bold mb-2">--</div>
+                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图表 -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-history me-2"></i>24-Hour Trend</span>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary active" onclick="updateChart('power')">Power</button>
+                <button class="btn btn-outline-secondary" onclick="updateChart('temp')">Temp</button>
+                <button class="btn btn-outline-secondary" onclick="updateChart('fan')">Fan</button>
+            </div>
+        </div>
+        <div class="card-body p-2" style="height: 300px;">
+            <canvas id="mainChart"></canvas>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 传感器列表 -->
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between">
+                    <span><i class="fas fa-list-ul me-2"></i>Sensors</span>
+                    <span class="badge bg-secondary" id="sensor-count">0</span>
+                </div>
+                <div class="card-body p-0 scroll-container">
+                    <table class="table table-dark table-hover table-custom mb-0">
+                        <thead class="sticky-top bg-dark"><tr><th>SOURCE</th><th>NAME</th><th class="text-end">VALUE</th><th class="text-center hide-mobile">STATUS</th></tr></thead>
+                        <tbody id="sensor-list"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- 曲线设置 -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Fan Curve</div>
+                <div class="card-body text-center py-3">
+                    <div style="height: 100px; width: 100%; margin-bottom: 10px;">
+                        <canvas id="miniCurveChart"></canvas>
+                    </div>
+                    <button class="btn btn-primary w-100" onclick="openCurveModal()">
+                        <i class="fas fa-edit me-1"></i> Edit Configuration
+                    </button>
+                    <div class="mt-2 text-muted small" id="calibration-info">
+                        RPM Range: <span id="rpm-range-display" class="text-white fw-bold">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="curveModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
+            <div class="modal-header border-bottom border-secondary">
+                <h5 class="modal-title">Manual Fan Curve (Target RPM %)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-sm btn-outline-warning" onclick="startCalibration()">
+                        <i class="fas fa-tachometer-alt me-1"></i> Run Calibration
+                    </button>
+                </div>
+                <div class="row">
+                    <div class="col-md-7 mb-3"><canvas id="curvePreviewChart" height="220"></canvas></div>
+                    <div class="col-md-5" style="max-height: 300px; overflow-y: auto;">
+                        <form id="curveForm"></form>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-top border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" onclick="saveCurve()">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-warning">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title text-warning"><i class="fas fa-cog fa-spin me-2"></i>Calibrating Fans...</h5>
+            </div>
+            <div class="modal-body text-center pt-2">
+                <div class="my-4">
+                    <div class="text-uppercase small text-muted mb-1">Current Speed</div>
+                    <div style="font-family: 'SF Mono', Consolas, monospace; font-size: 3.5rem; font-weight: 700; color: #fff;">
+                        <span id="calib-realtime-rpm">---</span> <span style="font-size: 1rem; color: #8b949e">RPM</span>
+                    </div>
+                </div>
+                <div class="progress mb-3" style="height: 6px;">
+                    <div id="calib-progress" class="progress-bar bg-warning" style="width: 0%"></div>
+                </div>
+                <div id="calib-log" class="font-monospace small text-white-50">Initializing...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let mainChart, curveChart, miniCurveChart;
+    let historyData = {}, currentCurve = {};
+    let maxRPM = 0, minRPM = 0;
+
+    const commonChartOptions = {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
+        scales: { x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } }, y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } } },
+        elements: { point: { radius: 0, hitRadius: 10 } }
+    };
+
+    function init() {
+        mainChart = new Chart(document.getElementById('mainChart'), { type: 'line', data: { labels: [], datasets: [] }, options: commonChartOptions });
+        
+        miniCurveChart = new Chart(document.getElementById('miniCurveChart'), {
+            type: 'line', data: { labels: [], datasets: [] }, 
+            options: { 
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
+                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: '#1f6feb' } }
+            }
+        });
+
+        refreshData(); loadHistory(); updateCurvePreviewMini();
+        setInterval(refreshData, 2000); setInterval(loadHistory, 60000);
+    }
+
+    function refreshData() {
+        // [安全优化] 加入 try-catch 防止数据不完整导致整个页面JS崩溃
+        fetch('/api/status_hardware').then(r => r.json()).then(d => {
+            if(!d || !d.sensors) return;
+            document.getElementById('val-temp').innerText = d.temp;
+            document.getElementById('val-power').innerText = d.power;
+            document.getElementById('val-fan').innerText = d.fan_rpm;
+            
+            maxRPM = d.max_rpm || 0;
+            minRPM = d.min_rpm || 0;
+            const rangeText = (maxRPM > 0) ? `${minRPM} - ${maxRPM} RPM` : "Not Calibrated";
+            const elRange = document.getElementById('rpm-range-display');
+            if(elRange) elRange.innerText = rangeText;
+
+            const isAuto = d.mode === 'auto';
+            const modeText = document.getElementById('mode-display');
+            const btn = document.getElementById('btn-mode');
+            modeText.innerText = isAuto ? 'AUTOMATIC' : 'MANUAL';
+            modeText.className = `h4 fw-bold mb-2 ${isAuto ? 'text-success' : 'text-primary'}`;
+            btn.className = `btn w-100 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
+            btn.innerHTML = isAuto ? '<i class="fas fa-hand-paper me-2"></i>Switch to Manual' : '<i class="fas fa-robot me-2"></i>Switch to Auto';
+
+            const tbody = document.getElementById('sensor-list');
+            const html = d.sensors.map(s => {
+                const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
+                return `<tr>
+                    <td class="text-muted small">${s.source}</td><td class="fw-bold text-light">${s.name}</td>
+                    <td class="text-end font-monospace text-info">${s.value} <span class="text-muted small">${s.unit}</span></td>
+                    <td class="text-center hide-mobile"><i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span></td>
+                </tr>`;
+            }).join('');
+            if (tbody.innerHTML !== html) tbody.innerHTML = html;
+            document.getElementById('sensor-count').innerText = d.sensors.length;
+        }).catch(e => console.log('Fetch error:', e));
+    }
+
+    function updateCurvePreviewMini() {
+        fetch('/api/config').then(r=>r.json()).then(d=>{
+            if(!d) return;
+            const labels = Object.keys(d).sort((a,b)=>a-b);
+            const data = labels.map(k=>d[k]);
+            miniCurveChart.data.labels = labels;
+            miniCurveChart.data.datasets = [{data: data, borderColor: '#1f6feb', borderWidth: 2, fill: true, backgroundColor: '#1f6feb20'}];
+            miniCurveChart.update();
+        });
+    }
+
+    function loadHistory() {
+        fetch('/api/history').then(r => r.json()).then(d => {
+            historyData = d;
+            if (mainChart.data.datasets.length === 0) updateChart('power');
+            else updateChart(mainChart.data.datasets[0]._type, true);
+        });
+    }
+
+    function updateChart(type, silent=false) {
+        if (!historyData.hw) return;
+        let data, color, label;
+        if (type === 'power') { data = historyData.hw.power; color = '#e3b341'; label = 'Power (W)'; }
+        if (type === 'temp') { data = historyData.hw.temps; color = '#1f6feb'; label = 'Temp (°C)'; }
+        if (type === 'fan') { data = historyData.hw.fans; color = '#2ea043'; label = 'Fan (RPM)'; }
+        mainChart.data.labels = historyData.times;
+        mainChart.data.datasets = [{
+            label: label, data: data, borderColor: color, backgroundColor: color + '20', borderWidth: 2, fill: true, _type: type
+        }];
+        mainChart.update('none');
+        if (!silent) {
+            document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+    }
+
+    function openCurveModal() {
+        fetch('/api/config').then(r => r.json()).then(d => {
+            currentCurve = d;
+            const f = document.getElementById('curveForm');
+            f.innerHTML = '';
+            for (let t = 30; t <= 90; t += 5) {
+                const pct = d[t]||20;
+                const estRpm = maxRPM > 0 ? Math.round(maxRPM * (pct/100)) : '--';
+                f.innerHTML += `
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between text-muted small">
+                        <span>${t}°C</span>
+                        <span id="rpm-${t}">~${estRpm} RPM</span>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <input type="range" class="form-range flex-grow-1 me-2" min="10" max="100" 
+                               value="${pct}" oninput="updateCurvePreview(${t}, this.value)">
+                        <span class="font-monospace text-info" style="width: 35px; text-align:right" id="val-${t}">${pct}</span>
+                    </div>
+                </div>`;
+            }
+            new bootstrap.Modal(document.getElementById('curveModal')).show();
+            setTimeout(drawCurvePreview, 300);
+        });
+    }
+
+    function updateCurvePreview(temp, val) {
+        currentCurve[temp] = parseInt(val);
+        document.getElementById(`val-${temp}`).innerText = val;
+        const estRpm = maxRPM > 0 ? Math.round(maxRPM * (val/100)) : '--';
+        const rpmSpan = document.getElementById(`rpm-${temp}`);
+        if(rpmSpan) rpmSpan.innerText = `~${estRpm} RPM`;
+        drawCurvePreview();
+    }
+
+    function drawCurvePreview() {
+        const ctx = document.getElementById('curvePreviewChart');
+        if (curveChart) curveChart.destroy();
+        const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
+        curveChart = new Chart(ctx, {
+            type: 'line', data: {
+                labels: labels, datasets: [{ data: labels.map(k => currentCurve[k]), borderColor: '#1f6feb', borderWidth: 2, tension: 0.3 }]
+            },
+            options: { 
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const pct = context.parsed.y;
+                                const rpm = maxRPM > 0 ? Math.round(maxRPM * (pct/100)) : 0;
+                                return `${pct}% (~${rpm} RPM)`;
+                            }
+                        }
+                    }
+                }, 
+                scales: { y: { min: 0, max: 100, grid: { color: '#333' } }, x: { grid: { color: '#333' } } } 
+            }
+        });
+    }
+
+    function saveCurve() {
+        fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ curve: currentCurve }) })
+            .then(() => { 
+                bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
+                updateCurvePreviewMini();
+            });
+    }
+
+    function toggleMode() {
+        const modeText = document.getElementById('mode-display').innerText;
+        const newMode = modeText === 'AUTOMATIC' ? 'manual' : 'auto';
+        if(confirm(`Confirm switch to ${newMode.toUpperCase()} mode?`)) {
+            fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ mode: newMode }) }).then(refreshData);
+        }
+    }
+
+    let calibInterval;
+    function startCalibration() {
+        if(!confirm("Calibration takes a few minutes. Fans will slow down then speed up. Continue?")) return;
+        bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
+        const calibModal = new bootstrap.Modal(document.getElementById('calibModal'));
+        calibModal.show();
+        fetch('/api/calibration/start', {method: 'POST'}).then(r=>r.json()).then(d=>{
+            if(d.status === 'started') {
+                calibInterval = setInterval(checkCalibStatus, 1000);
+            }
+        });
+    }
+
+    function checkCalibStatus() {
+        fetch('/api/calibration/status').then(r=>r.json()).then(d => {
+            document.getElementById('calib-progress').style.width = d.progress + '%';
+            document.getElementById('calib-log').innerText = d.log;
+            document.getElementById('calib-realtime-rpm').innerText = d.current_rpm || '---';
+            if(!d.active && d.progress >= 100) {
+                clearInterval(calibInterval);
+                setTimeout(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('calibModal')).hide();
+                    alert("Calibration Complete!");
+                    refreshData();
+                }, 1000);
+            }
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
