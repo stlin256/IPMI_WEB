@@ -2,6 +2,10 @@
 
 这是一个轻量级的、基于 Web 的仪表板，用于通过 IPMI 监控服务器硬件状态并控制风扇速度。它使用 Python Flask 作为后端，并调用 `ipmitool` 和 `sensors` 等系统命令来收集数据。
 
+![alt text](/img/image.png)
+![alt text](/img/image-1.png)
+![alt text](/img/image-2.png)
+
 ## 主要功能
 
 - **硬件状态监控**: 实时显示 CPU 温度、功耗、风扇转速 (RPM) 以及所有可用的 IPMI 传感器数据。
