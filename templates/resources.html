@@ -11,113 +11,195 @@
     <style>
         :root {
             --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d;
-            --text-main: #c9d1d9; --text-muted: #8b949e;
-            --color-cpu: #1f6feb; --color-mem: #a371f7; --color-disk: #d29922; --color-net: #238636;
+            --text-main: #e6edf3; --text-muted: #8b949e;
+            --accent-cpu: #1f6feb; --accent-mem: #a371f7; 
+            /* 定义更鲜明的颜色变量 */
+            --color-net-in: #2ea043;   /* 绿色 */
+            --color-net-out: #388bfd;  /* 蓝色 */
+            --color-disk-r: #d29922;   /* 黄色 */
+            --color-disk-w: #f85149;   /* 红色 */
         }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: 60px; }
-        .navbar { background-color: rgba(13, 17, 23, 0.8) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
-        .nav-link { color: var(--text-muted) !important; font-weight: 500; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; padding-bottom: 60px; }
+        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
         .nav-link:hover, .nav-link.active { color: #fff !important; }
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .res-box { padding: 1.5rem; text-align: center; }
-        .res-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.2rem; font-weight: 700; letter-spacing: -1px; }
-        .res-unit { font-size: 1rem; color: var(--text-muted); font-weight: normal; margin-left: 4px; }
-        .progress-slim { height: 4px; background-color: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin-top: 15px; }
-        .progress-bar { transition: width 0.5s ease-out; }
-        .text-cpu { color: var(--color-cpu); } .bg-cpu { background-color: var(--color-cpu); }
-        .text-mem { color: var(--color-mem); } .bg-mem { background-color: var(--color-mem); }
-        .text-disk { color: var(--color-disk); } .text-net { color: var(--color-net); }
-        @media (max-width: 768px) { .res-value { font-size: 1.8rem; } }
+        
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden; }
+        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; padding: 1rem 1.25rem; }
+        
+        /* 仪表盘区域优化 */
+        .gauge-container { width: 100%; max-width: 140px; height: 140px; position: relative; margin: 0 auto; }
+        .gauge-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+        .gauge-value { font-family: 'SF Mono', monospace; font-size: 1.8rem; font-weight: 800; color: #fff; line-height: 1; }
+        .gauge-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .res-sub-text { font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; text-align: center; }
+
+        /* IO 区域优化 */
+        .io-section { padding: 1.5rem 1rem; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .io-value { font-family: 'SF Mono', monospace; font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 5px; word-break: break-all; }
+        .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 4px; }
+        .io-badge { font-size: 0.7rem; padding: 3px 6px; border-radius: 4px; font-weight: 700; vertical-align: middle; }
+        
+        /* 分割线 */
+        .divider-vertical { border-right: 1px solid var(--border-color); }
+        /* 移动端调整 */
+        @media (max-width: 768px) {
+            .gauge-container { max-width: 110px; height: 110px; }
+            .gauge-value { font-size: 1.4rem; }
+            .io-value { font-size: 1.1rem; }
+        }
+
+        .chart-card-body { height: 350px; padding: 1rem; position: relative; }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand navbar-dark">
+<nav class="navbar navbar-expand navbar-dark sticky-top">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center" href="#">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold">R730XD Ops</span>
+            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">R730XD</span>
         </a>
-        <div class="navbar-nav flex-row me-auto ms-3">
+        <div class="navbar-nav flex-row me-auto ms-4">
             <a class="nav-link me-3" href="/hardware">HW</a>
             <a class="nav-link active me-3" href="/resources">RES</a>
             <a class="nav-link" href="/history">HIST</a>
         </div>
-        <a href="/logout" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+        <a href="/logout" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
     </div>
 </nav>
 
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 px-3 px-md-4">
+    <!-- 顶部概览：合并为2个大卡片 -->
     <div class="row g-3 mb-4">
-        <!-- CPU -->
-        <div class="col-6 col-md-3">
-            <div class="card h-100"><div class="res-box">
-                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-microchip me-1"></i> CPU</div>
-                <div class="res-value text-white"><span id="val-cpu">--</span><span class="res-unit">%</span></div>
-                <div class="progress-slim"><div id="bar-cpu" class="progress-bar bg-cpu" style="width: 0%"></div></div>
-            </div></div>
+        
+        <!-- 卡片1：计算资源 (CPU + Memory) -->
+        <div class="col-12 col-lg-6">
+            <div class="card h-100">
+                <div class="row g-0 h-100">
+                    <!-- CPU -->
+                    <div class="col-6 border-end border-secondary" style="border-color: #30363d !important;">
+                        <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
+                            <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-microchip me-1 text-primary"></i> CPU</div>
+                            <div class="gauge-container">
+                                <canvas id="gaugeCpu"></canvas>
+                                <div class="gauge-overlay">
+                                    <div class="gauge-value" id="val-cpu">--</div>
+                                    <div class="gauge-label">%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Memory -->
+                    <div class="col-6">
+                        <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
+                            <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-memory me-1" style="color: var(--accent-mem)"></i> RAM</div>
+                            <div class="gauge-container">
+                                <canvas id="gaugeMem"></canvas>
+                                <div class="gauge-overlay">
+                                    <div class="gauge-value" id="val-mem">--</div>
+                                    <div class="gauge-label">%</div>
+                                </div>
+                            </div>
+                            <div class="res-sub-text">
+                                <span id="val-mem-used">--</span> / <span id="val-mem-total">--</span> GB
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <!-- MEM -->
-        <div class="col-6 col-md-3">
-            <div class="card h-100"><div class="res-box">
-                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-memory me-1"></i> RAM</div>
-                <div class="res-value text-white"><span id="val-mem">--</span><span class="res-unit">%</span></div>
-                <div class="small text-muted mt-1"><span id="val-mem-used">--</span> / <span id="val-mem-total">--</span> GB</div>
-                <div class="progress-slim"><div id="bar-mem" class="progress-bar bg-mem" style="width: 0%"></div></div>
-            </div></div>
-        </div>
-        <!-- DISK -->
-        <div class="col-6 col-md-3">
-            <div class="card h-100"><div class="res-box">
-                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-hdd me-1"></i> Disk R/W</div>
-                <div class="res-value text-disk" style="font-size: 1.6rem">
-                    <span id="str-disk-r">0 B/s</span>
+
+        <!-- 卡片2：I/O 资源 (Network + Disk) -->
+        <div class="col-12 col-lg-6">
+            <div class="card h-100">
+                <div class="row g-0 h-100">
+                    <!-- Network -->
+                    <div class="col-6 border-end border-secondary" style="border-color: #30363d !important;">
+                        <div class="io-section">
+                            <div class="io-label"><i class="fas fa-network-wired me-1" style="color: var(--color-net-in)"></i> Network</div>
+                            <div class="mb-3">
+                                <!-- IN: Green -->
+                                <span class="badge bg-success bg-opacity-25 text-success io-badge">IN</span>
+                                <div class="io-value" id="str-net-in" style="color: var(--color-net-in)">--</div>
+                            </div>
+                            <div>
+                                <!-- OUT: Blue (Modified from Gray) -->
+                                <span class="badge bg-primary bg-opacity-25 text-primary io-badge">OUT</span>
+                                <div class="io-value" id="str-net-out" style="color: var(--color-net-out)">--</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Disk -->
+                    <div class="col-6">
+                        <div class="io-section">
+                            <div class="io-label"><i class="fas fa-hdd me-1" style="color: var(--color-disk-r)"></i> Disk I/O</div>
+                            <div class="mb-3">
+                                <!-- READ: Yellow -->
+                                <span class="badge bg-warning bg-opacity-25 text-warning io-badge">READ</span>
+                                <div class="io-value" id="str-disk-r" style="color: var(--color-disk-r)">--</div>
+                            </div>
+                            <div>
+                                <!-- WRITE: Red (Modified from Gray) -->
+                                <span class="badge bg-danger bg-opacity-25 text-danger io-badge">WRITE</span>
+                                <div class="io-value" id="str-disk-w" style="color: var(--color-disk-w)">--</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="res-value text-white" style="font-size: 1.6rem">
-                    <span id="str-disk-w">0 B/s</span>
-                </div>
-            </div></div>
-        </div>
-        <!-- NET -->
-        <div class="col-6 col-md-3">
-            <div class="card h-100"><div class="res-box">
-                <div class="text-uppercase small text-muted mb-1"><i class="fas fa-network-wired me-1"></i> Net In/Out</div>
-                <div class="res-value text-net" style="font-size: 1.6rem">
-                    <span id="str-net-in">0 B/s</span>
-                </div>
-                <div class="res-value text-white" style="font-size: 1.6rem">
-                    <span id="str-net-out">0 B/s</span>
-                </div>
-            </div></div>
+            </div>
         </div>
     </div>
 
+    <!-- 图表区域 -->
     <div class="row g-4">
-        <div class="col-lg-6">
+        <!-- 左侧：System Load -->
+        <div class="col-xl-8 col-lg-7">
             <div class="card h-100">
-                <div class="card-header"><i class="fas fa-chart-area me-2"></i>CPU & RAM (24h)</div>
-                <div class="card-body"><div style="height: 250px"><canvas id="loadChart"></canvas></div></div>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-chart-area me-2"></i>System History (24h)</span>
+                </div>
+                <div class="chart-card-body">
+                    <canvas id="cpuMemChart"></canvas>
+                </div>
             </div>
         </div>
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header"><i class="fas fa-exchange-alt me-2"></i>Net & Disk (24h)</div>
-                <div class="card-body"><div style="height: 250px"><canvas id="ioChart"></canvas></div></div>
+
+        <!-- 右侧：IO Charts (Stacked) -->
+        <div class="col-xl-4 col-lg-5 d-flex flex-column gap-4">
+            <!-- Network -->
+            <div class="card flex-grow-1">
+                <div class="card-header py-2 fs-6"><i class="fas fa-exchange-alt me-2"></i>Network Traffic</div>
+                <div class="p-2 flex-grow-1" style="min-height: 160px; position: relative;">
+                    <canvas id="netChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Disk -->
+            <div class="card flex-grow-1">
+                <div class="card-header py-2 fs-6"><i class="fas fa-server me-2"></i>Disk Operations</div>
+                <div class="p-2 flex-grow-1" style="min-height: 160px; position: relative;">
+                    <canvas id="diskChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    let loadChart, ioChart;
+    let cpuMemChart, netChart, diskChart;
+    let gaugeCpuChart, gaugeMemChart;
 
-    const chartOptions = {
+    const commonOptions = {
         responsive: true, maintainAspectRatio: false, animation: false,
-        elements: { point: { radius: 0, hitRadius: 10 } },
+        elements: { point: { radius: 0, hitRadius: 10, hoverRadius: 4 } },
         interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { labels: { color: '#8b949e' } } },
+        plugins: { 
+            legend: { labels: { color: '#8b949e', font: { size: 12 }, boxWidth: 12, padding: 10 } },
+            tooltip: { backgroundColor: 'rgba(22, 27, 34, 0.95)', titleColor: '#fff', bodyColor: '#ccc', borderColor: '#30363d', borderWidth: 1 }
+        },
         scales: {
-            x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 6 } },
-            y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' }, beginAtZero: true }
+            x: { grid: { color: '#30363d', drawBorder: false }, ticks: { color: '#8b949e', maxTicksLimit: 6 } },
+            y: { grid: { color: '#30363d', drawBorder: false }, ticks: { color: '#8b949e' }, beginAtZero: true }
         }
     };
 
@@ -130,19 +212,62 @@
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
     }
 
-    function init() {
-        loadChart = new Chart(document.getElementById('loadChart'), {
-            type: 'line', data: { labels: [], datasets: [] },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100 } } }
+    function initGauges() {
+        const gaugeConfig = (color) => ({
+            type: 'doughnut',
+            data: {
+                labels: ['Used', 'Free'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: [color, '#21262d'],
+                    borderWidth: 0,
+                    circumference: 360,
+                    cutout: '85%',
+                    borderRadius: 20
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { animateRotate: false, animateScale: false },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } }
+            }
         });
 
-        ioChart = new Chart(document.getElementById('ioChart'), {
+        gaugeCpuChart = new Chart(document.getElementById('gaugeCpu'), gaugeConfig('#1f6feb'));
+        gaugeMemChart = new Chart(document.getElementById('gaugeMem'), gaugeConfig('#a371f7'));
+    }
+
+    function updateGauge(chart, value) {
+        chart.data.datasets[0].data = [value, 100 - value];
+        chart.update();
+    }
+
+    function init() {
+        initGauges();
+
+        const ctxCpu = document.getElementById('cpuMemChart').getContext('2d');
+        const gradientCpu = ctxCpu.createLinearGradient(0, 0, 0, 300);
+        gradientCpu.addColorStop(0, 'rgba(31, 111, 235, 0.25)');
+        gradientCpu.addColorStop(1, 'rgba(31, 111, 235, 0.0)');
+        
+        cpuMemChart = new Chart(ctxCpu, {
             type: 'line', data: { labels: [], datasets: [] },
-            options: chartOptions
+            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100, ticks: { callback: v => v+'%' } } } }
+        });
+
+        netChart = new Chart(document.getElementById('netChart'), {
+            type: 'line', data: { labels: [], datasets: [] },
+            options: { ...commonOptions, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ...commonOptions.scales.y, ticks: { maxTicksLimit: 4 } } } }
+        });
+
+        diskChart = new Chart(document.getElementById('diskChart'), {
+            type: 'bar', data: { labels: [], datasets: [] },
+            options: { ...commonOptions, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ...commonOptions.scales.y, ticks: { maxTicksLimit: 4 } } } }
         });
         
-        refreshData(); loadHistory();
-        setInterval(refreshData, 2000); setInterval(loadHistory, 60000);
+        refreshData(); 
+        loadHistory();
+        setInterval(refreshData, 2000); 
+        setInterval(loadHistory, 60000);
     }
 
     function refreshData() {
@@ -152,36 +277,40 @@
             document.getElementById('val-mem').innerText = d.mem_percent;
             document.getElementById('val-mem-used').innerText = d.mem_used;
             document.getElementById('val-mem-total').innerText = d.mem_total;
-            
-            // 自适应单位显示 (后端传回的是 Bytes/s)
             document.getElementById('str-disk-r').innerText = formatBytes(d.disk_r);
             document.getElementById('str-disk-w').innerText = formatBytes(d.disk_w);
             document.getElementById('str-net-in').innerText = formatBytes(d.net_in);
             document.getElementById('str-net-out').innerText = formatBytes(d.net_out);
-
-            document.getElementById('bar-cpu').style.width = d.cpu + '%';
-            document.getElementById('bar-mem').style.width = d.mem_percent + '%';
-        });
+            
+            updateGauge(gaugeCpuChart, d.cpu);
+            updateGauge(gaugeMemChart, d.mem_percent);
+        }).catch(e => console.error(e));
     }
 
     function loadHistory() {
         fetch('/api/history').then(r => r.json()).then(d => {
-            loadChart.data.labels = d.times;
-            loadChart.data.datasets = [
-                { label: 'CPU %', data: d.res.cpu, borderColor: '#1f6feb', backgroundColor: '#1f6feb20', borderWidth: 2, fill: true },
-                { label: 'Mem %', data: d.res.mem, borderColor: '#a371f7', backgroundColor: '#a371f720', borderWidth: 2, fill: true }
+            cpuMemChart.data.labels = d.times;
+            cpuMemChart.data.datasets = [
+                { label: 'CPU %', data: d.res.cpu, borderColor: '#1f6feb', backgroundColor: 'rgba(31, 111, 235, 0.1)', borderWidth: 2, fill: true, tension: 0.3 },
+                { label: 'RAM %', data: d.res.mem, borderColor: '#a371f7', backgroundColor: 'rgba(163, 113, 247, 0.05)', borderWidth: 2, fill: true, tension: 0.3 }
             ];
-            loadChart.update('none');
+            cpuMemChart.update('none');
 
-            // 包含所有 IO 维度
-            ioChart.data.labels = d.times;
-            ioChart.data.datasets = [
-                { label: 'Net In (KB/s)', data: d.res.net_in, borderColor: '#238636', borderWidth: 1 },
-               { label: 'Net Out (KB/s)', data: d.res.net_out, borderColor: '#2ea043', borderWidth: 1, borderDash: [5,5] },
-               { label: 'Disk R (MB/s)', data: d.res.disk_r, borderColor: '#d29922', borderWidth: 1 },
-               { label: 'Disk W (MB/s)', data: d.res.disk_w, borderColor: '#dbab0a', borderWidth: 1, borderDash: [5,5] }
+            // Network Chart
+            netChart.data.labels = d.times;
+            netChart.data.datasets = [
+                { label: 'In', data: d.res.net_in, borderColor: '#2ea043', borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
+                { label: 'Out', data: d.res.net_out, borderColor: '#388bfd', borderWidth: 1.5, borderDash: [3,3], tension: 0.3, pointRadius: 0 }
             ];
-            ioChart.update('none');
+            netChart.update('none');
+
+            // Disk Chart
+            diskChart.data.labels = d.times;
+            diskChart.data.datasets = [
+                { label: 'Read', data: d.res.disk_r, backgroundColor: '#d29922', barPercentage: 0.7 },
+                { label: 'Write', data: d.res.disk_w, backgroundColor: '#f85149', barPercentage: 0.7 } 
+            ];
+            diskChart.update('none');
         });
     }
     init();

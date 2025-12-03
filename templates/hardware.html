@@ -10,23 +10,27 @@
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
     
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #c9d1d9; --text-muted: #8b949e; }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: 60px; }
-        .navbar { background-color: rgba(13, 17, 23, 0.8) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
-        .nav-link { color: var(--text-muted) !important; font-weight: 500; }
+        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; padding-bottom: 60px; }
+        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
         .nav-link:hover, .nav-link.active { color: #fff !important; }
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .metric-box { padding: 1.5rem; text-align: center; position: relative; overflow: hidden; }
-        .metric-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.5rem; font-weight: 700; letter-spacing: -1px; }
-        .metric-unit { font-size: 0.9rem; color: var(--text-muted); }
-        .metric-icon { position: absolute; top: 10px; right: 10px; font-size: 3rem; opacity: 0.05; transform: rotate(-15deg); }
-        .table-custom { font-size: 0.85rem; font-family: monospace; }
-        .table-custom th { background-color: rgba(255,255,255,0.02); color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
-        .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-        .scroll-container { max-height: 500px; overflow-y: auto; scrollbar-width: thin; }
-        /* 手机端防误触 */
+        
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; padding: 1rem; }
+        
+        .metric-box { padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .metric-box:hover { border-color: #58a6ff; transform: translateY(-2px); }
+        .metric-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 5px; }
+        .metric-unit { font-size: 1rem; color: var(--text-muted); font-weight: normal; }
+        .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
+        
+        .table-custom { font-size: 0.9rem; font-family: monospace; }
+        .table-custom th { background-color: rgba(255,255,255,0.02); color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
+        .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; padding: 10px 12px; }
+        .scroll-container { max-height: 550px; overflow-y: auto; scrollbar-width: thin; }
+        
         input[type=range] { touch-action: none; }
-        @media (max-width: 768px) { .metric-value { font-size: 1.8rem; } .hide-mobile { display: none; } }
     </style>
 </head>
 <body>
@@ -34,48 +38,45 @@
 <nav class="navbar navbar-expand navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center" href="#">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold">R730XD Ops</span>
+            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">R730XD</span>
         </a>
-        <div class="navbar-nav flex-row me-auto ms-3">
+        <div class="navbar-nav flex-row me-auto ms-4">
             <a class="nav-link active me-3" href="/hardware">HW</a>
             <a class="nav-link me-3" href="/resources">RES</a>
             <a class="nav-link" href="/history">HIST</a>
         </div>
-        <a href="/logout" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+        <a href="/logout" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
     </div>
 </nav>
 
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 px-3 px-md-4">
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3">
-            <div class="card h-100 metric-box">
+            <div class="card metric-box">
                 <i class="fas fa-thermometer-half metric-icon text-primary"></i>
-                <div class="text-uppercase small text-muted mb-2">CPU Max Temp</div>
-                <div class="metric-value text-primary" id="val-temp">--</div>
-                <div class="metric-unit">°C</div>
+                <div class="text-uppercase small text-muted fw-bold mb-1">CPU Max Temp</div>
+                <div class="metric-value text-primary"><span id="val-temp">--</span> <span class="metric-unit">°C</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card h-100 metric-box">
+            <div class="card metric-box">
                 <i class="fas fa-bolt metric-icon text-warning"></i>
-                <div class="text-uppercase small text-muted mb-2">Power Draw</div>
-                <div class="metric-value text-warning" id="val-power">--</div>
-                <div class="metric-unit">Watts</div>
+                <div class="text-uppercase small text-muted fw-bold mb-1">Power Draw</div>
+                <div class="metric-value text-warning"><span id="val-power">--</span> <span class="metric-unit">W</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card h-100 metric-box">
+            <div class="card metric-box">
                 <i class="fas fa-fan metric-icon text-success"></i>
-                <div class="text-uppercase small text-muted mb-2">Fan Speed</div>
-                <div class="metric-value text-success" id="val-fan">--</div>
-                <div class="metric-unit">RPM</div>
+                <div class="text-uppercase small text-muted fw-bold mb-1">Fan Speed</div>
+                <div class="metric-value text-success"><span id="val-fan">--</span> <span class="metric-unit">RPM</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card h-100 p-3 d-flex flex-column justify-content-center align-items-center text-center">
-                <div class="text-uppercase small text-muted mb-2">Control Mode</div>
-                <div id="mode-display" class="h4 fw-bold mb-2">--</div>
-                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch</button>
+            <div class="card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
+                <div class="text-uppercase small text-muted fw-bold mb-2">Fan Control Mode</div>
+                <div id="mode-display" class="h3 fw-bold mb-3">--</div>
+                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch Mode</button>
             </div>
         </div>
     </div>
@@ -84,46 +85,50 @@
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="fas fa-history me-2"></i>24-Hour Trend</span>
-            <div class="btn-group btn-group-sm">
-               <button class="btn btn-outline-secondary" onclick="updateChart('power', event)">Power</button>
-               <button class="btn btn-outline-secondary" onclick="updateChart('temp', event)">Temp</button>
-               <button class="btn btn-outline-secondary" onclick="updateChart('fan', event)">Fan</button>
+            <div class="btn-group">
+               <button class="btn btn-sm btn-outline-secondary active" onclick="updateChart('power', event)">Power</button>
+               <button class="btn btn-sm btn-outline-secondary" onclick="updateChart('temp', event)">Temp</button>
+               <button class="btn btn-sm btn-outline-secondary" onclick="updateChart('fan', event)">Fan</button>
             </div>
         </div>
-        <div class="card-body p-2" style="height: 300px;">
+        <div class="card-body p-3" style="height: 320px;">
             <canvas id="mainChart"></canvas>
         </div>
     </div>
 
-    <div class="row g-3">
+    <div class="row g-4">
         <!-- 传感器列表 -->
         <div class="col-lg-8">
             <div class="card h-100">
-                <div class="card-header d-flex justify-content-between">
-                    <span><i class="fas fa-list-ul me-2"></i>Sensors</span>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-list-ul me-2"></i>Sensors List</span>
                     <span class="badge bg-secondary" id="sensor-count">0</span>
                 </div>
                 <div class="card-body p-0 scroll-container">
-                    <table class="table table-dark table-hover table-custom mb-0">
+                    <table class="table table-dark table-striped table-hover table-custom mb-0">
                         <thead class="sticky-top bg-dark"><tr><th>SOURCE</th><th>NAME</th><th class="text-end">VALUE</th><th class="text-center hide-mobile">STATUS</th></tr></thead>
                         <tbody id="sensor-list"></tbody>
                     </table>
                 </div>
             </div>
         </div>
-        <!-- 曲线设置 -->
+        <!-- 曲线设置 (修复了高度问题) -->
         <div class="col-lg-4">
-            <div class="card">
-                <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Fan Curve</div>
-                <div class="card-body text-center py-3">
-                    <div style="height: 100px; width: 100%; margin-bottom: 10px;">
+            <div class="card h-100">
+                <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Fan Curve Config</div>
+                <div class="card-body d-flex flex-column py-3 px-4">
+                    <!-- 图表区域自动填充剩余空间 -->
+                    <div class="flex-grow-1 w-100 mb-3" style="min-height: 150px;">
                         <canvas id="miniCurveChart"></canvas>
                     </div>
-                    <button class="btn btn-primary w-100" onclick="openCurveModal()">
-                        <i class="fas fa-edit me-1"></i> Edit Configuration
-                    </button>
-                    <div class="mt-2 text-muted small" id="calibration-info">
-                        RPM Range: <span id="rpm-range-display" class="text-white fw-bold">--</span>
+                    <!-- 底部按钮和文字固定在下方 -->
+                    <div>
+                        <button class="btn btn-primary w-100 mb-3 py-2" onclick="openCurveModal()">
+                            <i class="fas fa-edit me-1"></i> Edit Fan Curve
+                        </button>
+                        <div class="text-muted small border-top pt-3 border-secondary text-center" id="calibration-info">
+                            Calibrated Range: <span id="rpm-range-display" class="text-info font-monospace fw-bold">--</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -131,6 +136,7 @@
     </div>
 </div>
 
+<!-- Modal 和 JS 逻辑保持不变，复制上一份代码的 Modal 和 JS 部分即可 -->
 <div class="modal fade" id="curveModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
@@ -172,7 +178,7 @@
                         <span id="calib-realtime-rpm">---</span> <span style="font-size: 1rem; color: #8b949e">RPM</span>
                     </div>
                 </div>
-                <div class="progress mb-3" style="height: 6px;">
+                <div class="progress mb-3" style="height: 6px; background: #30363d;">
                     <div id="calib-progress" class="progress-bar bg-warning" style="width: 0%"></div>
                 </div>
                 <div id="calib-log" class="font-monospace small text-white-50">Initializing...</div>
@@ -202,7 +208,7 @@
                 responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
-                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: '#1f6feb' } }
+                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: '#1f6feb', tension: 0.3 } }
             }
         });
 
@@ -211,7 +217,6 @@
     }
 
     function refreshData() {
-        // [安全优化] 加入 try-catch 防止数据不完整导致整个页面JS崩溃
         fetch('/api/status_hardware').then(r => r.json()).then(d => {
             if(!d || !d.sensors) return;
             document.getElementById('val-temp').innerText = d.temp;
@@ -221,15 +226,14 @@
             maxRPM = d.max_rpm || 0;
             minRPM = d.min_rpm || 0;
             const rangeText = (maxRPM > 0) ? `${minRPM} - ${maxRPM} RPM` : "Not Calibrated";
-            const elRange = document.getElementById('rpm-range-display');
-            if(elRange) elRange.innerText = rangeText;
+            document.getElementById('rpm-range-display').innerText = rangeText;
 
             const isAuto = d.mode === 'auto';
             const modeText = document.getElementById('mode-display');
             const btn = document.getElementById('btn-mode');
             modeText.innerText = isAuto ? 'AUTOMATIC' : 'MANUAL';
-            modeText.className = `h4 fw-bold mb-2 ${isAuto ? 'text-success' : 'text-primary'}`;
-            btn.className = `btn w-100 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
+            modeText.className = `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`;
+            btn.className = `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
             btn.innerHTML = isAuto ? '<i class="fas fa-hand-paper me-2"></i>Switch to Manual' : '<i class="fas fa-robot me-2"></i>Switch to Auto';
 
             const tbody = document.getElementById('sensor-list');
@@ -252,7 +256,7 @@
             const labels = Object.keys(d).sort((a,b)=>a-b);
             const data = labels.map(k=>d[k]);
             miniCurveChart.data.labels = labels;
-            miniCurveChart.data.datasets = [{data: data, borderColor: '#1f6feb', borderWidth: 2, fill: true, backgroundColor: '#1f6feb20'}];
+            miniCurveChart.data.datasets = [{data: data, borderColor: '#1f6feb', borderWidth: 2, fill: true, backgroundColor: 'rgba(31, 111, 235, 0.2)', tension: 0.3}];
             miniCurveChart.update();
         });
     }
@@ -261,11 +265,10 @@
        fetch('/api/history').then(r => r.json()).then(d => {
            historyData = d;
            if (mainChart.data.datasets.length === 0) {
-               // [修复] 页面首次加载时，默认显示power并高亮按钮
-               updateChart('power', null, false); // silent=false to ensure button is activated
-               document.querySelector('.btn-group button[onclick*="power"]').classList.add('active');
+               updateChart('power', null, true);
            } else {
-               updateChart(mainChart.data.datasets[0]._type, null, true);
+               const currentType = mainChart.data.datasets[0]._type;
+               updateChart(currentType, null, true);
            }
        });
     }
@@ -278,15 +281,13 @@
        if (type === 'fan') { data = historyData.hw.fans; color = '#2ea043'; label = 'Fan (RPM)'; }
        mainChart.data.labels = historyData.times;
        mainChart.data.datasets = [{
-           label: label, data: data, borderColor: color, backgroundColor: color + '20', borderWidth: 2, fill: true, _type: type
+           label: label, data: data, borderColor: color, backgroundColor: color + '20', borderWidth: 2, fill: true, _type: type, tension: 0.3
        }];
        mainChart.update('none');
        
-       if (!silent) {
+       if (!silent && event) {
            document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
-           // [修复] 如果事件存在，则使用事件目标；否则通过查询选择器激活
-           const targetButton = event ? event.target : document.querySelector(`.btn-group button[onclick*="'${type}'"]`);
-           if(targetButton) targetButton.classList.add('active');
+           event.target.classList.add('active');
        }
    }
 

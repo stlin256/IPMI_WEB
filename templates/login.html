@@ -1,27 +1,64 @@
 <!DOCTYPE html>
 <html lang="zh" data-bs-theme="dark">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - R730XD Ops</title>
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+   <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
     <style>
-        body { background: #0d1117; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .card { width: 100%; max-width: 400px; background: #161b22; border: 1px solid #30363d; }
-        .btn-primary { background: #238636; border: none; }
-        .btn-primary:hover { background: #2ea043; }
+        body { 
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+            display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;
+            overflow: hidden;
+        }
+        /* 动态背景装饰 */
+        .bg-glow {
+            position: absolute; width: 600px; height: 600px; background: radial-gradient(circle, rgba(31,111,235,0.1) 0%, rgba(0,0,0,0) 70%);
+            top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: -1;
+        }
+        .login-card { 
+            width: 100%; max-width: 360px; 
+            background: rgba(22, 27, 34, 0.7); 
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1); 
+            border-radius: 16px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            padding: 2.5rem;
+        }
+        .form-control { 
+            background: rgba(13, 17, 23, 0.8) !important; 
+            border-color: #30363d !important; color: #fff !important; 
+            padding: 0.75rem 1rem;
+        }
+        .form-control:focus { border-color: #1f6feb !important; box-shadow: 0 0 0 3px rgba(31,111,235,0.3); }
+        .btn-primary { 
+            background: #238636; border: none; padding: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover { background: #2ea043; transform: translateY(-1px); }
+        .logo-icon { font-size: 3rem; color: #1f6feb; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
-    <div class="card p-4">
-        <h3 class="text-center text-white mb-4">R730XD Ops</h3>
+    <div class="bg-glow"></div>
+    <div class="login-card text-center">
+        <i class="fas fa-server logo-icon"></i>
+        <h4 class="text-white mb-4 fw-bold">登陆到面板</h4>
+        
         {% if error %}
-        <div class="alert alert-danger">{{ error }}</div>
+        <div class="alert alert-danger py-2 small border-0 bg-danger bg-opacity-25 text-white">{{ error }}</div>
         {% endif %}
+        
         <form method="POST">
-            <div class="mb-3">
-                <label class="text-muted">Password</label>
-                <input type="password" name="password" class="form-control bg-dark text-white border-secondary" autofocus>
+            <div class="mb-4 text-start">
+                <label class="form-label text-muted small text-uppercase fw-bold">Password</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-key"></i></span>
+                    <input type="password" name="password" class="form-control" placeholder="••••••••" autofocus>
+                </div>
             </div>
-            <button type="submit" class="btn btn-primary w-100">ACCESS CONSOLE</button>
+            <button type="submit" class="btn btn-primary w-100 rounded-pill">登陆</button>
         </form>
     </div>
 </body>
