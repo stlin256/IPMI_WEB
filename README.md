@@ -5,6 +5,8 @@
 ![alt text](/img/image.png)
 ![alt text](/img/image-1.png)
 ![alt text](/img/image-2.png)
+!alt text [<sup>1</sup>](/img/phone-1.jpg) !alt text [<sup>2</sup>](/img/phone-2.jpg) !alt text [<sup>3</sup>](/img/phone-3.jpg)
+
 
 ## 主要功能
 
