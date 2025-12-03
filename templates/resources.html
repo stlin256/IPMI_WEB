@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Resources - R730XD Ops</title>
-    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+   <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+   <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+   <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
     
     <style>
         :root {
@@ -177,9 +177,9 @@
             ioChart.data.labels = d.times;
             ioChart.data.datasets = [
                 { label: 'Net In (KB/s)', data: d.res.net_in, borderColor: '#238636', borderWidth: 1 },
-                { label: 'Net Out (KB/s)', data: d.res.net_in, borderColor: '#2ea043', borderWidth: 1, borderDash: [5,5] },
-                { label: 'Disk R (MB/s)', data: d.res.disk_r, borderColor: '#d29922', borderWidth: 1 },
-                { label: 'Disk W (MB/s)', data: d.res.disk_r, borderColor: '#dbab0a', borderWidth: 1, borderDash: [5,5] }
+               { label: 'Net Out (KB/s)', data: d.res.net_out, borderColor: '#2ea043', borderWidth: 1, borderDash: [5,5] },
+               { label: 'Disk R (MB/s)', data: d.res.disk_r, borderColor: '#d29922', borderWidth: 1 },
+               { label: 'Disk W (MB/s)', data: d.res.disk_w, borderColor: '#dbab0a', borderWidth: 1, borderDash: [5,5] }
             ];
             ioChart.update('none');
         });

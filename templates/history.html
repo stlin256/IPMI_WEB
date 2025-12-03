@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>History - R730XD Ops</title>
-    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+   <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+   <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+   <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
     <style>
         :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #c9d1d9; }
         body { background-color: var(--bg-body); color: var(--text-main); font-family: -apple-system, sans-serif; padding-bottom: 60px; }
@@ -57,11 +57,20 @@
                 <input type="checkbox" class="btn-check" id="chk-pwr" onchange="updateChart()">
                 <label class="btn btn-sm btn-outline-secondary" for="chk-pwr">Power</label>
 
-                <input type="checkbox" class="btn-check" id="chk-cpu" checked onchange="updateChart()">
-                <label class="btn btn-sm btn-outline-secondary" for="chk-cpu">CPU Load</label>
-                
-                <input type="checkbox" class="btn-check" id="chk-net" onchange="updateChart()">
-                <label class="btn btn-sm btn-outline-secondary" for="chk-net">Net In</label>
+               <input type="checkbox" class="btn-check" id="chk-cpu" checked onchange="updateChart()">
+               <label class="btn btn-sm btn-outline-secondary" for="chk-cpu">CPU Load</label>
+               
+               <input type="checkbox" class="btn-check" id="chk-net-in" onchange="updateChart()">
+               <label class="btn btn-sm btn-outline-secondary" for="chk-net-in">Net In</label>
+
+               <input type="checkbox" class="btn-check" id="chk-net-out" onchange="updateChart()">
+               <label class="btn btn-sm btn-outline-secondary" for="chk-net-out">Net Out</label>
+
+               <input type="checkbox" class="btn-check" id="chk-disk-r" onchange="updateChart()">
+               <label class="btn btn-sm btn-outline-secondary" for="chk-disk-r">Disk R</label>
+
+               <input type="checkbox" class="btn-check" id="chk-disk-w" onchange="updateChart()">
+               <label class="btn btn-sm btn-outline-secondary" for="chk-disk-w">Disk W</label>
             </div>
             
             <div style="height: 500px; width: 100%">
@@ -121,11 +130,20 @@
         if(document.getElementById('chk-pwr').checked) 
             datasets.push({label:'Power (W)', data:rawData.power, borderColor:'#d29922', borderWidth:2, yAxisID:'y'});
 
-        if(document.getElementById('chk-cpu').checked) 
-            datasets.push({label:'CPU (%)', data:rawData.cpu_load, borderColor:'#a371f7', borderWidth:2, yAxisID:'y'});
-            
-        if(document.getElementById('chk-net').checked) 
-            datasets.push({label:'Net In (KB/s)', data:rawData.net_in, borderColor:'#3fb950', borderWidth:1, yAxisID:'y1'});
+       if(document.getElementById('chk-cpu').checked)
+           datasets.push({label:'CPU (%)', data:rawData.cpu_load, borderColor:'#a371f7', borderWidth:2, yAxisID:'y'});
+           
+       if(document.getElementById('chk-net-in').checked)
+           datasets.push({label:'Net In (KB/s)', data:rawData.net_in, borderColor:'#238636', borderWidth:1, yAxisID:'y1'});
+
+       if(document.getElementById('chk-net-out').checked)
+           datasets.push({label:'Net Out (KB/s)', data:rawData.net_out, borderColor:'#3fb950', borderWidth:1, borderDash: [5,5], yAxisID:'y1'});
+
+       if(document.getElementById('chk-disk-r').checked)
+           datasets.push({label:'Disk R (MB/s)', data:rawData.disk_r, borderColor:'#d29922', borderWidth:1, yAxisID:'y1'});
+
+       if(document.getElementById('chk-disk-w').checked)
+           datasets.push({label:'Disk W (MB/s)', data:rawData.disk_w, borderColor:'#dbab0a', borderWidth:1, borderDash: [5,5], yAxisID:'y1'});
 
         chart.data.labels = rawData.times;
         chart.data.datasets = datasets;
