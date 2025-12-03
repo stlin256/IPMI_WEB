@@ -6,7 +6,7 @@ import threading
 import subprocess
 import re
 import psutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
 # --- 配置 ---
@@ -18,6 +18,7 @@ RETENTION_DAYS = 7
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 # 全局缓存 (带默认值防止启动时读取失败)
 cache_lock = threading.Lock()
@@ -42,21 +43,25 @@ def init_db():
     c = conn.cursor()
     # [关键优化] 开启 Write-Ahead Logging，允许并发读写，解决卡顿的核心！
     c.execute('PRAGMA journal_mode=WAL;')
-    
+  
     c.execute('''CREATE TABLE IF NOT EXISTS metrics_v2 
                  (timestamp INTEGER, cpu_temp REAL, fan_rpm INTEGER, power_watts INTEGER,
                   cpu_usage REAL, mem_usage REAL, net_recv_speed REAL, net_sent_speed REAL,
                   disk_read_speed REAL, disk_write_speed REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
-    
+  
     # 初始化默认值
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('mode', 'auto')")
-    
+  
     default_curve = {}
     for t in range(30, 95, 5): default_curve[str(t)] = 20
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('curve', ?)", (json.dumps(default_curve),))
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('calibration_data', '{}')")
-    
+  
+    # [修复] 确保固定转速的配置项存在
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('fixed_fan_speed_target', '30')")
+  
     conn.commit()
     conn.close()
     load_calibration_map()
@@ -69,7 +74,7 @@ def load_calibration_map():
         c.execute("SELECT value FROM config WHERE key='calibration_data'")
         res = c.fetchone()
         conn.close()
-        
+      
         raw_data = json.loads(res[0]) if res and res[0] else {}
         if not raw_data:
             rpm_map = {}; max_rpm = 0; min_rpm = 0
@@ -79,7 +84,7 @@ def load_calibration_map():
         if not rpms: return
         max_rpm = max(rpms)
         min_rpm = min(rpms)
-        
+      
         # 建立映射
         temp_map = {}
         sorted_points = sorted([(int(k), int(v)) for k, v in raw_data.items()], key=lambda x: x[1])
@@ -92,12 +97,12 @@ def load_calibration_map():
                 if diff < min_diff: min_diff = diff; best_pwm = pwm
             temp_map[target_pct] = best_pwm
         rpm_map = temp_map
-        
+      
         # 更新缓存中的RPM信息
         with cache_lock:
             sys_cache['hw']['max_rpm'] = max_rpm
             sys_cache['hw']['min_rpm'] = min_rpm
-            
+          
     except Exception as e:
         print(f"Calib Load Error: {e}")
 
@@ -147,14 +152,14 @@ def calibration_task():
     c = conn.cursor()
     sys_cache['calibration']['active'] = True
     sys_cache['calibration']['log'] = 'Starting...'
-    
+  
     try:
         for i in range(3):
             time.sleep(1)
             sys_cache['calibration']['log'] = f'Waiting for system loop... {3-i}'
-        
+      
         set_fan_mode('manual')
-        
+      
         # Spin down
         set_raw_pwm(10)
         sys_cache['calibration']['current_pwm'] = 10
@@ -164,25 +169,25 @@ def calibration_task():
             sys_cache['calibration']['current_rpm'] = current_rpm
             sys_cache['calibration']['log'] = f'Spinning down... {15-i}s ({current_rpm} RPM)'
             time.sleep(1)
-            
+          
         calibration_data = {}
         steps = list(range(10, 101, 2))
         total = len(steps)
-        
+      
         for idx, pwm in enumerate(steps):
             if not sys_cache['calibration']['active']: break
             set_raw_pwm(pwm)
             sys_cache['calibration']['current_pwm'] = pwm
             sys_cache['calibration']['progress'] = int((idx / total) * 100)
-            
+          
             for i in range(5):
                 current_rpm = get_realtime_rpm_only()
                 sys_cache['calibration']['current_rpm'] = current_rpm
                 sys_cache['calibration']['log'] = f'PWM {pwm}%... ({current_rpm} RPM)'
                 time.sleep(1)
-            
+          
             calibration_data[str(pwm)] = sys_cache['calibration']['current_rpm']
-            
+          
         if sys_cache['calibration']['active']:
             sys_cache['calibration']['log'] = 'Saving...'
             c.execute("UPDATE config SET value=? WHERE key='calibration_data'", (json.dumps(calibration_data),))
@@ -206,7 +211,7 @@ def background_worker():
     while True:
         try:
             start_time = time.time()
-            
+          
             if sys_cache['calibration']['active']:
                 time.sleep(1)
                 continue
@@ -226,12 +231,12 @@ def background_worker():
             now = time.time()
             dt = now - last_io_time
             if dt < 0.1: dt = 0.1
-            
+          
             net_in = (curr_net.bytes_recv - last_net_io.bytes_recv) / dt
             net_out = (curr_net.bytes_sent - last_net_io.bytes_sent) / dt
             disk_r = (curr_disk.read_bytes - last_disk_io.read_bytes) / dt
             disk_w = (curr_disk.write_bytes - last_disk_io.write_bytes) / dt
-            
+          
             last_net_io = curr_net; last_disk_io = curr_disk; last_io_time = now
 
             # Sensors List
@@ -250,14 +255,26 @@ def background_worker():
             c.execute("SELECT value FROM config WHERE key='mode'")
             mode_row = c.fetchone()
             mode = mode_row[0] if mode_row else 'auto'
-            
+          
             c.execute("SELECT value FROM config WHERE key='curve'")
             curve_row = c.fetchone()
             curve = json.loads(curve_row[0]) if curve_row else {}
-            
-            if mode == 'auto':
+
+            c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_enabled'")
+            fixed_enabled_row = c.fetchone()
+            fixed_enabled = fixed_enabled_row[0] == 'true' if fixed_enabled_row else False
+
+            c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'")
+            fixed_target_row = c.fetchone()
+            fixed_target = int(fixed_target_row[0]) if fixed_target_row else 30
+          
+            if fixed_enabled:
+                set_fan_mode('manual')
+                set_raw_pwm(get_pwm_from_rpm_percent(fixed_target))
+                mode = 'fixed' # 更新模式状态
+            elif mode == 'auto':
                 set_fan_mode('auto')
-            else:
+            else: # curve mode
                 set_fan_mode('manual')
                 step = 5
                 target_key = str(int(cpu_temp // step) * step)
@@ -265,7 +282,7 @@ def background_worker():
                 if int(target_key) > 90: target_key = '90'
                 target_percent = int(curve.get(target_key, 20))
                 if cpu_temp >= 85: target_percent = 100
-                
+              
                 set_raw_pwm(get_pwm_from_rpm_percent(target_percent))
 
             # Update Cache
@@ -288,14 +305,16 @@ def background_worker():
                 c.execute('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
                          (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
                           net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
-                
+              
                 # Cleanup old data
                 cutoff = int(now) - (RETENTION_DAYS * 86400)
                 c.execute("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
                 conn.commit()
                 last_db_log_time = now
+          
+            # [关键修复] 显式关闭连接
             conn.close()
-            
+          
             elapsed = time.time() - start_time
             time.sleep(max(0.5, 3 - elapsed))
 
@@ -316,6 +335,7 @@ def login():
     if request.method == 'POST':
         if request.form['password'] == LOGIN_PASSWORD:
             session['logged_in'] = True
+            session.permanent = True
             return redirect(url_for('hardware_page'))
         else: return render_template('login.html', error="Invalid Password")
     return render_template('login.html')
@@ -356,7 +376,7 @@ def api_history():
     c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
     data = c.fetchall()
     conn.close()
-    
+  
     # [关键修复] 数据降采样：防止返回几万个点卡死前端
     # 目标：限制在 600 个点以内
     step = max(1, len(data) // 600)
@@ -381,11 +401,11 @@ def api_history_custom():
     c.execute("SELECT * FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
     data = c.fetchall()
     conn.close()
-    
+  
     # [关键修复] 智能降采样，防止加载过慢
     step = max(1, len(data) // 800)
     data = data[::step]
-    
+  
     return jsonify({
         'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M') for d in data],
         'cpu_temp': [round(d[1],1) for d in data],
@@ -399,23 +419,89 @@ def api_history_custom():
         'disk_w': [round(d[9],1) for d in data]
     })
 
+# --- [关键修复] Config 路由重写，防止数据库连接错误 ---
 @app.route('/api/config', methods=['GET', 'POST'])
 @login_required
 def api_config():
     conn = get_db_connection()
     c = conn.cursor()
+  
     if request.method == 'GET':
-        c.execute("SELECT value FROM config WHERE key='curve'")
-        res = c.fetchone()
-        conn.close()
-        return jsonify(json.loads(res[0]) if res else {})
+        try:
+            # 统一查询逻辑，避免多次开关连接
+            res_curve = c.execute("SELECT value FROM config WHERE key='curve'").fetchone()
+            res_fixed_enabled = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_enabled'").fetchone()
+            res_fixed_target = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'").fetchone()
+          
+            # 处理数据，给默认值防止 NoneType 错误
+            curve_data = json.loads(res_curve[0]) if res_curve and res_curve[0] else {}
+            if not curve_data:
+                curve_data = {str(i): 20 for i in range(30, 95, 5)}
+
+            fixed_enabled = (res_fixed_enabled[0] == 'true') if res_fixed_enabled and res_fixed_enabled[0] else False
+          
+            fixed_target = 30
+            if res_fixed_target and res_fixed_target[0]:
+                try:
+                    fixed_target = int(res_fixed_target[0])
+                except:
+                    fixed_target = 30
+
+            return jsonify({
+                'curve': curve_data,
+                'fixed_fan_speed_enabled': fixed_enabled,
+                'fixed_fan_speed_target': fixed_target
+            })
+        except Exception as e:
+            print(f"Config GET Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
+
     if request.method == 'POST':
+        try:
+            data = request.json
+            if 'mode' in data: 
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('mode', ?)", (data['mode'],))
+          
+            if 'curve' in data: 
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('curve', ?)", (json.dumps(data['curve']),))
+          
+            # 兼容性保存
+            if 'enabled' in data:
+                val = 'true' if data['enabled'] else 'false'
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', ?)", (val,))
+          
+            if 'target' in data:
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_target', ?)", (str(data['target']),))
+
+            conn.commit()
+            return jsonify({'status': 'ok'})
+        except Exception as e:
+            print(f"Config POST Error: {e}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
+
+@app.route('/api/config/fixed_fan_speed', methods=['POST'])
+@login_required
+def api_config_fixed_fan_speed():
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
         data = request.json
-        if 'mode' in data: c.execute("UPDATE config SET value=? WHERE key='mode'", (data['mode'],))
-        if 'curve' in data: c.execute("UPDATE config SET value=? WHERE key='curve'", (json.dumps(data['curve']),))
+        if 'enabled' in data:
+            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_enabled'", (str(data['enabled']).lower(),))
+        if 'target' in data:
+            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_target'", (str(data['target']),))
         conn.commit()
-        conn.close()
         return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 @app.route('/api/calibration/start', methods=['POST'])
 @login_required
