@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>History - R730XD Ops</title>
+    <title>History - {{ server_name }} Ops</title>
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
@@ -53,7 +53,7 @@
 
 <nav class="navbar navbar-expand navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="#"><i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">R730XD</span></a>
+        <a class="navbar-brand" href="#"><i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span></a>
         <div class="navbar-nav flex-row me-auto ms-4">
             <a class="nav-link me-3" href="/hardware">HW</a>
             <a class="nav-link me-3" href="/resources">RES</a>

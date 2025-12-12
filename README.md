@@ -2,6 +2,8 @@
 
 这是一个轻量级的、基于 Web 的仪表板，用于通过 IPMI 监控服务器硬件状态并控制风扇速度。它使用 Python Flask 作为后端，并调用 `ipmitool` 和 `sensors` 等系统命令来收集数据。
 
+本仪表板已在本人的**DELL PowerEdge R730xd**上部署并正常使用，其他型号服务器/PC也可部署。
+
 ![alt text](/img/image.png)
 ![alt text](/img/image-1.png)
 ![alt text](/img/image-2.png)
@@ -26,9 +28,9 @@
 ## 技术栈
 
 - **后端**: Flask
-- **数据采集**: `ipmitool`, `sensors` (lm-sensors), `psutil`
-- **数据库**: SQLite (开启 WAL 模式以提高并发性能)
-- **前端**: HTML, JavaScript (使用 Chart.js 绘图)
+- **数据采集**: `ipmitool`, `lm-sensors` , `psutil`
+- **数据库**: SQLite
+- **前端**: HTML, JavaScript 
 
 ## 如何运行
 
@@ -42,23 +44,30 @@
     pip install Flask psutil
     ```
 
-2.  **初始化数据库**:
-    脚本首次运行时会自动创建并初始化 SQLite 数据库文件 (`/opt/fan_controller/data.db`)。
+2.  **配置应用**:
+    首次运行前，请先配置应用。
+    ```bash
+    # 从模板复制配置文件
+    cp config.json.example config.json
+    ```
+    然后，使用文本编辑器打开 `config.json` 并根据您的环境修改其中的值，特别是 `login_password`。
 
 3.  **运行应用**:
     ```bash
     python app.py
     ```
+    应用首次运行时，会自动创建并初始化 SQLite 数据库。
 
 4.  **访问**:
-    在浏览器中打开 `http://<your-server-ip>:90`。
-    - **默认密码**: `linyijianb` (可在 `app.py` 中修改 `LOGIN_PASSWORD` 变量)
+    在浏览器中打开 `http://<your-server-ip>:<port>` (端口在 `config.json` 中定义)。
+    - **密码**: 您在 `config.json` 中设置的密码。
 
 ## 配置
 
-所有主要配置项都在 [`app.py`](app.py) 文件的顶部，您可以根据需要进行修改：
+所有配置项现在都在 `config.json` 文件中进行管理。
 
-- `DB_FILE`: 数据库文件的路径。
-- `LOGIN_PASSWORD`: 登录页面的密码。
-- `PORT`: Web 服务的端口。
-- `RETENTION_DAYS`: 历史数据的保留天数。
+- `DATABASE.path`: 数据库文件的路径。
+- `DATABASE.retention_days`: 历史数据的保留天数。
+- `SERVER.port`: Web 服务的端口。
+- `SERVER.server_name`: 显示在页面标题和导航栏的服务器名称。
+- `SECURITY.login_password`: 登录页面的密码。

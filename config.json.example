@@ -1,0 +1,13 @@
+{
+    "DATABASE": {
+        "path": "/opt/IPMI_WEB/data.db",
+        "retention_days": 7
+    },
+    "SERVER": {
+        "port": 90,
+        "server_name": "R730XD"
+    },
+    "SECURITY": {
+        "login_password": "your_password_here"
+    }
+}

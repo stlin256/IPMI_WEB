@@ -10,11 +10,23 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
 # --- 配置 ---
-DB_FILE = '/opt/fan_controller/data.db'
+def load_config():
+    if not os.path.exists('config.json'):
+        print("Config file not found, copying from example...")
+        import shutil
+        shutil.copy('config.json.example', 'config.json')
+
+    with open('config.json', 'r') as f:
+        return json.load(f)
+
+config = load_config()
+
+DB_FILE = config['DATABASE']['path']
+RETENTION_DAYS = config['DATABASE']['retention_days']
+PORT = config['SERVER']['port']
+SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
+LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
-LOGIN_PASSWORD = 'linyijianb'
-PORT = 90
-RETENTION_DAYS = 7
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -337,8 +349,8 @@ def login():
             session['logged_in'] = True
             session.permanent = True
             return redirect(url_for('hardware_page'))
-        else: return render_template('login.html', error="Invalid Password")
-    return render_template('login.html')
+        else: return render_template('login.html', error="Invalid Password", server_name=SERVER_NAME)
+    return render_template('login.html', server_name=SERVER_NAME)
 
 @app.route('/logout')
 def logout(): session.pop('logged_in', None); return redirect(url_for('login'))
@@ -347,13 +359,13 @@ def logout(): session.pop('logged_in', None); return redirect(url_for('login'))
 def root(): return redirect(url_for('hardware_page'))
 @app.route('/hardware')
 @login_required
-def hardware_page(): return render_template('hardware.html')
+def hardware_page(): return render_template('hardware.html', server_name=SERVER_NAME)
 @app.route('/resources')
 @login_required
-def resources_page(): return render_template('resources.html')
+def resources_page(): return render_template('resources.html', server_name=SERVER_NAME)
 @app.route('/history')
 @login_required
-def history_page(): return render_template('history.html')
+def history_page(): return render_template('history.html', server_name=SERVER_NAME)
 
 @app.route('/api/status_hardware')
 @login_required
