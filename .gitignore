@@ -1,8 +1,0 @@
-# Local configuration file
-config.json
-
-# Python cache
-__pycache__/
-*.pyc
-
-.gitignore
