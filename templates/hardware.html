@@ -15,6 +15,13 @@
         .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
         .nav-link:hover, .nav-link.active { color: #fff !important; }
+
+        @media (max-width: 576px) {
+            .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
+            .navbar-nav.me-auto { margin-left: 0.5rem !important; }
+            .nav-link { font-size: 0.9rem !important; margin-right: 0.5rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
+            .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
+        }
         
         .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; padding: 1rem; }
@@ -26,16 +33,44 @@
         .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
         
         .table-custom { font-size: 0.9rem; font-family: monospace; }
-        .table-custom th { background-color: rgba(255,255,255,0.02); color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
+        .table-custom th { background-color: #161b22 !important; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
         .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; padding: 10px 12px; }
+        .table-striped>tbody>tr:nth-of-type(odd)>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.03) !important; color: var(--text-main) !important; }
+        .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.06) !important; color: #fff !important; }
         .scroll-container { max-height: 550px; overflow-y: auto; scrollbar-width: thin; }
         
+        /* 标签美化 */
+        .btn-check-custom + .btn { 
+            border-color: #444c56; color: var(--text-muted); background: #21262d; 
+            border-radius: 6px; padding: 0.25rem 0.75rem; font-size: 0.85rem; font-weight: 600;
+            white-space: nowrap; transition: all 0.2s;
+        }
+        #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
+        #chk-temp:checked + .btn { background-color: rgba(31, 111, 235, 0.15); color: #58a6ff; border-color: #1f6feb; }
+        #chk-fan:checked + .btn { background-color: rgba(35, 134, 54, 0.15); color: #3fb950; border-color: #238636; }
+
         input[type=range] { touch-action: none; cursor: pointer; }
         
         /* 新增样式：处理禁用状态的视觉效果 */
         .fixed-control-group { transition: opacity 0.3s ease, filter 0.3s ease; }
         .fixed-control-group.disabled-visual { opacity: 0.5; filter: grayscale(0.8); pointer-events: none; }
-        /* 允许滑块本身在禁用状态下依然可见，这里我们通过JS控制input的disabled属性，样式辅助 */
+        
+        /* 骨架屏流光扫过特效 */
+        .skeleton-sweep {
+            position: relative; overflow: hidden; background-color: #0d1117; border-radius: 8px;
+        }
+        .skeleton-sweep::after {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            animation: sweep 1.5s infinite;
+        }
+        @keyframes sweep {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .chart-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; display: none;
+        }
     </style>
 </head>
 <body>
@@ -91,15 +126,28 @@
 
     <!-- 历史趋势图表 -->
     <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="fas fa-history me-2"></i>24-Hour Trend</span>
-            <div class="btn-group">
-               <button class="btn btn-sm btn-outline-secondary active" onclick="updateChart('power', event)">Power</button>
-               <button class="btn btn-sm btn-outline-secondary" onclick="updateChart('temp', event)">Temp</button>
-               <button class="btn btn-sm btn-outline-secondary" onclick="updateChart('fan', event)">Fan</button>
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="d-flex align-items-center">
+                <span class="fw-bold me-3"><i class="fas fa-history me-2"></i>Trends</span>
+                <div class="btn-group btn-group-sm">
+                    <input type="radio" class="btn-check" name="histRange" id="hr1" value="1" onchange="loadHistory()">
+                    <label class="btn btn-outline-secondary px-3" for="hr1">1H</label>
+                    <input type="radio" class="btn-check" name="histRange" id="hr24" value="24" checked onchange="loadHistory()">
+                    <label class="btn btn-outline-secondary px-3" for="hr24">24H</label>
+                </div>
+            </div>
+            
+            <div class="d-flex gap-2">
+                <input type="checkbox" class="btn-check btn-check-custom" id="chk-pwr" checked onchange="handleTagChange()">
+                <label class="btn" for="chk-pwr">Power</label>
+                <input type="checkbox" class="btn-check btn-check-custom" id="chk-temp" checked onchange="handleTagChange()">
+                <label class="btn" for="chk-temp">Temp</label>
+                <input type="checkbox" class="btn-check btn-check-custom" id="chk-fan" onchange="handleTagChange()">
+                <label class="btn" for="chk-fan">Fan</label>
             </div>
         </div>
-        <div class="card-body p-3" style="height: 320px;">
+        <div class="card-body p-3 position-relative" style="height: 320px;">
+            <div id="chart-loader" class="chart-overlay skeleton-sweep"></div>
             <canvas id="mainChart"></canvas>
         </div>
     </div>
@@ -237,10 +285,18 @@
     let isDraggingFixedSlider = false;
 
     const commonChartOptions = {
-        responsive: true, maintainAspectRatio: false, animation: false,
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 800, easing: 'easeOutQuart' },
         interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
-        scales: { x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } }, y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } } },
-        elements: { point: { radius: 0, hitRadius: 10 } }
+        scales: { 
+            x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } }, 
+            y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
+            y1: { display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#8b949e' } }
+        },
+        elements: { 
+            point: { radius: 0, hitRadius: 10 },
+            line: { tension: 0.3 }
+        }
     };
 
     function init() {
@@ -257,12 +313,13 @@
         });
 
         // 初始化加载顺序
+        loadPrefs();
         loadInitialConfig(); 
         refreshData(); 
-        loadHistory(); 
+        loadHistory(false); 
         
         setInterval(refreshData, 1000); 
-        setInterval(loadHistory, 20000);
+        setInterval(() => loadHistory(true), 20000);
     }
     
     // --- 新增功能逻辑 Start ---
@@ -429,35 +486,78 @@
         }).catch(e => console.log('Fetch error:', e));
     }
 
-    function loadHistory() {
-       fetch('/api/history').then(r => r.json()).then(d => {
+    function handleTagChange() {
+        savePrefs();
+        updateChart();
+    }
+
+    function savePrefs() {
+        const prefs = {};
+        ['chk-pwr', 'chk-temp', 'chk-fan'].forEach(id => {
+            prefs[id] = document.getElementById(id).checked;
+        });
+        localStorage.setItem('hw_tags', JSON.stringify(prefs));
+    }
+
+    function loadPrefs() {
+        const data = localStorage.getItem('hw_tags');
+        if (data) {
+            const prefs = JSON.parse(data);
+            Object.keys(prefs).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.checked = prefs[id];
+            });
+        }
+    }
+
+    function loadHistory(isSilent = false) {
+       const hoursEl = document.querySelector('input[name="histRange"]:checked');
+       const hours = hoursEl ? hoursEl.value : 24;
+       const loader = document.getElementById('chart-loader');
+       
+       if (!isSilent) {
+           loader.style.display = 'block';
+       }
+
+       fetch(`/api/history_custom?hours=${hours}`).then(r => r.json()).then(d => {
            historyData = d;
-           if (mainChart.data.datasets.length === 0) {
-               updateChart('power', null, true);
-           } else {
-               const currentType = mainChart.data.datasets[0]._type;
-               updateChart(currentType, null, true);
+           updateChart();
+           if (!isSilent) {
+               loader.style.display = 'none';
+           }
+       }).catch(() => {
+           if (!isSilent) {
+               loader.style.display = 'none';
            }
        });
     }
 
-   function updateChart(type, event, silent = false) {
-       if (!historyData.hw) return;
-       let data, color, label;
-       if (type === 'power') { data = historyData.hw.power; color = '#e3b341'; label = 'Power (W)'; }
-       if (type === 'temp') { data = historyData.hw.temps; color = '#1f6feb'; label = 'Temp (°C)'; }
-       if (type === 'fan') { data = historyData.hw.fans; color = '#2ea043'; label = 'Fan (RPM)'; }
-       mainChart.data.labels = historyData.times;
-       mainChart.data.datasets = [{
-           label: label, data: data, borderColor: color, backgroundColor: color + '20', borderWidth: 2, fill: true, _type: type, tension: 0.3
-       }];
-       mainChart.update('none');
+    function updateChart() {
+       if (!historyData.times) return;
        
-       if (!silent && event) {
-           document.querySelectorAll('.btn-group button').forEach(b => b.classList.remove('active'));
-           event.target.classList.add('active');
-       }
-   }
+       const datasets = [];
+       const ctx = document.getElementById('mainChart').getContext('2d');
+       
+       const createGradient = (color) => {
+           const g = ctx.createLinearGradient(0, 0, 0, 300);
+           g.addColorStop(0, color + '33'); g.addColorStop(1, color + '00');
+           return g;
+       };
+
+       if(document.getElementById('chk-pwr').checked)
+           datasets.push({label:'Power', data:historyData.power, borderColor:'#e3b341', backgroundColor: createGradient('#e3b341'), fill: true});
+       
+       if(document.getElementById('chk-temp').checked)
+           datasets.push({label:'Temp', data:historyData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient('#1f6feb'), fill: true});
+       
+       if(document.getElementById('chk-fan').checked)
+           datasets.push({label:'Fan', data:historyData.fan_rpm, borderColor:'#2ea043', yAxisID: 'y1'});
+
+       mainChart.data.labels = historyData.times;
+       mainChart.data.datasets = datasets;
+       mainChart.options.scales.y1.display = document.getElementById('chk-fan').checked;
+       mainChart.update();
+    }
 
     // Modal 和曲线设置部分
     function openCurveModal() {

@@ -39,7 +39,7 @@ sys_cache = {
     'hw': {'temp': 0, 'power': 0, 'fan_rpm': 0, 'mode': 'auto', 'sensors': [], 'max_rpm': 0, 'min_rpm': 0},
     'res': {'cpu': 0, 'mem_percent': 0, 'mem_used': 0, 'mem_total': 0, 
             'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0},
-    'gpu': {'online': False, 'gpus': [], 'last_update': 0},
+    'gpu': {'online': False, 'gpus': [], 'last_update': 0, 'retry_delay': 1},
     'calibration': {'active': False, 'progress': 0, 'current_pwm': 0, 'current_rpm': 0, 'log': ''}
 }
 rpm_map = {} 
@@ -62,6 +62,8 @@ def init_db():
                  (timestamp INTEGER, cpu_temp REAL, fan_rpm INTEGER, power_watts INTEGER,
                   cpu_usage REAL, mem_usage REAL, net_recv_speed REAL, net_sent_speed REAL,
                   disk_read_speed REAL, disk_write_speed REAL)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics_v2(timestamp)')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
     
     # 新增 GPU 历史数据表
@@ -70,6 +72,7 @@ def init_db():
                   util_gpu REAL, util_mem REAL, mem_total REAL, mem_used REAL, 
                   power REAL, power_limit REAL, clock_core INTEGER, clock_mem INTEGER, 
                   fan INTEGER, ecc INTEGER)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_gpu_metrics_ts ON gpu_metrics(timestamp)')
 
     # 初始化默认值
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('mode', 'auto')")
@@ -326,8 +329,8 @@ def background_worker():
                     'disk_r': int(disk_r), 'disk_w': int(disk_w)
                 }
 
-            # DB Log
-            if now - last_db_log_time >= 60:
+            # DB Log (1s precision)
+            if now - last_db_log_time >= 1.0:
                 c.execute('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
                          (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
                           net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
@@ -342,7 +345,7 @@ def background_worker():
             conn.close()
           
             elapsed = time.time() - start_time
-            time.sleep(max(0.5, 3 - elapsed))
+            time.sleep(max(0.1, 1.0 - elapsed))
 
         except Exception as e:
             print(f"Worker Error: {e}")
@@ -350,6 +353,9 @@ def background_worker():
 
 def gpu_worker():
     last_db_log_time = 0
+    retry_delay = 1
+    max_retry_delay = 30
+    
     while True:
         try:
             start_time = time.time()
@@ -380,15 +386,16 @@ def gpu_worker():
                         raise Exception(data['error'])
                     
                     with cache_lock:
-                        sys_cache['gpu'] = {
-                            'online': True,
-                            'gpus': data['gpus'],
-                            'last_update': int(time.time())
-                        }
+                        sys_cache['gpu']['online'] = True
+                        sys_cache['gpu']['gpus'] = data['gpus']
+                        sys_cache['gpu']['last_update'] = int(time.time())
+                        sys_cache['gpu']['retry_delay'] = 1
                     
-                    # 记录历史数据 (每分钟一次)
+                    retry_delay = 1 # 成功后重置延迟
+                    
+                    # 记录历史数据 (1s一次)
                     now = time.time()
-                    if now - last_db_log_time >= 60:
+                    if now - last_db_log_time >= 1.0:
                         conn = get_db_connection()
                         c = conn.cursor()
                         for g in data['gpus']:
@@ -400,14 +407,19 @@ def gpu_worker():
                         conn.commit()
                         conn.close()
                         last_db_log_time = now
+                
+                elapsed = time.time() - start_time
+                time.sleep(max(0.1, 1.0 - elapsed))
 
             except Exception as e:
                 with cache_lock:
                     sys_cache['gpu']['online'] = False
-                print(f"GPU Agent Error: {e}")
-
-            elapsed = time.time() - start_time
-            time.sleep(max(0.5, 2 - elapsed))
+                    sys_cache['gpu']['retry_delay'] = retry_delay
+                print(f"GPU Agent Error (Retrying in {retry_delay}s): {e}")
+                
+                time.sleep(retry_delay)
+                # 指数退避
+                retry_delay = min(max_retry_delay, retry_delay * 2)
 
         except Exception as e:
             print(f"GPU Worker Loop Error: {e}")
@@ -497,26 +509,88 @@ def api_history_custom():
     hours = int(request.args.get('hours', 24))
     conn = get_db_connection()
     c = conn.cursor()
-    cutoff = time.time() - (hours * 3600)
-    c.execute("SELECT * FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
-    data = c.fetchall()
+    cutoff = int(time.time() - (hours * 3600))
+    
+    # 归一化查询：将时间戳按秒取整，确保对齐
+    c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    raw_data = c.fetchall()
+    
+    # 获取对应时间段的 GPU 数据用于对齐
+    c.execute("SELECT timestamp, temp, util_gpu, util_mem, mem_used, power FROM gpu_metrics WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    gpu_raw = c.fetchall()
     conn.close()
+    
+    if not raw_data:
+        return jsonify({'times': [], 'cpu_temp': [], 'fan_rpm': [], 'power': [], 'cpu_load': [], 'mem_load': [], 'net_in': [], 'net_out': [], 'disk_r': [], 'disk_w': [], 'stats': {}})
+
+    # 将 GPU 数据放入字典，方便快速查找
+    gpu_map = {d[0]: d for d in gpu_raw}
+    
+    # 计算全局统计信息（抽样前）
+    cpu_temps = [d[1] for d in raw_data]
+    cpu_loads = [d[4] for d in raw_data]
+    net_ins = [d[6] for d in raw_data]
+    disk_rs = [d[8] for d in raw_data]
+    
+    stats = {
+        'max_temp': round(max(cpu_temps), 1),
+        'avg_load': round(sum(cpu_loads) / len(cpu_loads), 1),
+        'max_net': round(max(net_ins), 1),
+        'max_disk': round(max(disk_rs), 1)
+    }
   
-    # [关键修复] 智能降采样，防止加载过慢
-    step = max(1, len(data) // 800)
-    data = data[::step]
+    # [关键修复] LTTB 降采样思路简化：在 1s 精度下，步进采样需配合局部极值保留
+    # 目标：限制在 1200 个点以内（1s精度下稍微多留一些点以保证曲线平滑）
+    target_points = 1200
+    step = max(1, len(raw_data) // target_points)
+    
+    # 如果步长较大，我们不仅取起始点，还应确保这一段内的极值不被丢失（简单做法是取每段的第一个点）
+    sampled_data = raw_data[::step]
   
+    # 时间格式优化：如果是 1H 视图，显示到秒
+    time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
+  
+    # 对齐 GPU 数据到系统数据的时间轴
+    aligned_gpu = {
+        'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []
+    }
+    
+    last_gpu_idx = 0
+    gpu_len = len(gpu_raw)
+    
+    for d in sampled_data:
+        ts = d[0]
+        # 寻找最近的 GPU 数据点 (允许前后 2s 的误差)
+        found = False
+        # 简单的双指针优化查找
+        while last_gpu_idx < gpu_len and gpu_raw[last_gpu_idx][0] < ts - 2:
+            last_gpu_idx += 1
+            
+        if last_gpu_idx < gpu_len and abs(gpu_raw[last_gpu_idx][0] - ts) <= 2:
+            g = gpu_raw[last_gpu_idx]
+            aligned_gpu['temp'].append(g[1])
+            aligned_gpu['util_gpu'].append(g[2])
+            aligned_gpu['util_mem'].append(g[3])
+            aligned_gpu['mem_used'].append(g[4])
+            aligned_gpu['power'].append(g[5])
+            found = True
+        
+        if not found:
+            for k in aligned_gpu: aligned_gpu[k].append(None)
+
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M') for d in data],
-        'cpu_temp': [round(d[1],1) for d in data],
-        'fan_rpm': [d[2] for d in data],
-        'power': [d[3] for d in data],
-        'cpu_load': [round(d[4],1) for d in data],
-        'mem_load': [round(d[5],1) for d in data],
-        'net_in': [round(d[6],1) for d in data],
-        'net_out': [round(d[7],1) for d in data],
-        'disk_r': [round(d[8],1) for d in data],
-        'disk_w': [round(d[9],1) for d in data]
+        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in sampled_data],
+        'cpu_temp': [round(d[1],1) for d in sampled_data],
+        'fan_rpm': [d[2] for d in sampled_data],
+        'power': [d[3] for d in sampled_data],
+        'cpu_load': [round(d[4],1) for d in sampled_data],
+        'mem_load': [round(d[5],1) for d in sampled_data],
+        'net_in': [round(d[6],1) for d in sampled_data],
+        'net_out': [round(d[7],1) for d in sampled_data],
+        'disk_r': [round(d[8],1) for d in sampled_data],
+        'disk_w': [round(d[9],1) for d in sampled_data],
+        'gpu': aligned_gpu, # 直接包含对齐后的 GPU 数据
+        'stats': stats
     })
 
 # --- [关键修复] Config 路由重写，防止数据库连接错误 ---
@@ -649,22 +723,28 @@ def api_history_gpu():
     gpu_index = int(request.args.get('index', 0))
     conn = get_db_connection()
     c = conn.cursor()
-    cutoff = time.time() - (hours * 3600)
-    c.execute("SELECT * FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC", (cutoff, gpu_index))
+    cutoff = int(time.time() - (hours * 3600))
+    c.execute("SELECT timestamp, temp, util_gpu, util_mem, mem_total, mem_used, power FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC", (cutoff, gpu_index))
     data = c.fetchall()
     conn.close()
+    
+    if not data:
+        return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []})
   
     # 智能降采样
-    step = max(1, len(data) // 600)
-    data = data[::step]
+    target_points = 1200
+    step = max(1, len(data) // target_points)
+    sampled_data = data[::step]
+    
+    time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
   
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M') for d in data],
-        'temp': [d[3] for d in data],
-        'util_gpu': [d[4] for d in data],
-        'util_mem': [d[5] for d in data],
-        'mem_used': [d[7] for d in data],
-        'power': [d[8] for d in data]
+        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in sampled_data],
+        'temp': [d[1] for d in sampled_data],
+        'util_gpu': [d[2] for d in sampled_data],
+        'util_mem': [d[3] for d in sampled_data],
+        'mem_used': [d[5] for d in sampled_data],
+        'power': [d[6] for d in sampled_data]
     })
 
 if __name__ == '__main__':

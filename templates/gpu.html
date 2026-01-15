@@ -15,6 +15,13 @@
         .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
         .nav-link:hover, .nav-link.active { color: #fff !important; }
+
+        @media (max-width: 576px) {
+            .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
+            .navbar-nav.me-auto { margin-left: 0.5rem !important; }
+            .nav-link { font-size: 0.9rem !important; margin-right: 0.5rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
+            .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
+        }
         
         .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s; }
         .card:hover { transform: translateY(-2px); }
@@ -347,7 +354,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         loadGpuConfig();
         refreshGpuData();
-        setInterval(refreshGpuData, 5000); // 降低刷新率，防止图表重绘太频繁
+        setInterval(refreshGpuData, 1000); 
         setInterval(() => {
             // 每分钟刷新一次趋势图
             Object.keys(gpuCharts).forEach(index => renderGpuTrend(index));
