@@ -29,6 +29,9 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
+# 安全白名单：这些 IP 永远不会被封禁
+IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
@@ -73,6 +76,11 @@ def init_db():
                   power REAL, power_limit REAL, clock_core INTEGER, clock_mem INTEGER, 
                   fan INTEGER, ecc INTEGER)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_gpu_metrics_ts ON gpu_metrics(timestamp)')
+
+    # 防爆破表：记录 IP + User-Agent 组合尝试失败情况
+    c.execute('''CREATE TABLE IF NOT EXISTS login_attempts
+                 (ip TEXT, user_agent TEXT, last_attempt INTEGER, fail_count INTEGER,
+                  PRIMARY KEY (ip, user_agent))''')
 
     # 初始化默认值
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('mode', 'auto')")
@@ -136,9 +144,19 @@ def load_calibration_map():
         print(f"Calib Load Error: {e}")
 
 # --- 辅助函数 ---
+def get_client_ip():
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr
+
 def get_ipmi_dump():
     try: return subprocess.check_output(['ipmitool', 'sensor'], encoding='utf-8', timeout=3)
     except: return ""
+
+def log_login_error(ip, ua, count, wait_time):
+    with open('login_errors.log', 'a', encoding='utf-8') as f:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        f.write(f"[{timestamp}] IP: {ip} | UA: {ua} | 失败次数: {count} | 惩罚等待: {wait_time}s\n")
 
 def parse_ipmi_value(dump, regex):
     try:
@@ -435,12 +453,75 @@ def login_required(f):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    ip = get_client_ip()
+    ua = request.headers.get('User-Agent', 'Unknown')
+    now = int(time.time())
+    is_whitelisted = ip in IP_WHITELIST
+    
+    # 指纹逻辑：如果是 127.0.0.1 (内网穿透)，则结合 UA 区分；否则仅根据 IP 区分
+    db_ip = ip
+    db_ua = ua if ip == '127.0.0.1' else '*'
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT last_attempt, fail_count FROM login_attempts WHERE ip=? AND user_agent=?", (db_ip, db_ua))
+    row = c.fetchone()
+    
+    fail_count = row['fail_count'] if row else 0
+    last_attempt = row['last_attempt'] if row else 0
+    
+    # 从 session 获取一次性的错误消息 (PRG 模式)
+    session_error = session.pop('login_error', None)
+    
+    # 延迟/封禁判定 (冷却中): 取消 10s 上限，改为最高 300s 渐进递增
+    if not is_whitelisted and fail_count >= 3:
+        # 算法：从第 3 次开始，每次失败增加 30 秒等待，封顶 300s (5 分钟)
+        required_delay = min(300, (fail_count - 2) * 30)
+        
+        if now - last_attempt < required_delay:
+            conn.close()
+            remaining = required_delay - (now - last_attempt)
+            err = session_error or "密码错误次数过多，请稍后重试。"
+            return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
+
     if request.method == 'POST':
+        # 关键修复：立即更新最后尝试时间，防止并发请求绕过延迟逻辑
+        if not is_whitelisted:
+            c.execute("INSERT OR REPLACE INTO login_attempts (ip, user_agent, last_attempt, fail_count) VALUES (?, ?, ?, ?)", (db_ip, db_ua, now, fail_count))
+            conn.commit()
+
+        # 延迟响应逻辑：从第 3 次失败开始增加延迟（白名单除外）
+        if not is_whitelisted and fail_count >= 3:
+            delay = min(300, (fail_count - 2) * 30) 
+            # 这里的 sleep 仍然保留作为后端强制兜底，但前端会先做拦截
+            time.sleep(delay)
+
         if request.form['password'] == LOGIN_PASSWORD:
+            if not is_whitelisted:
+                c.execute("DELETE FROM login_attempts WHERE ip=? AND user_agent=?", (db_ip, db_ua))
+                conn.commit()
+            conn.close()
             session['logged_in'] = True
             session.permanent = True
             return redirect(url_for('hardware_page'))
-        else: return render_template('login.html', error="Invalid Password", server_name=SERVER_NAME)
+        else:
+            # 真正失败后，更新 fail_count
+            fail_count += 1
+            if not is_whitelisted:
+                c.execute("UPDATE login_attempts SET fail_count=?, last_attempt=? WHERE ip=? AND user_agent=?", (fail_count, int(time.time()), db_ip, db_ua))
+                conn.commit()
+
+            # 计算惩罚时长用于日志
+            wait_current = 0
+            if fail_count >= 3: wait_current = min(300, (fail_count - 2) * 30)
+
+            conn.close()
+            log_login_error(ip, ua, fail_count, wait_current)
+            # PRG 模式：重定向以防止刷新页面重复提交，统一显示错误次数过多
+            session['login_error'] = "密码错误次数过多，请稍后重试。"
+            return redirect(url_for('login'))
+    
+    conn.close()
     return render_template('login.html', server_name=SERVER_NAME)
 
 @app.route('/logout')

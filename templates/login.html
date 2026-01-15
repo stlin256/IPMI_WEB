@@ -47,10 +47,10 @@
         <h4 class="text-white mb-4 fw-bold">登陆到面板</h4>
         
         {% if error %}
-        <div class="alert alert-danger py-2 small border-0 bg-danger bg-opacity-25 text-white">{{ error }}</div>
+        <div id="login-error" class="alert alert-danger py-2 small border-0 bg-danger bg-opacity-25 text-white">{{ error }}</div>
         {% endif %}
         
-        <form method="POST">
+        <form id="login-form" method="POST">
             <div class="mb-4 text-start">
                 <label class="form-label text-muted small text-uppercase fw-bold">Password</label>
                 <div class="input-group">
@@ -58,8 +58,54 @@
                     <input type="password" name="password" class="form-control" placeholder="••••••••" autofocus>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary w-100 rounded-pill">登陆</button>
+            <button id="login-btn" type="submit" class="btn btn-primary w-100 rounded-pill">登陆</button>
         </form>
     </div>
+
+    <script>
+        // 从后端安全获取等待时间
+        const waitSeconds = parseInt("{{ wait_seconds | default(0) }}");
+        const loginBtn = document.getElementById('login-btn');
+        const errorMsg = document.getElementById('login-error');
+        const loginForm = document.getElementById('login-form');
+
+        if (waitSeconds > 0) {
+            startCooldown(waitSeconds);
+        }
+
+        function startCooldown(seconds) {
+            let remaining = seconds;
+            loginBtn.disabled = true;
+            
+            const originalBtnText = loginBtn.innerText;
+            const originalErrorText = errorMsg ? errorMsg.innerText : "";
+
+            const timer = setInterval(() => {
+                remaining--;
+                loginBtn.innerText = `重试 (${remaining}s)`;
+                if (errorMsg) {
+                    errorMsg.innerHTML = `${originalErrorText}<br><div class="mt-2 pt-2 border-top border-white border-opacity-10 small opacity-75"><i class="fas fa-clock me-1"></i>请在 ${remaining} 秒后重试</div>`;
+                }
+
+                if (remaining <= 0) {
+                    clearInterval(timer);
+                    loginBtn.disabled = false;
+                    loginBtn.innerText = originalBtnText;
+                    if (errorMsg && originalErrorText.includes("Invalid")) {
+                        errorMsg.style.display = 'none';
+                    } else if (errorMsg) {
+                        errorMsg.innerText = originalErrorText;
+                    }
+                }
+            }, 1000);
+        }
+
+        // 拦截快速点击
+        loginForm.onsubmit = () => {
+            if (loginBtn.disabled) return false;
+            loginBtn.disabled = true;
+            loginBtn.innerText = "正在验证...";
+        };
+    </script>
 </body>
 </html>
