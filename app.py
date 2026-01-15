@@ -6,6 +6,7 @@ import threading
 import subprocess
 import re
 import psutil
+import urllib.request
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
@@ -38,6 +39,7 @@ sys_cache = {
     'hw': {'temp': 0, 'power': 0, 'fan_rpm': 0, 'mode': 'auto', 'sensors': [], 'max_rpm': 0, 'min_rpm': 0},
     'res': {'cpu': 0, 'mem_percent': 0, 'mem_used': 0, 'mem_total': 0, 
             'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0},
+    'gpu': {'online': False, 'gpus': [], 'last_update': 0},
     'calibration': {'active': False, 'progress': 0, 'current_pwm': 0, 'current_rpm': 0, 'log': ''}
 }
 rpm_map = {} 
@@ -61,7 +63,14 @@ def init_db():
                   cpu_usage REAL, mem_usage REAL, net_recv_speed REAL, net_sent_speed REAL,
                   disk_read_speed REAL, disk_write_speed REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
-  
+    
+    # 新增 GPU 历史数据表
+    c.execute('''CREATE TABLE IF NOT EXISTS gpu_metrics
+                 (timestamp INTEGER, gpu_index INTEGER, gpu_name TEXT, temp REAL, 
+                  util_gpu REAL, util_mem REAL, mem_total REAL, mem_used REAL, 
+                  power REAL, power_limit REAL, clock_core INTEGER, clock_mem INTEGER, 
+                  fan INTEGER, ecc INTEGER)''')
+
     # 初始化默认值
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('mode', 'auto')")
   
@@ -73,6 +82,11 @@ def init_db():
     # [修复] 确保固定转速的配置项存在
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('fixed_fan_speed_target', '30')")
+    
+    # GPU 配置初始化
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_host', '127.0.0.1')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_port', '9999')")
   
     conn.commit()
     conn.close()
@@ -334,6 +348,71 @@ def background_worker():
             print(f"Worker Error: {e}")
             time.sleep(3)
 
+def gpu_worker():
+    last_db_log_time = 0
+    while True:
+        try:
+            start_time = time.time()
+            
+            # 从数据库读取配置
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT value FROM config WHERE key='gpu_agent_enabled'")
+            enabled = c.fetchone()[0] == 'true'
+            c.execute("SELECT value FROM config WHERE key='gpu_agent_host'")
+            host = c.fetchone()[0]
+            c.execute("SELECT value FROM config WHERE key='gpu_agent_port'")
+            port = c.fetchone()[0]
+            conn.close()
+
+            if not enabled:
+                with cache_lock:
+                    sys_cache['gpu']['online'] = False
+                time.sleep(5)
+                continue
+
+            # 请求 Agent
+            url = f"http://{host}:{port}/metrics"
+            try:
+                with urllib.request.urlopen(url, timeout=3) as response:
+                    data = json.loads(response.read().decode())
+                    if 'error' in data:
+                        raise Exception(data['error'])
+                    
+                    with cache_lock:
+                        sys_cache['gpu'] = {
+                            'online': True,
+                            'gpus': data['gpus'],
+                            'last_update': int(time.time())
+                        }
+                    
+                    # 记录历史数据 (每分钟一次)
+                    now = time.time()
+                    if now - last_db_log_time >= 60:
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        for g in data['gpus']:
+                            c.execute('''INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                     (int(now), g['index'], g['name'], g['temp'], 
+                                      g['util_gpu'], g['util_mem'], g['memory_total'], g['memory_used'],
+                                      g['power_draw'], g['power_limit'], g['clock_core'], g['clock_mem'], 
+                                      g['fan_speed'], g['ecc_errors']))
+                        conn.commit()
+                        conn.close()
+                        last_db_log_time = now
+
+            except Exception as e:
+                with cache_lock:
+                    sys_cache['gpu']['online'] = False
+                print(f"GPU Agent Error: {e}")
+
+            elapsed = time.time() - start_time
+            time.sleep(max(0.5, 2 - elapsed))
+
+        except Exception as e:
+            print(f"GPU Worker Loop Error: {e}")
+            time.sleep(5)
+
 # --- 路由 ---
 def login_required(f):
     def wrapper(*args, **kwargs):
@@ -367,6 +446,10 @@ def resources_page(): return render_template('resources.html', server_name=SERVE
 @login_required
 def history_page(): return render_template('history.html', server_name=SERVER_NAME)
 
+@app.route('/gpu')
+@login_required
+def gpu_page(): return render_template('gpu.html', server_name=SERVER_NAME)
+
 @app.route('/api/status_hardware')
 @login_required
 def api_status_hardware():
@@ -376,6 +459,11 @@ def api_status_hardware():
 @login_required
 def api_status_resources():
     with cache_lock: return jsonify(sys_cache['res'])
+
+@app.route('/api/status_gpu')
+@login_required
+def api_status_gpu():
+    with cache_lock: return jsonify(sys_cache['gpu'])
 
 # --- 历史数据 (24h) 智能降采样 ---
 @app.route('/api/history')
@@ -529,8 +617,60 @@ def api_calib_start():
 def api_calib_status():
     return jsonify(sys_cache['calibration'])
 
+# --- GPU 配置接口 ---
+@app.route('/api/config/gpu', methods=['GET', 'POST'])
+@login_required
+def api_config_gpu():
+    conn = get_db_connection()
+    c = conn.cursor()
+    if request.method == 'GET':
+        c.execute("SELECT key, value FROM config WHERE key LIKE 'gpu_agent_%'")
+        res = {row['key']: row['value'] for row in c.fetchall()}
+        conn.close()
+        return jsonify(res)
+    
+    if request.method == 'POST':
+        data = request.json
+        if 'gpu_agent_enabled' in data:
+            c.execute("UPDATE config SET value=? WHERE key='gpu_agent_enabled'", (str(data['gpu_agent_enabled']).lower(),))
+        if 'gpu_agent_host' in data:
+            c.execute("UPDATE config SET value=? WHERE key='gpu_agent_host'", (data['gpu_agent_host'],))
+        if 'gpu_agent_port' in data:
+            c.execute("UPDATE config SET value=? WHERE key='gpu_agent_port'", (str(data['gpu_agent_port']),))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+# --- GPU 历史数据接口 ---
+@app.route('/api/history_gpu')
+@login_required
+def api_history_gpu():
+    hours = int(request.args.get('hours', 24))
+    gpu_index = int(request.args.get('index', 0))
+    conn = get_db_connection()
+    c = conn.cursor()
+    cutoff = time.time() - (hours * 3600)
+    c.execute("SELECT * FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC", (cutoff, gpu_index))
+    data = c.fetchall()
+    conn.close()
+  
+    # 智能降采样
+    step = max(1, len(data) // 600)
+    data = data[::step]
+  
+    return jsonify({
+        'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M') for d in data],
+        'temp': [d[3] for d in data],
+        'util_gpu': [d[4] for d in data],
+        'util_mem': [d[5] for d in data],
+        'mem_used': [d[7] for d in data],
+        'power': [d[8] for d in data]
+    })
+
 if __name__ == '__main__':
     init_db()
-    t = threading.Thread(target=background_worker, daemon=True)
-    t.start()
+    # 启动后台工作线程
+    threading.Thread(target=background_worker, daemon=True).start()
+    threading.Thread(target=gpu_worker, daemon=True).start()
+    
     app.run(host='0.0.0.0', port=PORT, threaded=True)

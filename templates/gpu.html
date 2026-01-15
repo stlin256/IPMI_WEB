@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GPU Monitoring - {{ server_name }} Ops</title>
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+    
+    <style>
+        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; padding-bottom: 60px; }
+        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
+        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); }
+        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); padding: 1.25rem; font-weight: 700; font-size: 1.15rem; }
+        
+        .progress { background-color: #21262d; height: 14px; border-radius: 7px; }
+        .gpu-label { font-size: 1.05rem; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+        .gpu-value { font-family: 'SF Mono', Consolas, monospace; font-weight: 800; color: #fff; font-size: 1.2rem; }
+        
+        .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; padding: 1.5rem; border-top: 1px solid var(--border-color); }
+        .info-item { display: flex; flex-direction: column; }
+        .info-label { font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
+        .info-value { font-family: 'SF Mono', Consolas, monospace; font-size: 1.25rem; font-weight: 700; color: #58a6ff; }
+
+        .agent-offline { filter: grayscale(1); pointer-events: none; opacity: 0.6; }
+        .offline-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 1000; font-size: 2rem; color: #f85149; text-shadow: 0 0 10px #000; display: none; background: rgba(0,0,0,0.5); padding: 1rem 2rem; border-radius: 10px; backdrop-filter: blur(5px); }
+        
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand navbar-dark sticky-top">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
+        </a>
+        <div class="navbar-nav flex-row me-auto ms-4">
+            <a class="nav-link me-3" href="/hardware">HW</a>
+            <a class="nav-link me-3" href="/resources">RES</a>
+            <a class="nav-link active me-3" href="/gpu">GPU</a>
+            <a class="nav-link" href="/history">HIST</a>
+        </div>
+        <a href="/logout" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+    </div>
+</nav>
+
+<div class="container-fluid mt-4 px-3 px-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h3 mb-1"><i class="fas fa-microchip me-2"></i>GPU 监控</h2>
+            <div class="small">
+                <span id="agent-status" class="badge bg-secondary">Checking...</span>
+                <span class="text-muted ms-2">最后更新: <span id="last-update">--</span></span>
+            </div>
+        </div>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#gpuConfigModal">
+            <i class="fas fa-cog me-1"></i> 配置
+        </button>
+    </div>
+
+    <div id="offline-msg" class="offline-overlay">
+        <i class="fas fa-exclamation-triangle me-2"></i> GPU Agent Offline
+    </div>
+
+    <div id="gpu-container" class="row g-4">
+        <!-- GPU 卡片将由 JavaScript 动态生成 -->
+    </div>
+</div>
+
+<!-- GPU 配置模态框 -->
+<div class="modal fade" id="gpuConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
+            <div class="modal-header border-bottom border-secondary">
+                <h5 class="modal-title"><i class="fas fa-cog me-2"></i>GPU Agent 配置</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="gpuConfigForm">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Agent 主机地址 (Host)</label>
+                        <input type="text" class="form-control bg-dark text-white border-secondary" id="config-host" placeholder="127.0.0.1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Agent 端口 (Port)</label>
+                        <input type="number" class="form-control bg-dark text-white border-secondary" id="config-port" placeholder="9999">
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="config-enabled">
+                        <label class="form-check-label" for="config-enabled">启用 GPU 监控</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-top border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function loadGpuConfig() {
+        fetch('/api/config/gpu')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('config-host').value = d.gpu_agent_host || '';
+                document.getElementById('config-port').value = d.gpu_agent_port || '';
+                document.getElementById('config-enabled').checked = d.gpu_agent_enabled === true;
+            });
+    }
+
+    function saveGpuConfig() {
+        const payload = {
+            gpu_agent_host: document.getElementById('config-host').value,
+            gpu_agent_port: parseInt(document.getElementById('config-port').value),
+            gpu_agent_enabled: document.getElementById('config-enabled').checked
+        };
+
+        fetch('/api/config/gpu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(r => r.json()).then(d => {
+            if (d.status === 'success') {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('gpuConfigModal'));
+                modal.hide();
+                refreshGpuData();
+            } else {
+                alert('保存失败: ' + (d.message || '未知错误'));
+            }
+        });
+    }
+
+    function refreshGpuData() {
+        fetch('/api/status_gpu')
+            .then(r => r.json())
+            .then(data => {
+                const container = document.getElementById('gpu-container');
+                const statusBadge = document.getElementById('agent-status');
+                const offlineMsg = document.getElementById('offline-msg');
+                const lastUpdate = document.getElementById('last-update');
+
+                lastUpdate.innerText = new Date().toLocaleTimeString();
+
+                if (!data.online) {
+                    statusBadge.innerText = 'Offline';
+                    statusBadge.className = 'badge bg-danger';
+                    container.classList.add('agent-offline');
+                    offlineMsg.style.display = 'block';
+                    return;
+                }
+
+                statusBadge.innerText = 'Online';
+                statusBadge.className = 'badge bg-success';
+                container.classList.remove('agent-offline');
+                offlineMsg.style.display = 'none';
+
+                if (!data.gpus || data.gpus.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-center text-muted py-5">未发现 GPU 设备</div>';
+                    return;
+                }
+
+                let html = '';
+                data.gpus.forEach((gpu, index) => {
+                    const fanSpeed = gpu.fan_speed !== null ? gpu.fan_speed : 'N/A';
+                    html += `
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <div class="card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-microchip me-2 text-primary"></i>GPU #${index}: ${gpu.name}</span>
+                                <span class="badge bg-primary">${gpu.temp}°C</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between gpu-label">
+                                        <span>GPU 负载</span>
+                                        <span class="gpu-value">${gpu.util_gpu}%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-primary" style="width: ${gpu.util_gpu}%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between gpu-label">
+                                        <span>显存占用</span>
+                                        <span class="gpu-value">${gpu.util_mem}%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-info" style="width: ${gpu.util_mem}%"></div>
+                                    </div>
+                                    <div class="text-end mt-1 text-muted font-monospace fw-bold" style="font-size: 0.95rem;">
+                                        ${gpu.memory_used} / ${gpu.memory_total} MB
+                                    </div>
+                                </div>
+                                <div class="mb-0">
+                                    <div class="d-flex justify-content-between gpu-label">
+                                        <span>功耗状态</span>
+                                        <span class="gpu-value">${gpu.power_draw}W / ${gpu.power_limit}W</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-warning" style="width: ${(gpu.power_draw / gpu.power_limit * 100).toFixed(1)}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">核心频率</span>
+                                    <span class="info-value">${gpu.clock_core} MHz</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">显存频率</span>
+                                    <span class="info-value">${gpu.clock_mem} MHz</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">风扇转速</span>
+                                    <span class="info-value">${fanSpeed}${gpu.fan_speed !== null ? '%' : ''}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">ECC 错误</span>
+                                    <span class="info-value ${gpu.ecc_errors > 0 ? 'text-danger' : ''}">${gpu.ecc_errors}</span>
+                                </div>
+                            </div>
+                            <!-- 趋势图表 -->
+                            <div class="p-3 border-top border-secondary" style="height: 150px;">
+                                <canvas id="gpu-chart-${index}"></canvas>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+                container.innerHTML = html;
+                
+                // 渲染图表
+                data.gpus.forEach((gpu, index) => {
+                    renderGpuTrend(index);
+                });
+            })
+            .catch(err => {
+                console.error('GPU Status Error:', err);
+                document.getElementById('agent-status').innerText = 'Error';
+                document.getElementById('agent-status').className = 'badge bg-warning';
+            });
+    }
+
+    let gpuCharts = {};
+
+    function renderGpuTrend(index) {
+        fetch(`/api/history_gpu?hours=1&index=${index}`)
+            .then(r => r.json())
+            .then(data => {
+                const ctx = document.getElementById(`gpu-chart-${index}`).getContext('2d');
+                
+                if (gpuCharts[index]) gpuCharts[index].destroy();
+
+                gpuCharts[index] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.times,
+                        datasets: [
+                            {
+                                label: 'Load %',
+                                data: data.util_gpu,
+                                borderColor: '#58a6ff',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: true,
+                                backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Temp °C',
+                                data: data.temp,
+                                borderColor: '#ff7b72',
+                                borderWidth: 1,
+                                pointRadius: 0,
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
+                        scales: {
+                            x: { display: false },
+                            y: { display: true, min: 0, max: 100, grid: { color: '#30363d' }, ticks: { display: false } }
+                        }
+                    }
+                });
+            });
+    }
+
+    // 初始化加载配置并启动轮询
+    document.addEventListener('DOMContentLoaded', () => {
+        loadGpuConfig();
+        refreshGpuData();
+        setInterval(refreshGpuData, 5000); // 降低刷新率，防止图表重绘太频繁
+        setInterval(() => {
+            // 每分钟刷新一次趋势图
+            Object.keys(gpuCharts).forEach(index => renderGpuTrend(index));
+        }, 60000);
+    });
+</script>
+</body>
+</html>

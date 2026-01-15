@@ -57,6 +57,7 @@
         <div class="navbar-nav flex-row me-auto ms-4">
             <a class="nav-link me-3" href="/hardware">HW</a>
             <a class="nav-link me-3" href="/resources">RES</a>
+            <a class="nav-link me-3" href="/gpu">GPU</a>
             <a class="nav-link active" href="/history">HIST</a>
         </div>
         <a href="/logout" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
@@ -105,6 +106,15 @@
 
                <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-disk-w" onchange="updateChart()">
                <label class="btn" for="chk-disk-w">Disk Write</label>
+
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-temp" onchange="updateChart()">
+               <label class="btn" for="chk-gpu-temp"><i class="fas fa-microchip me-1"></i> GPU Temp</label>
+
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-util" onchange="updateChart()">
+               <label class="btn" for="chk-gpu-util"><i class="fas fa-percentage me-1"></i> GPU Util</label>
+
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-pwr" onchange="updateChart()">
+               <label class="btn" for="chk-gpu-pwr"><i class="fas fa-bolt me-1"></i> GPU Power</label>
             </div>
             
             <div style="flex-grow: 1; min-height: 450px; width: 100%">
@@ -145,17 +155,19 @@
         const hours = document.getElementById('timeRange').value;
         document.getElementById('loading').style.display = 'block';
         
-        fetch(`/api/history_custom?hours=${hours}`)
-            .then(r => r.json())
-            .then(d => {
-                rawData = d;
-                document.getElementById('loading').style.display = 'none';
-                updateChart();
-            })
-            .catch(e => {
-                console.error(e);
-                document.getElementById('loading').innerText = "Error";
-            });
+        // 同时请求系统历史和 GPU 历史 (默认第一块卡)
+        Promise.all([
+            fetch(`/api/history_custom?hours=${hours}`).then(r => r.json()),
+            fetch(`/api/history_gpu?hours=${hours}&index=0`).then(r => r.json()).catch(() => ({})),
+        ]).then(([sys, gpu]) => {
+            rawData = sys;
+            rawData.gpu = gpu;
+            document.getElementById('loading').style.display = 'none';
+            updateChart();
+        }).catch(e => {
+            console.error(e);
+            document.getElementById('loading').innerText = "Error";
+        });
     }
 
     function updateChart() {
@@ -178,8 +190,18 @@
            datasets.push({label:'Net Out (KB/s)', data:rawData.net_out, borderColor:'#3fb950', borderWidth:1, borderDash: [4,4], yAxisID:'y1'});
        if(document.getElementById('chk-disk-r').checked)
            datasets.push({label:'Disk R (MB/s)', data:rawData.disk_r, borderColor:'#dbab0a', borderWidth:1, yAxisID:'y1'});
-       if(document.getElementById('chk-disk-w').checked)
+        if(document.getElementById('chk-disk-w').checked)
            datasets.push({label:'Disk W (MB/s)', data:rawData.disk_w, borderColor:'#dbab0a', borderWidth:1, borderDash: [4,4], yAxisID:'y1'});
+
+        // GPU 数据对接
+        if(rawData.gpu && rawData.gpu.temp) {
+            if(document.getElementById('chk-gpu-temp').checked)
+                datasets.push({label:'GPU Temp (°C)', data:rawData.gpu.temp, borderColor:'#58a6ff', borderWidth:2, yAxisID:'y'});
+            if(document.getElementById('chk-gpu-util').checked)
+                datasets.push({label:'GPU Util (%)', data:rawData.gpu.util_gpu, borderColor:'#bc8cff', borderWidth:2, yAxisID:'y'});
+            if(document.getElementById('chk-gpu-pwr').checked)
+                datasets.push({label:'GPU Power (W)', data:rawData.gpu.power, borderColor:'#ff7b72', borderWidth:2, yAxisID:'y'});
+        }
 
         chart.data.labels = rawData.times;
         chart.data.datasets = datasets;
