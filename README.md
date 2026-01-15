@@ -81,7 +81,7 @@
 如果您的显卡直通给了虚拟机，请按以下步骤操作：
 
 1.  **在 GPU 机器/虚拟机上运行 Agent**:
-    将 `gpu_agent.py` 拷贝至目标机器，确保安装了 NVIDIA 驱动及 `nvidia-smi`。
+    将 `gpu_agent.py` 拷贝至目标机器，确保安装了 NVIDIA 驱动且能使用 `nvidia-smi`。
     ```bash
     # 运行采集端 (默认端口 9999)
     python gpu_agent.py
