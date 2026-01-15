@@ -7,6 +7,7 @@ import subprocess
 import re
 import psutil
 import urllib.request
+import markupsafe
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
@@ -34,7 +35,12 @@ IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False,  # 如果是 HTTPS 建议设置为 True
+    SESSION_COOKIE_HTTPONLY=True
+)
 
 # 全局缓存 (带默认值防止启动时读取失败)
 cache_lock = threading.Lock()
@@ -466,7 +472,7 @@ def login_required(f):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     ip = get_client_ip()
-    ua = request.headers.get('User-Agent', 'Unknown')
+    ua = markupsafe.escape(request.headers.get('User-Agent', 'Unknown'))
     now = int(time.time())
     is_whitelisted = ip in IP_WHITELIST
     
