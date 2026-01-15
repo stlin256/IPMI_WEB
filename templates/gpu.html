@@ -18,22 +18,26 @@
         
         .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s; }
         .card:hover { transform: translateY(-2px); }
-        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); padding: 1.25rem; font-weight: 700; font-size: 1.15rem; }
+        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); padding: 1.25rem; font-weight: 700; font-size: 1.25rem; }
         
-        .progress { background-color: #21262d; height: 14px; border-radius: 7px; }
-        .gpu-label { font-size: 1.05rem; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
-        .gpu-value { font-family: 'SF Mono', Consolas, monospace; font-weight: 800; color: #fff; font-size: 1.2rem; }
+        .progress { background-color: #21262d; height: 16px; border-radius: 8px; }
+        .gpu-label { font-size: 1.15rem; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
+        .gpu-value { font-family: 'SF Mono', Consolas, monospace; font-weight: 800; color: #fff; font-size: 1.35rem; }
         
         .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; padding: 1.5rem; border-top: 1px solid var(--border-color); }
         .info-item { display: flex; flex-direction: column; }
-        .info-label { font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
-        .info-value { font-family: 'SF Mono', Consolas, monospace; font-size: 1.25rem; font-weight: 700; color: #58a6ff; }
+        .info-label { font-size: 1rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
+        .info-value { font-family: 'SF Mono', Consolas, monospace; font-size: 1.4rem; font-weight: 700; color: #58a6ff; }
+
+        .temp-badge { font-size: 1.25rem !important; font-weight: 800 !important; padding: 0.4rem 0.8rem !important; color: #fff !important; }
 
         .agent-offline { filter: grayscale(1); pointer-events: none; opacity: 0.6; }
         .offline-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 1000; font-size: 2rem; color: #f85149; text-shadow: 0 0 10px #000; display: none; background: rgba(0,0,0,0.5); padding: 1rem 2rem; border-radius: 10px; backdrop-filter: blur(5px); }
         
+        /* 保持 2x2 布局，即使在手机端 */
         @media (max-width: 768px) {
-            .info-grid { grid-template-columns: 1fr; }
+            .info-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; padding: 1rem; }
+            .info-value { font-size: 1.1rem; }
         }
     </style>
 </head>
@@ -142,6 +146,8 @@
         });
     }
 
+    let lastGpuCount = -1;
+
     function refreshGpuData() {
         fetch('/api/status_gpu')
             .then(r => r.json())
@@ -168,81 +174,101 @@
 
                 if (!data.gpus || data.gpus.length === 0) {
                     container.innerHTML = '<div class="col-12 text-center text-muted py-5">未发现 GPU 设备</div>';
+                    lastGpuCount = 0;
                     return;
                 }
 
-                let html = '';
+                // 如果 GPU 数量变了，重构整个容器
+                if (data.gpus.length !== lastGpuCount) {
+                    let html = '';
+                    data.gpus.forEach((gpu, index) => {
+                        html += `
+                        <div class="col-12 col-md-6 col-xl-4">
+                            <div class="card h-100">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-microchip me-2 text-primary"></i>GPU #${index}: <span id="gpu-${index}-name">${gpu.name}</span></span>
+                                    <span class="badge temp-badge" id="gpu-${index}-temp-badge">--°C</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between gpu-label">
+                                            <span>GPU 负载</span>
+                                            <span class="gpu-value" id="gpu-${index}-util-val">--%</span>
+                                        </div>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-primary" id="gpu-${index}-util-bar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between gpu-label">
+                                            <span>显存占用</span>
+                                            <span class="gpu-value" id="gpu-${index}-mem-util-val">--%</span>
+                                        </div>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-info" id="gpu-${index}-mem-util-bar" style="width: 0%"></div>
+                                        </div>
+                                        <div class="text-end mt-1 text-muted font-monospace fw-bold" style="font-size: 0.95rem;" id="gpu-${index}-mem-text">
+                                            -- / -- MB
+                                        </div>
+                                    </div>
+                                    <div class="mb-0">
+                                        <div class="d-flex justify-content-between gpu-label">
+                                            <span>功耗状态</span>
+                                            <span class="gpu-value" id="gpu-${index}-pwr-val">--W</span>
+                                        </div>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-warning" id="gpu-${index}-pwr-bar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="info-grid">
+                                    <div class="info-item"><span class="info-label">核心频率</span><span class="info-value" id="gpu-${index}-core-clock">-- MHz</span></div>
+                                    <div class="info-item"><span class="info-label">显存频率</span><span class="info-value" id="gpu-${index}-mem-clock">-- MHz</span></div>
+                                    <div class="info-item"><span class="info-label">风扇转速</span><span class="info-value" id="gpu-${index}-fan">--%</span></div>
+                                    <div class="info-item"><span class="info-label">ECC 错误</span><span class="info-value" id="gpu-${index}-ecc">0</span></div>
+                                </div>
+                                <div class="p-3 border-top border-secondary" style="height: 150px;">
+                                    <canvas id="gpu-chart-${index}"></canvas>
+                                </div>
+                            </div>
+                        </div>`;
+                    });
+                    container.innerHTML = html;
+                    lastGpuCount = data.gpus.length;
+                    
+                    // 首次渲染图表
+                    data.gpus.forEach((gpu, index) => renderGpuTrend(index));
+                }
+
+                // 局部更新数值
                 data.gpus.forEach((gpu, index) => {
                     const fanSpeed = gpu.fan_speed !== null ? gpu.fan_speed : 'N/A';
-                    html += `
-                    <div class="col-12 col-md-6 col-xl-4">
-                        <div class="card h-100">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-microchip me-2 text-primary"></i>GPU #${index}: ${gpu.name}</span>
-                                <span class="badge bg-primary">${gpu.temp}°C</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <div class="d-flex justify-content-between gpu-label">
-                                        <span>GPU 负载</span>
-                                        <span class="gpu-value">${gpu.util_gpu}%</span>
-                                    </div>
-                                    <div class="progress">
-                                        <div class="progress-bar bg-primary" style="width: ${gpu.util_gpu}%"></div>
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <div class="d-flex justify-content-between gpu-label">
-                                        <span>显存占用</span>
-                                        <span class="gpu-value">${gpu.util_mem}%</span>
-                                    </div>
-                                    <div class="progress">
-                                        <div class="progress-bar bg-info" style="width: ${gpu.util_mem}%"></div>
-                                    </div>
-                                    <div class="text-end mt-1 text-muted font-monospace fw-bold" style="font-size: 0.95rem;">
-                                        ${gpu.memory_used} / ${gpu.memory_total} MB
-                                    </div>
-                                </div>
-                                <div class="mb-0">
-                                    <div class="d-flex justify-content-between gpu-label">
-                                        <span>功耗状态</span>
-                                        <span class="gpu-value">${gpu.power_draw}W / ${gpu.power_limit}W</span>
-                                    </div>
-                                    <div class="progress">
-                                        <div class="progress-bar bg-warning" style="width: ${(gpu.power_draw / gpu.power_limit * 100).toFixed(1)}%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="info-grid">
-                                <div class="info-item">
-                                    <span class="info-label">核心频率</span>
-                                    <span class="info-value">${gpu.clock_core} MHz</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">显存频率</span>
-                                    <span class="info-value">${gpu.clock_mem} MHz</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">风扇转速</span>
-                                    <span class="info-value">${fanSpeed}${gpu.fan_speed !== null ? '%' : ''}</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">ECC 错误</span>
-                                    <span class="info-value ${gpu.ecc_errors > 0 ? 'text-danger' : ''}">${gpu.ecc_errors}</span>
-                                </div>
-                            </div>
-                            <!-- 趋势图表 -->
-                            <div class="p-3 border-top border-secondary" style="height: 150px;">
-                                <canvas id="gpu-chart-${index}"></canvas>
-                            </div>
-                        </div>
-                    </div>`;
-                });
-                container.innerHTML = html;
-                
-                // 渲染图表
-                data.gpus.forEach((gpu, index) => {
-                    renderGpuTrend(index);
+                    
+                    // 温度与颜色
+                    const tempEl = document.getElementById(`gpu-${index}-temp-badge`);
+                    if(tempEl) {
+                        tempEl.innerText = `${gpu.temp}°C`;
+                        tempEl.className = 'badge temp-badge ' + (gpu.temp >= 70 ? 'bg-danger' : (gpu.temp >= 50 ? 'bg-warning' : 'bg-success'));
+                    }
+
+                    document.getElementById(`gpu-${index}-util-val`).innerText = `${gpu.util_gpu}%`;
+                    document.getElementById(`gpu-${index}-util-bar`).style.width = `${gpu.util_gpu}%`;
+                    
+                    document.getElementById(`gpu-${index}-mem-util-val`).innerText = `${gpu.util_mem}%`;
+                    document.getElementById(`gpu-${index}-mem-util-bar`).style.width = `${gpu.util_mem}%`;
+                    document.getElementById(`gpu-${index}-mem-text`).innerText = `${gpu.memory_used} / ${gpu.memory_total} MB`;
+                    
+                    document.getElementById(`gpu-${index}-pwr-val`).innerText = `${gpu.power_draw}W / ${gpu.power_limit}W`;
+                    const pwrPct = Math.min(100, (gpu.power_draw / gpu.power_limit * 100)).toFixed(1);
+                    document.getElementById(`gpu-${index}-pwr-bar`).style.width = `${pwrPct}%`;
+
+                    document.getElementById(`gpu-${index}-core-clock`).innerText = `${gpu.clock_core} MHz`;
+                    document.getElementById(`gpu-${index}-mem-clock`).innerText = `${gpu.clock_mem} MHz`;
+                    document.getElementById(`gpu-${index}-fan`).innerText = `${fanSpeed}${gpu.fan_speed !== null ? '%' : ''}`;
+                    
+                    const eccEl = document.getElementById(`gpu-${index}-ecc`);
+                    eccEl.innerText = gpu.ecc_errors;
+                    eccEl.className = 'info-value ' + (gpu.ecc_errors > 0 ? 'text-danger' : '');
                 });
             })
             .catch(err => {
@@ -258,46 +284,59 @@
         fetch(`/api/history_gpu?hours=1&index=${index}`)
             .then(r => r.json())
             .then(data => {
-                const ctx = document.getElementById(`gpu-chart-${index}`).getContext('2d');
+                const canvas = document.getElementById(`gpu-chart-${index}`);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
                 
-                if (gpuCharts[index]) gpuCharts[index].destroy();
-
-                gpuCharts[index] = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: data.times,
-                        datasets: [
-                            {
-                                label: 'Load %',
-                                data: data.util_gpu,
-                                borderColor: '#58a6ff',
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                fill: true,
-                                backgroundColor: 'rgba(88, 166, 255, 0.1)',
-                                tension: 0.4
-                            },
-                            {
-                                label: 'Temp °C',
-                                data: data.temp,
-                                borderColor: '#ff7b72',
-                                borderWidth: 1,
-                                pointRadius: 0,
-                                tension: 0.4
-                            }
-                        ]
+                const datasets = [
+                    {
+                        label: 'GPU Load %',
+                        data: data.util_gpu,
+                        borderColor: '#58a6ff',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: true,
+                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        tension: 0.4
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        animation: false,
-                        plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
-                        scales: {
-                            x: { display: false },
-                            y: { display: true, min: 0, max: 100, grid: { color: '#30363d' }, ticks: { display: false } }
-                        }
+                    {
+                        label: 'Mem Util %',
+                        data: data.util_mem,
+                        borderColor: '#bc8cff',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Temp °C',
+                        data: data.temp,
+                        borderColor: '#ff7b72',
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        tension: 0.4
                     }
-                });
+                ];
+
+                if (gpuCharts[index]) {
+                    gpuCharts[index].data.labels = data.times;
+                    gpuCharts[index].data.datasets = datasets;
+                    gpuCharts[index].update('none'); // 静默更新数据，防止闪烁
+                } else {
+                    gpuCharts[index] = new Chart(ctx, {
+                        type: 'line',
+                        data: { labels: data.times, datasets: datasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false,
+                            plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
+                            scales: {
+                                x: { display: false },
+                                y: { display: true, min: 0, max: 100, grid: { color: '#30363d' }, ticks: { display: false } }
+                            }
+                        }
+                    });
+                }
             });
     }
 

@@ -115,6 +115,9 @@
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-pwr" onchange="updateChart()">
                <label class="btn" for="chk-gpu-pwr"><i class="fas fa-bolt me-1"></i> GPU Power</label>
+
+               <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-gpu-mem" onchange="updateChart()">
+               <label class="btn" for="chk-gpu-mem"><i class="fas fa-memory me-1"></i> GPU Memory</label>
             </div>
             
             <div style="flex-grow: 1; min-height: 450px; width: 100%">
@@ -201,6 +204,8 @@
                 datasets.push({label:'GPU Util (%)', data:rawData.gpu.util_gpu, borderColor:'#bc8cff', borderWidth:2, yAxisID:'y'});
             if(document.getElementById('chk-gpu-pwr').checked)
                 datasets.push({label:'GPU Power (W)', data:rawData.gpu.power, borderColor:'#ff7b72', borderWidth:2, yAxisID:'y'});
+            if(document.getElementById('chk-gpu-mem').checked)
+                datasets.push({label:'GPU Memory (MB)', data:rawData.gpu.mem_used, borderColor:'#a371f7', borderWidth:2, yAxisID:'y1'});
         }
 
         chart.data.labels = rawData.times;
