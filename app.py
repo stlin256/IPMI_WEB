@@ -84,6 +84,7 @@ def init_db():
 
     # 初始化默认值
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('mode', 'auto')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('last_log_check', '0')")
   
     default_curve = {}
     for t in range(30, 95, 5): default_curve[str(t)] = 20
@@ -157,6 +158,17 @@ def log_login_error(ip, ua, count, wait_time):
     with open('login_errors.log', 'a', encoding='utf-8') as f:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         f.write(f"[{timestamp}] IP: {ip} | UA: {ua} | 失败次数: {count} | 惩罚等待: {wait_time}s\n")
+
+def get_log_unread_status():
+    try:
+        if not os.path.exists('login_errors.log'): return False
+        log_time = int(os.path.getmtime('login_errors.log'))
+        conn = get_db_connection()
+        res = conn.execute("SELECT value FROM config WHERE key='last_log_check'").fetchone()
+        conn.close()
+        last_check = int(res[0]) if res else 0
+        return log_time > last_check
+    except: return False
 
 def parse_ipmi_value(dump, regex):
     try:
@@ -485,19 +497,12 @@ def login():
             return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
 
     if request.method == 'POST':
-        # 关键修复：立即更新最后尝试时间，防止并发请求绕过延迟逻辑
-        if not is_whitelisted:
-            c.execute("INSERT OR REPLACE INTO login_attempts (ip, user_agent, last_attempt, fail_count) VALUES (?, ?, ?, ?)", (db_ip, db_ua, now, fail_count))
-            conn.commit()
-
-        # 延迟响应逻辑：从第 3 次失败开始增加延迟（白名单除外）
-        if not is_whitelisted and fail_count >= 3:
-            delay = min(300, (fail_count - 2) * 30) 
-            # 这里的 sleep 仍然保留作为后端强制兜底，但前端会先做拦截
-            time.sleep(delay)
-
-        if request.form['password'] == LOGIN_PASSWORD:
-            if not is_whitelisted:
+        is_correct = (request.form['password'] == LOGIN_PASSWORD)
+        
+        if is_correct:
+            # 密码正确：如果有失败记录，执行 3s 宽恕延迟后进入
+            if not is_whitelisted and fail_count > 0:
+                time.sleep(3)
                 c.execute("DELETE FROM login_attempts WHERE ip=? AND user_agent=?", (db_ip, db_ua))
                 conn.commit()
             conn.close()
@@ -505,19 +510,23 @@ def login():
             session.permanent = True
             return redirect(url_for('hardware_page'))
         else:
-            # 真正失败后，更新 fail_count
+            # 密码错误：执行正常的阶梯式惩罚
             fail_count += 1
-            if not is_whitelisted:
-                c.execute("UPDATE login_attempts SET fail_count=?, last_attempt=? WHERE ip=? AND user_agent=?", (fail_count, int(time.time()), db_ip, db_ua))
-                conn.commit()
-
-            # 计算惩罚时长用于日志
             wait_current = 0
-            if fail_count >= 3: wait_current = min(300, (fail_count - 2) * 30)
+            if not is_whitelisted:
+                # 记录最新的失败状态
+                c.execute("INSERT OR REPLACE INTO login_attempts (ip, user_agent, last_attempt, fail_count) VALUES (?, ?, ?, ?)", (db_ip, db_ua, int(time.time()), fail_count))
+                conn.commit()
+                # 执行阶梯惩罚延迟 (前端逻辑使用此值，但后台统一 sleep 5s 以防爆破并保持响应一致性)
+                if fail_count >= 3:
+                    wait_current = min(300, (fail_count - 2) * 30)
+                
+                # 统一后台延迟 5s
+                time.sleep(5)
 
             conn.close()
             log_login_error(ip, ua, fail_count, wait_current)
-            # PRG 模式：重定向以防止刷新页面重复提交，统一显示错误次数过多
+            # PRG 模式重定向
             session['login_error'] = "密码错误次数过多，请稍后重试。"
             return redirect(url_for('login'))
     
@@ -542,6 +551,93 @@ def history_page(): return render_template('history.html', server_name=SERVER_NA
 @app.route('/gpu')
 @login_required
 def gpu_page(): return render_template('gpu.html', server_name=SERVER_NAME)
+
+@app.route('/logs')
+@login_required
+def logs_page():
+    # 标记已读
+    conn = get_db_connection()
+    conn.execute("UPDATE config SET value=? WHERE key='last_log_check'", (int(time.time()),))
+    conn.commit()
+    conn.close()
+    return render_template('logs.html', server_name=SERVER_NAME)
+
+@app.route('/api/log_status')
+@login_required
+def api_log_status():
+    return jsonify({'unread': get_log_unread_status()})
+
+@app.route('/api/logs')
+@login_required
+def api_logs():
+    if not os.path.exists('login_errors.log'): return jsonify([])
+    
+    logs = []
+    try:
+        with open('login_errors.log', 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            # 倒序显示，最新的在前面
+            for line in reversed(lines):
+                match = re.search(r'\[(.*?)\] IP: (.*?) \| UA: (.*?) \| 失败次数: (.*?) \| 惩罚等待: (.*?)s', line)
+                if match:
+                    logs.append({
+                        'time': match.group(1),
+                        'ip': match.group(2),
+                        'ua': match.group(3),
+                        'count': int(match.group(4)),
+                        'wait': int(match.group(5))
+                    })
+    except Exception as e:
+        print(f"Log Read Error: {e}")
+
+    # 智能归类逻辑：按 (IP, UA) 归组
+    groups = {}
+    for l in logs:
+        key = f"{l['ip']}_{l['ua']}"
+        if key not in groups:
+            # 提取简短 UA 标签
+            ua_tag = "Unknown"
+            if "Edg/" in l['ua']: ua_tag = "Edge"
+            elif "Chrome" in l['ua']: ua_tag = "Chrome"
+            elif "Firefox" in l['ua']: ua_tag = "Firefox"
+            elif "Safari" in l['ua'] and "Chrome" not in l['ua']: ua_tag = "Safari"
+            elif "python" in l['ua'].lower(): ua_tag = "Python Bot"
+            elif "curl" in l['ua'].lower(): ua_tag = "cURL"
+            
+            groups[key] = {
+                'ip': l['ip'],
+                'ua': l['ua'],
+                'ua_tag': ua_tag,
+                'total_attempts': 0, # 总行数
+                'max_fail_count': 0, # 记录中出现的最大失败计数
+                'last_time': l['time'],
+                'max_wait': 0,
+                'history': []
+            }
+        
+        groups[key]['total_attempts'] += 1
+        if l['count'] > groups[key]['max_fail_count']:
+            groups[key]['max_fail_count'] = l['count']
+        if l['wait'] > groups[key]['max_wait']:
+            groups[key]['max_wait'] = l['wait']
+            
+        groups[key]['history'].append(l)
+
+    # 格式化输出数据，使前端显示更准确
+    result = []
+    for g in groups.values():
+        result.append({
+            'ip': g['ip'],
+            'ua': g['ua'],
+            'ua_tag': g['ua_tag'],
+            'total_attempts': g['total_attempts'],
+            'current_fail_count': g['max_fail_count'], # 这一轮中最高的计数值
+            'last_time': g['last_time'],
+            'max_wait': g['max_wait'],
+            'history': g['history']
+        })
+
+    return jsonify(result)
 
 @app.route('/api/status_hardware')
 @login_required

@@ -87,7 +87,12 @@
 
 <nav class="navbar navbar-expand navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="#"><i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span></a>
+        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
+            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
+            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
+                <span class="visually-hidden">New Logs</span>
+            </span>
+        </a>
         <div class="navbar-nav flex-row me-auto ms-4">
             <a class="nav-link me-3" href="/hardware">HW</a>
             <a class="nav-link me-3" href="/resources">RES</a>
@@ -421,7 +426,17 @@
         updateSingleChart(charts.io, dsIO);
     }
 
+    function checkLogStatus() {
+        fetch('/api/log_status').then(r => r.json()).then(d => {
+            const dot = document.getElementById('log-dot');
+            if (d.unread) dot.classList.remove('d-none');
+            else dot.classList.add('d-none');
+        });
+    }
+
     init();
+    checkLogStatus();
+    setInterval(checkLogStatus, 30000);
 </script>
 </body>
 </html>
