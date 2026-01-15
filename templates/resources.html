@@ -30,13 +30,13 @@
         /* 仪表盘区域优化 */
         .gauge-container { width: 100%; max-width: 140px; height: 140px; position: relative; margin: 0 auto; }
         .gauge-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
-        .gauge-value { font-family: 'SF Mono', monospace; font-size: 1.8rem; font-weight: 800; color: #fff; line-height: 1; }
-        .gauge-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
-        .res-sub-text { font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; text-align: center; }
+        .gauge-value { font-family: 'SF Mono', monospace; font-size: 2.2rem; font-weight: 800; color: #fff; line-height: 1; }
+        .gauge-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 700; }
+        .res-sub-text { font-size: 0.95rem; font-family: 'SF Mono', monospace; color: var(--text-muted); margin-top: 10px; text-align: center; font-weight: 600; }
 
         /* IO 区域优化 */
         .io-section { padding: 1.5rem 1rem; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-        .io-value { font-family: 'SF Mono', monospace; font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 5px; word-break: break-all; }
+        .io-value { font-family: 'SF Mono', monospace; font-size: 1.7rem; font-weight: 800; color: #fff; margin-top: 6px; word-break: break-all; }
         .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 4px; }
         .io-badge { font-size: 0.7rem; padding: 3px 6px; border-radius: 4px; font-weight: 700; vertical-align: middle; }
         
@@ -192,15 +192,34 @@
 
     const commonOptions = {
         responsive: true, maintainAspectRatio: false, animation: false,
-        elements: { point: { radius: 0, hitRadius: 10, hoverRadius: 4 } },
+        elements: { 
+            point: { radius: 0, hitRadius: 10, hoverRadius: 4 },
+            line: { borderWidth: 2.5, tension: 0.4 }
+        },
         interaction: { mode: 'index', intersect: false },
         plugins: { 
-            legend: { labels: { color: '#8b949e', font: { size: 12 }, boxWidth: 12, padding: 10 } },
-            tooltip: { backgroundColor: 'rgba(22, 27, 34, 0.95)', titleColor: '#fff', bodyColor: '#ccc', borderColor: '#30363d', borderWidth: 1 }
+            legend: { 
+                position: 'top',
+                align: 'end',
+                labels: { color: '#e6edf3', font: { size: 12, weight: 'bold' }, boxWidth: 10, padding: 15, usePointStyle: true } 
+            },
+            tooltip: { 
+                backgroundColor: 'rgba(22, 27, 34, 0.98)', 
+                titleColor: '#fff', 
+                bodyColor: '#e6edf3', 
+                borderColor: '#444c56', 
+                borderWidth: 1,
+                titleFont: { weight: 'bold' },
+                bodyFont: { family: "'SF Mono', monospace" }
+            }
         },
         scales: {
-            x: { grid: { color: '#30363d', drawBorder: false }, ticks: { color: '#8b949e', maxTicksLimit: 6 } },
-            y: { grid: { color: '#30363d', drawBorder: false }, ticks: { color: '#8b949e' }, beginAtZero: true }
+            x: { grid: { color: 'rgba(48, 54, 61, 0.5)', drawBorder: false }, ticks: { color: '#8b949e', maxTicksLimit: 6 } },
+            y: { 
+                grid: { color: 'rgba(48, 54, 61, 0.5)', drawBorder: false }, 
+                ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace" } }, 
+                beginAtZero: true 
+            }
         }
     };
 
@@ -252,7 +271,7 @@
         
         cpuMemChart = new Chart(ctxCpu, {
             type: 'line', data: { labels: [], datasets: [] },
-            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100, ticks: { callback: v => v+'%' } } } }
+            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100, ticks: { ...commonOptions.scales.y.ticks, callback: v => v+'%' } } } }
         });
 
         netChart = new Chart(document.getElementById('netChart'), {

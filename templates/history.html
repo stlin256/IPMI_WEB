@@ -8,34 +8,37 @@
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; padding-bottom: 60px; }
+        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", system-ui, sans-serif; padding-bottom: 60px; }
         .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
-        .nav-link { color: #8b949e !important; }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
         .nav-link:hover, .nav-link.active { color: #fff !important; }
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 8px; }
-        .form-select { background-color: #21262d; border-color: #30363d; color: #c9d1d9; }
+        
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 8px 24px rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; }
+        .card-header { background-color: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-color); padding: 1.25rem; }
+        
+        .form-select { background-color: #21262d; border-color: #30363d; color: #c9d1d9; border-radius: 6px; padding: 0.4rem 0.8rem; }
+        .form-select:focus { border-color: #58a6ff; box-shadow: none; }
         
         /* 横向滚动容器 */
         .scrollable-tabs-container {
             display: flex;
             overflow-x: auto;
             white-space: nowrap;
-            -webkit-overflow-scrolling: touch; /* iOS顺滑滚动 */
-            padding-bottom: 5px;
-            gap: 8px;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px 0;
+            gap: 10px;
+            scrollbar-width: none; /* Firefox */
         }
-        /* 隐藏滚动条但保留功能 */
-        .scrollable-tabs-container::-webkit-scrollbar { height: 4px; }
-        .scrollable-tabs-container::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+        .scrollable-tabs-container::-webkit-scrollbar { display: none; }
         
         /* 胶囊样式优化 */
         .btn-check-custom + .btn { 
-            border-color: #30363d; color: #8b949e; background: rgba(255,255,255,0.02); 
-            border-radius: 20px; padding: 0.375rem 1rem; font-size: 0.9rem;
-            white-space: nowrap;
+            border-color: #444c56; color: var(--text-muted); background: #21262d; 
+            border-radius: 8px; padding: 0.5rem 1.25rem; font-size: 0.95rem; font-weight: 600;
+            white-space: nowrap; transition: all 0.2s;
         }
-        .btn-check-custom:hover + .btn { background: rgba(255,255,255,0.05); }
+        .btn-check-custom:hover + .btn { background: #30363d; color: #fff; border-color: #57606a; }
 
         /* Temp - Blue */
         #chk-temp:checked + .btn { background-color: rgba(31, 111, 235, 0.15); color: #58a6ff; border-color: #1f6feb; }
@@ -45,8 +48,26 @@
         #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
         /* CPU - Purple */
         #chk-cpu:checked + .btn { background-color: rgba(163, 113, 247, 0.15); color: #d2a8ff; border-color: #a371f7; }
-        /* Disk/Net - Grey */
-        .chk-io:checked + .btn { background-color: rgba(139, 148, 158, 0.15); color: #c9d1d9; border-color: #8b949e; }
+        /* RAM - Purple */
+        #chk-ram:checked + .btn { background-color: rgba(163, 113, 247, 0.15); color: #a371f7; border-color: #a371f7; }
+
+        /* Net In - Green */
+        #chk-net-in:checked + .btn { background-color: rgba(46, 160, 67, 0.15); color: #2ea043; border-color: #2ea043; }
+        /* Net Out - Blue */
+        #chk-net-out:checked + .btn { background-color: rgba(56, 139, 253, 0.15); color: #388bfd; border-color: #388bfd; }
+        /* Disk Read - Yellow */
+        #chk-disk-r:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #d29922; border-color: #d29922; }
+        /* Disk Write - Red */
+        #chk-disk-w:checked + .btn { background-color: rgba(248, 81, 73, 0.15); color: #f85149; border-color: #f85149; }
+
+        /* GPU Temp - Light Blue */
+        #chk-gpu-temp:checked + .btn { background-color: rgba(88, 166, 255, 0.15); color: #58a6ff; border-color: #58a6ff; }
+        /* GPU Util - Light Purple */
+        #chk-gpu-util:checked + .btn { background-color: rgba(188, 140, 255, 0.15); color: #bc8cff; border-color: #bc8cff; }
+        /* GPU Power - Coral Red */
+        #chk-gpu-pwr:checked + .btn { background-color: rgba(255, 123, 114, 0.15); color: #ff7b72; border-color: #ff7b72; }
+        /* GPU Memory - Purple */
+        #chk-gpu-mem:checked + .btn { background-color: rgba(163, 113, 247, 0.15); color: #a371f7; border-color: #a371f7; }
     </style>
 </head>
 <body>
@@ -94,18 +115,21 @@
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu" checked onchange="updateChart()">
                <label class="btn" for="chk-cpu"><i class="fas fa-microchip me-1"></i> CPU</label>
+
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-ram" onchange="updateChart()">
+               <label class="btn" for="chk-ram"><i class="fas fa-memory me-1"></i> RAM</label>
                
-               <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-net-in" onchange="updateChart()">
-               <label class="btn" for="chk-net-in">Net In</label>
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-net-in" onchange="updateChart()">
+               <label class="btn" for="chk-net-in"><i class="fas fa-download me-1"></i> Net In</label>
 
-               <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-net-out" onchange="updateChart()">
-               <label class="btn" for="chk-net-out">Net Out</label>
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-net-out" onchange="updateChart()">
+               <label class="btn" for="chk-net-out"><i class="fas fa-upload me-1"></i> Net Out</label>
 
-               <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-disk-r" onchange="updateChart()">
-               <label class="btn" for="chk-disk-r">Disk Read</label>
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-disk-r" onchange="updateChart()">
+               <label class="btn" for="chk-disk-r"><i class="fas fa-hdd me-1"></i> Disk R</label>
 
-               <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-disk-w" onchange="updateChart()">
-               <label class="btn" for="chk-disk-w">Disk Write</label>
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-disk-w" onchange="updateChart()">
+               <label class="btn" for="chk-disk-w"><i class="fas fa-save me-1"></i> Disk W</label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-temp" onchange="updateChart()">
                <label class="btn" for="chk-gpu-temp"><i class="fas fa-microchip me-1"></i> GPU Temp</label>
@@ -134,20 +158,61 @@
 
     function init() {
         const ctx = document.getElementById('histChart').getContext('2d');
+        
+        // 预定义图表配置以匹配系统整体风格
         chart = new Chart(ctx, {
             type: 'line',
             data: { labels: [], datasets: [] },
             options: {
                 responsive: true, maintainAspectRatio: false,
+                animation: {
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                },
                 interaction: { mode: 'index', intersect: false },
-                elements: { point: { radius: 0, hitRadius: 20, hoverRadius: 5 } },
+                elements: { 
+                    point: { radius: 0, hitRadius: 15, hoverRadius: 6 },
+                    line: { tension: 0.35, borderWidth: 2 } 
+                },
                 plugins: {
-                    legend: { labels: { color: '#c9d1d9', usePointStyle: true, boxWidth: 8 } },
-                    tooltip: { backgroundColor: 'rgba(22, 27, 34, 0.95)', borderColor: '#30363d', borderWidth: 1, titleColor: '#fff', bodyColor: '#ccc' }
+                    legend: { 
+                        position: 'top',
+                        align: 'end',
+                        labels: { 
+                            color: '#e6edf3', 
+                            usePointStyle: true, 
+                            pointStyle: 'circle',
+                            padding: 20,
+                            font: { size: 12, weight: 'bold' } 
+                        } 
+                    },
+                    tooltip: { 
+                        backgroundColor: 'rgba(22, 27, 34, 0.98)', 
+                        borderColor: '#444c56', 
+                        borderWidth: 1, 
+                        titleColor: '#fff', 
+                        bodyColor: '#e6edf3',
+                        padding: 12,
+                        bodySpacing: 8,
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { family: "'SF Mono', monospace" }
+                    }
                 },
                 scales: {
-                    x: { grid: { color: '#30363d', drawBorder: false }, ticks: { color: '#8b949e', maxTicksLimit: 8 } },
-                    y: { type: 'linear', display: true, position: 'left', grid: { color: '#30363d', drawBorder: false }, ticks: { color: '#8b949e' } }
+                    x: { 
+                        grid: { color: 'rgba(48, 54, 61, 0.5)', drawBorder: false }, 
+                        ticks: { color: '#8b949e', font: { size: 11 } } 
+                    },
+                    y: { 
+                        type: 'linear', display: true, position: 'left', 
+                        grid: { color: 'rgba(48, 54, 61, 0.8)', drawBorder: false }, 
+                        ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace" } } 
+                    },
+                    y1: { 
+                        type: 'linear', display: false, position: 'right', 
+                        grid: { drawOnChartArea: false }, 
+                        ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace" } } 
+                    }
                 }
             }
         });
@@ -184,17 +249,19 @@
             datasets.push({label:'Power (W)', data:rawData.power, borderColor:'#d29922', borderWidth:2, yAxisID:'y'});
        if(document.getElementById('chk-cpu').checked)
            datasets.push({label:'CPU (%)', data:rawData.cpu_load, borderColor:'#a371f7', borderWidth:2, yAxisID:'y'});
+        if(document.getElementById('chk-ram').checked)
+            datasets.push({label:'RAM (%)', data:rawData.mem_load, borderColor:'#a371f7', borderWidth:2, yAxisID:'y'});
 
         if(document.getElementById('chk-fan').checked) 
             datasets.push({label:'Fan (RPM)', data:rawData.fan_rpm, borderColor:'#238636', borderWidth:2, yAxisID:'y1'});
         if(document.getElementById('chk-net-in').checked)
-           datasets.push({label:'Net In (KB/s)', data:rawData.net_in, borderColor:'#3fb950', borderWidth:1, yAxisID:'y1'});
+           datasets.push({label:'Net In (KB/s)', data:rawData.net_in, borderColor:'#2ea043', borderWidth:1, yAxisID:'y1'});
        if(document.getElementById('chk-net-out').checked)
-           datasets.push({label:'Net Out (KB/s)', data:rawData.net_out, borderColor:'#3fb950', borderWidth:1, borderDash: [4,4], yAxisID:'y1'});
+           datasets.push({label:'Net Out (KB/s)', data:rawData.net_out, borderColor:'#388bfd', borderWidth:1, borderDash: [4,4], yAxisID:'y1'});
        if(document.getElementById('chk-disk-r').checked)
-           datasets.push({label:'Disk R (MB/s)', data:rawData.disk_r, borderColor:'#dbab0a', borderWidth:1, yAxisID:'y1'});
+           datasets.push({label:'Disk R (MB/s)', data:rawData.disk_r, borderColor:'#d29922', borderWidth:1, yAxisID:'y1'});
         if(document.getElementById('chk-disk-w').checked)
-           datasets.push({label:'Disk W (MB/s)', data:rawData.disk_w, borderColor:'#dbab0a', borderWidth:1, borderDash: [4,4], yAxisID:'y1'});
+           datasets.push({label:'Disk W (MB/s)', data:rawData.disk_w, borderColor:'#f85149', borderWidth:1, borderDash: [4,4], yAxisID:'y1'});
 
         // GPU 数据对接
         if(rawData.gpu && rawData.gpu.temp) {

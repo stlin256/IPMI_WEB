@@ -328,7 +328,10 @@
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            animation: false,
+                            animation: {
+                                duration: 800,
+                                easing: 'easeOutQuart'
+                            },
                             plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
                             scales: {
                                 x: { display: false },
