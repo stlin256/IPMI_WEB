@@ -35,10 +35,28 @@ IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+# 强制 HTTPS 跳转逻辑
+@app.before_request
+def before_request():
+    if HAS_CERT and not request.is_secure:
+        url = request.url.replace('http://', 'https://', 1)
+        return redirect(url, code=301)
+
+# 检测 HTTPS 证书
+cert_dir = 'cert'
+cert_file = os.path.join(cert_dir, 'server.crt')
+key_file = os.path.join(cert_dir, 'server.key')
+# 同时也检查 pem 扩展名
+if not os.path.exists(cert_file): cert_file = os.path.join(cert_dir, 'server.pem')
+if not os.path.exists(key_file): key_file = os.path.join(cert_dir, 'server.pem') # 有时证书和私钥在一个文件
+
+HAS_CERT = os.path.exists(cert_file) and os.path.exists(key_file)
+
 app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     SESSION_COOKIE_SAMESITE='Lax',
-    SESSION_COOKIE_SECURE=False,  # 如果是 HTTPS 建议设置为 True
+    SESSION_COOKIE_SECURE=HAS_CERT,
     SESSION_COOKIE_HTTPONLY=True
 )
 
@@ -936,4 +954,9 @@ if __name__ == '__main__':
     threading.Thread(target=background_worker, daemon=True).start()
     threading.Thread(target=gpu_worker, daemon=True).start()
     
-    app.run(host='0.0.0.0', port=PORT, threaded=True)
+    if HAS_CERT:
+        print(f" * SSL Certificate found, starting HTTPS on port {PORT}")
+        app.run(host='0.0.0.0', port=PORT, threaded=True, ssl_context=(cert_file, key_file))
+    else:
+        print(f" * No SSL Certificate found, starting HTTP on port {PORT}")
+        app.run(host='0.0.0.0', port=PORT, threaded=True)

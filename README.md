@@ -43,6 +43,7 @@
     - **实时安全提醒**: 所有页面集成“新日志红点提醒”机制，确保管理员第一时间掌握潜在的安全风险。
     - **深度安全防护**: 采用 PRG (Post-Redirect-Get) 模式杜绝刷新页面导致的重复提交；支持识别 `X-Forwarded-For` 真实 IP；后端执行固定时长延迟以抹平处理耗时（Timing Attack 防护）；针对日志审计集成 **XSS 过滤**确保 UA 安全；启用 **CSRF 跨站防护**（SameSite Cookie 策略）保护管理 API。
     - **读写优化**: 数据库采用 WAL (Write-Ahead Logging) 模式，确保在大规模历史数据存储与实时访问时的极致流畅。
+    - **自动 HTTPS**: 系统自动检测 `cert/` 目录。若存在 `server.crt` 和 `server.key`，将自动启用安全加密连接。
 
 <p align="center">
   <img src="img/login_error.png" width="40%" />
@@ -85,6 +86,13 @@
 4.  **访问**:
     在浏览器中打开 `http://<your-server-ip>:<port>` (端口在 `config.json` 中定义)。
     - **密码**: 您在 `config.json` 中设置的密码。
+
+5.  **配置 HTTPS (可选)**:
+    若需启用 HTTPS，请在根目录下创建 `cert` 文件夹，并放入证书文件：
+    - `cert/server.crt`
+    - `cert/server.key`
+    
+    系统启动时若检测到上述文件，将自动切换至 HTTPS 模式。
 
 ## GPU 监控配置 (可选)
 
