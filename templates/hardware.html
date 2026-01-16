@@ -94,6 +94,17 @@
 </nav>
 
 <div class="container-fluid mt-4 px-3 px-md-4">
+    <!-- 环境依赖警告栏 -->
+    <div id="env-warning" class="alert alert-danger d-none mb-4 border-0 shadow-sm" role="alert">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
+            <div>
+                <h5 class="alert-heading mb-1 fw-bold">Environment Dependencies Missing</h5>
+                <p class="mb-0 small" id="env-warning-msg"></p>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-3 mb-4">
         <!-- 顶部 4 个 Metric 卡片 -->
         <div class="col-6 col-md-3">
@@ -228,6 +239,25 @@
     </div>
 </div>
 
+<!-- 模式切换确认 Modal -->
+<div class="modal fade" id="modeConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="mb-3">
+                    <i id="mode-icon-confirm" class="fas fa-robot fs-1 text-primary"></i>
+                </div>
+                <h5 class="modal-title mb-2 fw-bold text-light">Switch Mode?</h5>
+                <p id="mode-msg-confirm" class="text-muted small mb-4">Confirm switch to AUTOMATIC mode?</p>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary flex-grow-1 fw-bold" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="btn-confirm-mode" class="btn btn-primary flex-grow-1 fw-bold">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal 保持不变 -->
 <div class="modal fade" id="curveModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -275,6 +305,18 @@
                 </div>
                 <div id="calib-log" class="font-monospace small text-white-50">Initializing...</div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+    <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="fas fa-check-circle me-2"></i> <span id="toast-msg">Operation successful</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
     </div>
 </div>
@@ -366,8 +408,9 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ enabled: isEnabled })
         }).then(() => {
+            showToast(isEnabled ? "Fixed Speed Enabled" : "Fixed Speed Disabled");
             refreshData(); // <--- 关键修改：立刻强制刷新
-        });
+        }).catch(() => showToast("Failed to update setting", true));
     }
 
     // 3. 滑块拖动中 (oninput) - 只更新显示，不发请求
@@ -384,8 +427,9 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ target: parseInt(val) })
         }).then(() => {
+            showToast(`Target Speed set to ${val}%`);
             refreshData(); // <--- 关键修改：立刻强制刷新
-        });
+        }).catch(() => showToast("Failed to set target speed", true));
     }
 
     // 辅助：更新禁用/启用视觉状态
@@ -412,9 +456,32 @@
 
     // --- 新增功能逻辑 End ---
 
+    function showToast(msg, isError = false) {
+        const toastEl = document.getElementById('opToast');
+        const toastMsg = document.getElementById('toast-msg');
+        toastMsg.innerText = msg;
+        toastEl.classList.remove('bg-success', 'bg-danger');
+        toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
+        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+        toast.show();
+    }
+
     function refreshData() {
         fetch('/api/status_hardware').then(r => r.json()).then(d => {
             if(!d || !d.sensors) return;
+
+            // 环境检测
+            const envWarn = document.getElementById('env-warning');
+            const envMsg = document.getElementById('env-warning-msg');
+            if (d.env && (!d.env.ipmitool || !d.env.sensors)) {
+                let missing = [];
+                if (!d.env.ipmitool) missing.push('<strong>ipmitool</strong>');
+                if (!d.env.sensors) missing.push('<strong>lm-sensors</strong>');
+                envMsg.innerHTML = `The following components are not installed: ${missing.join(' and ')}. Some features may not work correctly.`;
+                envWarn.classList.remove('d-none');
+            } else {
+                envWarn.classList.add('d-none');
+            }
             document.getElementById('val-temp').innerText = d.temp;
             document.getElementById('val-power').innerText = d.power;
             document.getElementById('val-fan').innerText = d.fan_rpm;
@@ -628,24 +695,47 @@
         fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ curve: currentCurve }) })
             .then(() => { 
                 bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
+                showToast("Fan curve updated successfully");
                 loadInitialConfig();
                 refreshData(); // <--- 关键修改：立刻强制刷新
-            });
+            }).catch(() => showToast("Failed to save curve", true));
     }
+
+    let pendingMode = null;
+    const modeModal = new bootstrap.Modal(document.getElementById('modeConfirmModal'));
 
     function toggleMode() {
         const modeText = document.getElementById('mode-display').innerText;
         if(modeText.includes('FIXED')) {
-            alert("Please disable Fixed Fan Speed first.");
+            showToast("Please disable Fixed Fan Speed first", true);
             return;
         }
         
-        const newMode = modeText === 'AUTOMATIC' ? 'manual' : 'auto';
-        if(confirm(`Confirm switch to ${newMode.toUpperCase()} mode?`)) {
-            fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ mode: newMode }) })
-            .then(refreshData); // 这里本来就有调用
-        }
+        pendingMode = modeText === 'AUTOMATIC' ? 'manual' : 'auto';
+        
+        // 更新 Modal 内容
+        const isAuto = pendingMode === 'auto';
+        document.getElementById('mode-icon-confirm').className = `fas ${isAuto ? 'fa-robot text-success' : 'fa-hand-paper text-primary'} fs-1`;
+        document.getElementById('mode-msg-confirm').innerText = `Confirm switch to ${pendingMode.toUpperCase()} mode?`;
+        document.getElementById('btn-confirm-mode').className = `btn ${isAuto ? 'btn-success' : 'btn-primary'} flex-grow-1 fw-bold`;
+        
+        modeModal.show();
     }
+
+    // 绑定确认按钮点击事件
+    document.getElementById('btn-confirm-mode').onclick = function() {
+        if (!pendingMode) return;
+        
+        fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ mode: pendingMode }) })
+        .then(() => {
+            showToast(`Switched to ${pendingMode.toUpperCase()} mode`);
+            modeModal.hide();
+            refreshData();
+        }).catch(() => {
+            showToast("Failed to switch mode", true);
+            modeModal.hide();
+        });
+    };
 
     let calibInterval;
     function startCalibration() {

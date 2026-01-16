@@ -8,6 +8,7 @@ import re
 import psutil
 import urllib.request
 import markupsafe
+import shutil
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
@@ -63,6 +64,7 @@ app.config.update(
 # 全局缓存 (带默认值防止启动时读取失败)
 cache_lock = threading.Lock()
 sys_cache = {
+    'env': {'ipmitool': True, 'sensors': True},
     'hw': {'temp': 0, 'power': 0, 'fan_rpm': 0, 'mode': 'auto', 'sensors': [], 'max_rpm': 0, 'min_rpm': 0},
     'res': {'cpu': 0, 'mem_percent': 0, 'mem_used': 0, 'mem_total': 0, 
             'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0},
@@ -127,6 +129,16 @@ def init_db():
     conn.commit()
     conn.close()
     load_calibration_map()
+
+def check_environment():
+    global sys_cache
+    with cache_lock:
+        sys_cache['env']['ipmitool'] = shutil.which('ipmitool') is not None
+        sys_cache['env']['sensors'] = shutil.which('sensors') is not None
+    if not sys_cache['env']['ipmitool'] or not sys_cache['env']['sensors']:
+        print("⚠️ Environment Warning: Some dependencies are missing!")
+        if not sys_cache['env']['ipmitool']: print("  - ipmitool NOT FOUND")
+        if not sys_cache['env']['sensors']: print("  - sensors NOT FOUND")
 
 def load_calibration_map():
     global rpm_map, max_rpm, min_rpm
@@ -949,6 +961,7 @@ def api_history_gpu():
     })
 
 if __name__ == '__main__':
+    check_environment()
     init_db()
     # 启动后台工作线程
     threading.Thread(target=background_worker, daemon=True).start()
