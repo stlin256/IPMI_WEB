@@ -691,46 +691,45 @@ def api_status_gpu():
     with cache_lock: return jsonify(sys_cache['gpu'])
 
 # --- 历史数据 (24h) 智能降采样 ---
-@app.route('/api/history')
-@login_required
-def api_history():
-    conn = get_db_connection()
-    c = conn.cursor()
-    cutoff = time.time() - (24 * 3600)
-    # 只查需要的字段
-    c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
-    data = c.fetchall()
-    conn.close()
-  
-    # [关键修复] 数据降采样与断层处理
-    step = max(1, len(data) // 600)
-    
-    processed_data = []
-    if data:
-        processed_data.append(data[0])
-        for i in range(step, len(data), step):
-            # 如果两个采样点之间的时间间隔超过 step * 5 秒 (容忍度)，则插入断层点
-            if data[i][0] - data[i-step][0] > step * 5:
-                # 插入一个 null 标记点 (时间戳取中间)
-                processed_data.append([data[i][0] - 1, None, None, None, None, None, None, None, None, None])
-            processed_data.append(data[i])
+    @app.route('/api/history')
+    @login_required
+    def api_history():
+        conn = get_db_connection()
+        c = conn.cursor()
+        cutoff = time.time() - (24 * 3600)
+        # 只查需要的字段
+        c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+        data = c.fetchall()
+        conn.close()
+      
+        # [关键修复] 数据降采样：防止返回几万个点卡死前端
+        # 目标：限制在 600 个点以内
+        step = max(1, len(data) // 600)
+        sampled_data = data[::step]
 
-    return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime('%H:%M') if d[1] is not None else "" for d in processed_data],
-        'hw': {
-            'temps': [round(d[1],1) if d[1] is not None else None for d in processed_data],
-            'fans': [d[2] if d[2] is not None else None for d in processed_data],
-            'power': [d[3] if d[3] is not None else None for d in processed_data]
-        },
-        'res': {
-            'cpu': [round(d[4],1) if d[4] is not None else None for d in processed_data],
-            'mem': [round(d[5],1) if d[5] is not None else None for d in processed_data], 
-            'net_in': [round(d[6],1) if d[6] is not None else None for d in processed_data],
-            'net_out': [round(d[7],1) if d[7] is not None else None for d in processed_data],
-            'disk_r': [round(d[8],1) if d[8] is not None else None for d in processed_data],
-            'disk_w': [round(d[9],1) if d[9] is not None else None for d in processed_data]
-        }
-    })
+        # [修复断点显示] 注入 null 值处理数据缺失
+        final_data = []
+        gap_threshold = max(30, step * 3)
+        for i in range(len(sampled_data)):
+            if i > 0:
+                prev_ts = sampled_data[i-1][0]
+                curr_ts = sampled_data[i][0]
+                if curr_ts - prev_ts > gap_threshold:
+                    final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
+            final_data.append(sampled_data[i])
+    
+        return jsonify({
+            'times': [datetime.fromtimestamp(d[0]).strftime('%H:%M') for d in final_data],
+            'hw': {'temps': [round(d[1],1) if d[1] is not None else None for d in final_data], 
+                   'fans': [d[2] for d in final_data], 
+                   'power': [d[3] for d in final_data]},
+            'res': {'cpu': [round(d[4],1) if d[4] is not None else None for d in final_data], 
+                    'mem': [round(d[5],1) if d[5] is not None else None for d in final_data], 
+                    'net_in': [round(d[6],1) if d[6] is not None else None for d in final_data], 
+                    'net_out': [round(d[7],1) if d[7] is not None else None for d in final_data],
+                    'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data], 
+                    'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data]}
+        })
 
 # --- 自定义历史数据 智能降采样 ---
 @app.route('/api/history_custom')
@@ -769,22 +768,35 @@ def api_history_custom():
         'max_disk': round(max(disk_rs), 1)
     }
   
-    # [关键修复] 步进采样与断层处理
+    # [关键修复] LTTB 降采样思路简化：在 1s 精度下，步进采样需配合局部极值保留
+    # 目标：限制在 1200 个点以内（1s精度下稍微多留一些点以保证曲线平滑）
     target_points = 1200
     step = max(1, len(raw_data) // target_points)
     
-    sampled_data = []
-    if raw_data:
-        sampled_data.append(raw_data[0])
-        for i in range(step, len(raw_data), step):
-            if raw_data[i][0] - raw_data[i-step][0] > step * 5:
-                # 插入断层
-                sampled_data.append([raw_data[i][0] - 1, None, None, None, None, None, None, None, None, None])
-            sampled_data.append(raw_data[i])
+    # 如果步长较大，我们不仅取起始点，还应确保这一段内的极值不被丢失（简单做法是取每段的第一个点）
+    sampled_data = raw_data[::step]
   
     # 时间格式优化：如果是 1H 视图，显示到秒
     time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
   
+    # [修复断点显示] 注入 null 值处理数据缺失
+    final_data = []
+    # 动态断点阈值：根据采样步长调整
+    # 正常记录间隔是 1s，如果步长是 step，那么预期间隔是 step 秒。
+    # 我们允许一定的抖动，比如 3 * step。如果超过这个值，认为存在断点。
+    gap_threshold = max(30, step * 3) 
+    
+    for i in range(len(sampled_data)):
+        if i > 0:
+            prev_ts = sampled_data[i-1][0]
+            curr_ts = sampled_data[i][0]
+            if curr_ts - prev_ts > gap_threshold:
+                # 插入一个 null 数据点，时间戳取中间
+                # 使用 None 表示断点，前端 Chart.js 会识别并断开连线
+                final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
+        
+        final_data.append(sampled_data[i])
+
     # 对齐 GPU 数据到系统数据的时间轴
     aligned_gpu = {
         'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []
@@ -793,12 +805,13 @@ def api_history_custom():
     last_gpu_idx = 0
     gpu_len = len(gpu_raw)
     
-    for d in sampled_data:
+    for d in final_data:
         ts = d[0]
-        if d[1] is None: # 处理系统数据的断层点
+        # 如果是断点占位符
+        if d[1] is None:
             for k in aligned_gpu: aligned_gpu[k].append(None)
             continue
-
+            
         # 寻找最近的 GPU 数据点 (允许前后 2s 的误差)
         found = False
         # 简单的双指针优化查找
@@ -818,16 +831,16 @@ def api_history_custom():
             for k in aligned_gpu: aligned_gpu[k].append(None)
 
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) if d[1] is not None else "" for d in sampled_data],
-        'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in sampled_data],
-        'fan_rpm': [d[2] if d[2] is not None else None for d in sampled_data],
-        'power': [d[3] if d[3] is not None else None for d in sampled_data],
-        'cpu_load': [round(d[4],1) if d[4] is not None else None for d in sampled_data],
-        'mem_load': [round(d[5],1) if d[5] is not None else None for d in sampled_data],
-        'net_in': [round(d[6],1) if d[6] is not None else None for d in sampled_data],
-        'net_out': [round(d[7],1) if d[7] is not None else None for d in sampled_data],
-        'disk_r': [round(d[8],1) if d[8] is not None else None for d in sampled_data],
-        'disk_w': [round(d[9],1) if d[9] is not None else None for d in sampled_data],
+        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in final_data],
+        'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in final_data],
+        'fan_rpm': [d[2] for d in final_data],
+        'power': [d[3] for d in final_data],
+        'cpu_load': [round(d[4],1) if d[4] is not None else None for d in final_data],
+        'mem_load': [round(d[5],1) if d[5] is not None else None for d in final_data],
+        'net_in': [round(d[6],1) if d[6] is not None else None for d in final_data],
+        'net_out': [round(d[7],1) if d[7] is not None else None for d in final_data],
+        'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data],
+        'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data],
         'gpu': aligned_gpu, # 直接包含对齐后的 GPU 数据
         'stats': stats
     })
@@ -970,27 +983,32 @@ def api_history_gpu():
     if not data:
         return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []})
   
-    # 智能降采样与断层处理
+    # 智能降采样
     target_points = 1200
     step = max(1, len(data) // target_points)
-    
-    sampled_data = []
-    if data:
-        sampled_data.append(data[0])
-        for i in range(step, len(data), step):
-            if data[i][0] - data[i-step][0] > step * 5:
-                sampled_data.append([data[i][0] - 1, None, None, None, None, None, None])
-            sampled_data.append(data[i])
+    sampled_data = data[::step]
     
     time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
+
+    # [修复断点显示] 注入 null 值处理数据缺失
+    final_data = []
+    gap_threshold = max(30, step * 3)
+    
+    for i in range(len(sampled_data)):
+        if i > 0:
+            prev_ts = sampled_data[i-1][0]
+            curr_ts = sampled_data[i][0]
+            if curr_ts - prev_ts > gap_threshold:
+                final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None))
+        final_data.append(sampled_data[i])
   
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) if d[1] is not None else "" for d in sampled_data],
-        'temp': [d[1] if d[1] is not None else None for d in sampled_data],
-        'util_gpu': [d[2] if d[2] is not None else None for d in sampled_data],
-        'util_mem': [d[3] if d[3] is not None else None for d in sampled_data],
-        'mem_used': [d[5] if d[5] is not None else None for d in sampled_data],
-        'power': [d[6] if d[6] is not None else None for d in sampled_data]
+        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in final_data],
+        'temp': [d[1] for d in final_data],
+        'util_gpu': [d[2] for d in final_data],
+        'util_mem': [d[3] for d in final_data],
+        'mem_used': [d[5] for d in final_data],
+        'power': [d[6] for d in final_data]
     })
 
 if __name__ == '__main__':

@@ -332,9 +332,7 @@
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
         animation: { duration: 800, easing: 'easeOutQuart' },
-        interaction: { mode: 'index', intersect: false }, 
-        spanGaps: false, // 关键：数据缺失时不连接线条
-        plugins: { legend: { display: false } },
+        interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
         scales: { 
             x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } }, 
             y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
