@@ -702,17 +702,34 @@ def api_history():
     data = c.fetchall()
     conn.close()
   
-    # [关键修复] 数据降采样：防止返回几万个点卡死前端
-    # 目标：限制在 600 个点以内
+    # [关键修复] 数据降采样与断层处理
     step = max(1, len(data) // 600)
-    data = data[::step]
+    
+    processed_data = []
+    if data:
+        processed_data.append(data[0])
+        for i in range(step, len(data), step):
+            # 如果两个采样点之间的时间间隔超过 step * 5 秒 (容忍度)，则插入断层点
+            if data[i][0] - data[i-step][0] > step * 5:
+                # 插入一个 null 标记点 (时间戳取中间)
+                processed_data.append([data[i][0] - 1, None, None, None, None, None, None, None, None, None])
+            processed_data.append(data[i])
 
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime('%H:%M') for d in data],
-        'hw': {'temps': [round(d[1],1) for d in data], 'fans': [d[2] for d in data], 'power': [d[3] for d in data]},
-        'res': {'cpu': [round(d[4],1) for d in data], 'mem': [round(d[5],1) for d in data], 
-                'net_in': [round(d[6],1) for d in data], 'net_out': [round(d[7],1) for d in data],
-                'disk_r': [round(d[8],1) for d in data], 'disk_w': [round(d[9],1) for d in data]}
+        'times': [datetime.fromtimestamp(d[0]).strftime('%H:%M') if d[1] is not None else "" for d in processed_data],
+        'hw': {
+            'temps': [round(d[1],1) if d[1] is not None else None for d in processed_data],
+            'fans': [d[2] if d[2] is not None else None for d in processed_data],
+            'power': [d[3] if d[3] is not None else None for d in processed_data]
+        },
+        'res': {
+            'cpu': [round(d[4],1) if d[4] is not None else None for d in processed_data],
+            'mem': [round(d[5],1) if d[5] is not None else None for d in processed_data], 
+            'net_in': [round(d[6],1) if d[6] is not None else None for d in processed_data],
+            'net_out': [round(d[7],1) if d[7] is not None else None for d in processed_data],
+            'disk_r': [round(d[8],1) if d[8] is not None else None for d in processed_data],
+            'disk_w': [round(d[9],1) if d[9] is not None else None for d in processed_data]
+        }
     })
 
 # --- 自定义历史数据 智能降采样 ---
@@ -752,13 +769,18 @@ def api_history_custom():
         'max_disk': round(max(disk_rs), 1)
     }
   
-    # [关键修复] LTTB 降采样思路简化：在 1s 精度下，步进采样需配合局部极值保留
-    # 目标：限制在 1200 个点以内（1s精度下稍微多留一些点以保证曲线平滑）
+    # [关键修复] 步进采样与断层处理
     target_points = 1200
     step = max(1, len(raw_data) // target_points)
     
-    # 如果步长较大，我们不仅取起始点，还应确保这一段内的极值不被丢失（简单做法是取每段的第一个点）
-    sampled_data = raw_data[::step]
+    sampled_data = []
+    if raw_data:
+        sampled_data.append(raw_data[0])
+        for i in range(step, len(raw_data), step):
+            if raw_data[i][0] - raw_data[i-step][0] > step * 5:
+                # 插入断层
+                sampled_data.append([raw_data[i][0] - 1, None, None, None, None, None, None, None, None, None])
+            sampled_data.append(raw_data[i])
   
     # 时间格式优化：如果是 1H 视图，显示到秒
     time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
@@ -773,6 +795,10 @@ def api_history_custom():
     
     for d in sampled_data:
         ts = d[0]
+        if d[1] is None: # 处理系统数据的断层点
+            for k in aligned_gpu: aligned_gpu[k].append(None)
+            continue
+
         # 寻找最近的 GPU 数据点 (允许前后 2s 的误差)
         found = False
         # 简单的双指针优化查找
@@ -792,16 +818,16 @@ def api_history_custom():
             for k in aligned_gpu: aligned_gpu[k].append(None)
 
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in sampled_data],
-        'cpu_temp': [round(d[1],1) for d in sampled_data],
-        'fan_rpm': [d[2] for d in sampled_data],
-        'power': [d[3] for d in sampled_data],
-        'cpu_load': [round(d[4],1) for d in sampled_data],
-        'mem_load': [round(d[5],1) for d in sampled_data],
-        'net_in': [round(d[6],1) for d in sampled_data],
-        'net_out': [round(d[7],1) for d in sampled_data],
-        'disk_r': [round(d[8],1) for d in sampled_data],
-        'disk_w': [round(d[9],1) for d in sampled_data],
+        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) if d[1] is not None else "" for d in sampled_data],
+        'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in sampled_data],
+        'fan_rpm': [d[2] if d[2] is not None else None for d in sampled_data],
+        'power': [d[3] if d[3] is not None else None for d in sampled_data],
+        'cpu_load': [round(d[4],1) if d[4] is not None else None for d in sampled_data],
+        'mem_load': [round(d[5],1) if d[5] is not None else None for d in sampled_data],
+        'net_in': [round(d[6],1) if d[6] is not None else None for d in sampled_data],
+        'net_out': [round(d[7],1) if d[7] is not None else None for d in sampled_data],
+        'disk_r': [round(d[8],1) if d[8] is not None else None for d in sampled_data],
+        'disk_w': [round(d[9],1) if d[9] is not None else None for d in sampled_data],
         'gpu': aligned_gpu, # 直接包含对齐后的 GPU 数据
         'stats': stats
     })
@@ -944,20 +970,27 @@ def api_history_gpu():
     if not data:
         return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []})
   
-    # 智能降采样
+    # 智能降采样与断层处理
     target_points = 1200
     step = max(1, len(data) // target_points)
-    sampled_data = data[::step]
+    
+    sampled_data = []
+    if data:
+        sampled_data.append(data[0])
+        for i in range(step, len(data), step):
+            if data[i][0] - data[i-step][0] > step * 5:
+                sampled_data.append([data[i][0] - 1, None, None, None, None, None, None])
+            sampled_data.append(data[i])
     
     time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
   
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in sampled_data],
-        'temp': [d[1] for d in sampled_data],
-        'util_gpu': [d[2] for d in sampled_data],
-        'util_mem': [d[3] for d in sampled_data],
-        'mem_used': [d[5] for d in sampled_data],
-        'power': [d[6] for d in sampled_data]
+        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) if d[1] is not None else "" for d in sampled_data],
+        'temp': [d[1] if d[1] is not None else None for d in sampled_data],
+        'util_gpu': [d[2] if d[2] is not None else None for d in sampled_data],
+        'util_mem': [d[3] if d[3] is not None else None for d in sampled_data],
+        'mem_used': [d[5] if d[5] is not None else None for d in sampled_data],
+        'power': [d[6] if d[6] is not None else None for d in sampled_data]
     })
 
 if __name__ == '__main__':
