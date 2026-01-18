@@ -524,6 +524,23 @@
         
         wrapper.classList.add('opacity-25');
         skeleton.classList.remove('d-none');
+
+        // 为 6 个统计卡片应用背景覆盖流光效果
+        const statIds = ['stat-temp', 'stat-load', 'stat-net', 'stat-disk', 'stat-energy-interval', 'stat-energy-total'];
+        statIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.parentElement.classList.add('position-relative');
+                if (!document.getElementById('mask-' + id)) {
+                    const mask = document.createElement('div');
+                    mask.id = 'mask-' + id;
+                    mask.className = 'skeleton rounded-2 position-absolute top-0 start-0 w-100 h-100';
+                    mask.style.backgroundColor = 'var(--bg-card)';
+                    mask.style.zIndex = '5';
+                    el.parentElement.appendChild(mask);
+                }
+            }
+        });
         
         // 为 Insights 板块应用流光动画效果 (通过直接控制子元素的显示)
         if (insightsSection) {
@@ -545,6 +562,13 @@
             wrapper.classList.remove('opacity-25');
             skeleton.classList.add('d-none');
             
+            // 移除 6 个统计卡片的背景覆盖遮罩
+            const statIds = ['stat-temp', 'stat-load', 'stat-net', 'stat-disk', 'stat-energy-interval', 'stat-energy-total'];
+            statIds.forEach(id => {
+                const m = document.getElementById('mask-' + id);
+                if (m) m.remove();
+            });
+
             // 移除 Insights 流光效果
             const iskel = document.getElementById('insights-skeleton');
             if (iskel) iskel.remove();

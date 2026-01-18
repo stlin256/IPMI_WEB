@@ -569,6 +569,11 @@ def gpu_worker():
                                       g['util_gpu'], g['util_mem'], g['memory_total'], g['memory_used'],
                                       g['power_draw'], g['power_limit'], g['clock_core'], g['clock_mem'], 
                                       g['fan_speed'], g['ecc_errors']))
+                        
+                        # 清理旧数据 (遵循 RETENTION_DAYS)
+                        cutoff = int(now) - (RETENTION_DAYS * 86400)
+                        c.execute("DELETE FROM gpu_metrics WHERE timestamp < ?", (cutoff,))
+                        
                         conn.commit()
                         conn.close()
                         last_db_log_time = now
