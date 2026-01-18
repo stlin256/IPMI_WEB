@@ -790,45 +790,48 @@ def api_status_gpu():
     with cache_lock: return jsonify(sys_cache['gpu'])
 
 # --- 历史数据 (24h) 智能降采样 ---
-    @app.route('/api/history')
-    @login_required
-    def api_history():
-        conn = get_db_connection()
-        c = conn.cursor()
-        cutoff = time.time() - (24 * 3600)
-        # 只查需要的字段
-        c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
-        data = c.fetchall()
-        conn.close()
-      
-        # [关键修复] 数据降采样：防止返回几万个点卡死前端
-        # 目标：限制在 600 个点以内
-        step = max(1, len(data) // 600)
-        sampled_data = data[::step]
-
-        # [修复断点显示] 注入 null 值处理数据缺失
-        final_data = []
-        gap_threshold = max(30, step * 3)
-        for i in range(len(sampled_data)):
-            if i > 0:
-                prev_ts = sampled_data[i-1][0]
-                curr_ts = sampled_data[i][0]
-                if curr_ts - prev_ts > gap_threshold:
-                    final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
-            final_data.append(sampled_data[i])
+@app.route('/api/history')
+@login_required
+def api_history():
+    conn = get_db_connection()
+    c = conn.cursor()
+    cutoff = time.time() - (24 * 3600)
+    # 只查需要的字段
+    c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    data = c.fetchall()
+    conn.close()
     
-        return jsonify({
-            'times': [datetime.fromtimestamp(d[0]).strftime('%H:%M') for d in final_data],
-            'hw': {'temps': [round(d[1],1) if d[1] is not None else None for d in final_data], 
-                   'fans': [d[2] for d in final_data], 
-                   'power': [d[3] for d in final_data]},
-            'res': {'cpu': [round(d[4],1) if d[4] is not None else None for d in final_data], 
-                    'mem': [round(d[5],1) if d[5] is not None else None for d in final_data], 
-                    'net_in': [round(d[6],1) if d[6] is not None else None for d in final_data], 
-                    'net_out': [round(d[7],1) if d[7] is not None else None for d in final_data],
-                    'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data], 
-                    'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data]}
-        })
+    if not data:
+        return jsonify({'times': [], 'hw': {'temps': [], 'fans': [], 'power': []}, 'res': {'cpu': [], 'mem': [], 'net_in': [], 'net_out': [], 'disk_r': [], 'disk_w': []}})
+    
+    # [关键修复] 数据降采样：防止返回几万个点卡死前端
+    # 目标：限制在 600 个点以内
+    step = max(1, len(data) // 600)
+    sampled_data = data[::step]
+
+    # [修复断点显示] 注入 null 值处理数据缺失
+    final_data = []
+    gap_threshold = max(30, step * 3)
+    for i in range(len(sampled_data)):
+        if i > 0:
+            prev_ts = sampled_data[i-1][0]
+            curr_ts = sampled_data[i][0]
+            if curr_ts - prev_ts > gap_threshold:
+                final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
+        final_data.append(sampled_data[i])
+
+    return jsonify({
+        'times': [datetime.fromtimestamp(d[0]).strftime('%H:%M') for d in final_data],
+        'hw': {'temps': [round(d[1],1) if d[1] is not None else None for d in final_data], 
+                'fans': [d[2] for d in final_data], 
+                'power': [d[3] for d in final_data]},
+        'res': {'cpu': [round(d[4],1) if d[4] is not None else None for d in final_data], 
+                'mem': [round(d[5],1) if d[5] is not None else None for d in final_data], 
+                'net_in': [round(d[6],1) if d[6] is not None else None for d in final_data], 
+                'net_out': [round(d[7],1) if d[7] is not None else None for d in final_data],
+                'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data], 
+                'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data]}
+    })
 
 # --- 自定义历史数据 智能降采样 ---
 @app.route('/api/history_custom')

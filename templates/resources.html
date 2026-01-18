@@ -202,6 +202,7 @@
 
     const commonOptions = {
         responsive: true, maintainAspectRatio: false, animation: false,
+        spanGaps: false, // 显式禁用跨越断点，使其在 null 处断开
         elements: { 
             point: { radius: 0, hitRadius: 10, hoverRadius: 4 },
             line: { borderWidth: 2.5, tension: 0.4 }
