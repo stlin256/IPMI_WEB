@@ -40,9 +40,12 @@ app.secret_key = SECRET_KEY
 # 强制 HTTPS 跳转逻辑
 @app.before_request
 def before_request():
-    if HAS_CERT and not request.is_secure:
-        url = request.url.replace('http://', 'https://', 1)
-        return redirect(url, code=301)
+    if HAS_CERT:
+        # 检查是否为 https 或者是否有代理头
+        is_https = request.is_secure or request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+        if not is_https:
+            url = request.url.replace('http://', 'https://', 1)
+            return redirect(url, code=301)
 
 # 检测 HTTPS 证书
 cert_dir = 'cert'
@@ -125,6 +128,10 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_enabled', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_host', '127.0.0.1')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_port', '9999')")
+
+    # 耗电量永久化表 (Wh)
+    c.execute('''CREATE TABLE IF NOT EXISTS energy_hourly 
+                 (timestamp INTEGER PRIMARY KEY, energy_wh REAL, samples INTEGER)''')
   
     conn.commit()
     conn.close()
@@ -241,6 +248,98 @@ def get_realtime_rpm_only():
     return int(parse_ipmi_value(dump, r'Fan1 RPM\s+\|\s+([\d\.]+)\s+'))
 
 # --- 任务线程 ---
+def calculate_energy_consumption(start_ts, end_ts):
+    """计算指定时间段内的耗电量 (Wh), 考虑断点"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    # 查询功率数据，按时间排序
+    c.execute("SELECT timestamp, power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC", (start_ts, end_ts))
+    data = c.fetchall()
+    conn.close()
+    
+    if not data:
+        return 0, 0
+    
+    if len(data) == 1:
+        # 只有一个点时，无法积分，但如果区间很短，可以估算
+        return 0, 1
+    
+    total_energy_ws = 0.0 # 瓦秒
+    samples = len(data)
+    # 扩大容忍度到 120 秒，处理可能的采集缺失
+    gap_threshold = 120
+    
+    # 记录总覆盖时长，用于调试或补偿
+    actual_integrated_time = 0
+    
+    for i in range(len(data) - 1):
+        t1, p1 = data[i]
+        t2, p2 = data[i+1]
+        dt = t2 - t1
+        
+        # 排除异常 dt (负数或 0)
+        if dt <= 0: continue
+        
+        if dt <= gap_threshold:
+            # 梯形积分
+            total_energy_ws += (p1 + p2) / 2.0 * dt
+            actual_integrated_time += dt
+        else:
+            # 遇到断点，跳过
+            pass
+            
+    # 如果采集非常密集且几乎覆盖了整个请求区间，但因为前后边界没有对齐导致 actual_integrated_time 略小
+    # 我们不使用复杂的 coverage 缩放，而是采用一种更稳健的思路：
+    # 如果 actual_integrated_time 超过请求区间 80%，则认为系统一直在线，按平均功率补足边界。
+    request_duration = end_ts - start_ts
+    if request_duration > 0 and actual_integrated_time > request_duration * 0.8:
+        avg_power = total_energy_ws / actual_integrated_time
+        total_energy_ws = avg_power * request_duration
+            
+    return total_energy_ws / 3600.0, samples
+
+def energy_maintenance_task():
+    """维护 energy_hourly 表，补全缺失的小时数据"""
+    while True:
+        try:
+            now = int(time.time())
+            # 当前整点
+            current_hour_ts = (now // 3600) * 3600
+            
+            conn = get_db_connection()
+            c = conn.cursor()
+            
+            # 1. 查找 metrics_v2 中最早的数据时间
+            c.execute("SELECT MIN(timestamp) FROM metrics_v2")
+            min_ts_row = c.fetchone()
+            if not min_ts_row or min_ts_row[0] is None:
+                conn.close()
+                time.sleep(60)
+                continue
+            
+            first_metrics_ts = (min_ts_row[0] // 3600) * 3600
+            
+            # 2. 补全从最早数据到上一个整点的数据
+            # 我们检查过去 7 天内缺失的小时数据
+            start_backfill = max(first_metrics_ts, current_hour_ts - 7 * 86400)
+            
+            for h_ts in range(start_backfill, current_hour_ts, 3600):
+                # 检查是否已存在
+                c.execute("SELECT timestamp FROM energy_hourly WHERE timestamp = ?", (h_ts,))
+                if not c.fetchone():
+                    energy, samples = calculate_energy_consumption(h_ts, h_ts + 3600)
+                    if samples > 0:
+                        c.execute("INSERT INTO energy_hourly (timestamp, energy_wh, samples) VALUES (?, ?, ?)",
+                                 (h_ts, energy, samples))
+                        conn.commit()
+            
+            conn.close()
+        except Exception as e:
+            print(f"Energy Maintenance Error: {e}")
+        
+        # 每 10 分钟检查一次（主要是为了跨过整点时能触发上一小时的计算）
+        time.sleep(600)
+
 def calibration_task():
     global sys_cache
     conn = get_db_connection()
@@ -830,6 +929,59 @@ def api_history_custom():
         if not found:
             for k in aligned_gpu: aligned_gpu[k].append(None)
 
+    # 耗电量统计 (Wh)
+    # 1. 区间耗电: 直接利用当前已查出的原始功率数据 (raw_data) 进行实时积分，保证 1H/6H 等视图的精确性
+    # 因为 raw_data 本身就是 cutoff 之后的数据
+    interval_energy_wh = 0.0
+    if len(raw_data) >= 2:
+        # 复用计算逻辑，但直接针对本次查询出的 raw_data
+        temp_ws = 0.0
+        gap_limit = 120
+        for i in range(len(raw_data) - 1):
+            t1, _, _, p1, _, _, _, _, _, _ = raw_data[i]
+            t2, _, _, p2, _, _, _, _, _, _ = raw_data[i+1]
+            dt = t2 - t1
+            if 0 < dt <= gap_limit:
+                temp_ws += (p1 + p2) / 2.0 * dt
+        
+        # 边界补齐逻辑
+        actual_dur = raw_data[-1][0] - raw_data[0][0]
+        req_dur = int(time.time()) - cutoff
+        if req_dur > 0 and actual_dur > req_dur * 0.8:
+            interval_energy_wh = (temp_ws / actual_dur * req_dur) / 3600.0
+        else:
+            interval_energy_wh = temp_ws / 3600.0
+
+    # 2. 累计耗电 (支持自定义起始时间)
+    current_hour_ts = (int(time.time()) // 3600) * 3600
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # 获取最早的记录时间
+    c.execute("SELECT MIN(timestamp) FROM energy_hourly")
+    abs_min_row = c.fetchone()
+    abs_min_ts = abs_min_row[0] if abs_min_row and abs_min_row[0] is not None else current_hour_ts
+    
+    energy_start_ts = int(request.args.get('energy_start', 0))
+    if energy_start_ts == 0:
+        energy_start_ts = abs_min_ts
+
+    c.execute("SELECT SUM(energy_wh) FROM energy_hourly WHERE timestamp >= ?", (energy_start_ts,))
+    row = c.fetchone()
+    total_energy_wh = row[0] if row and row[0] is not None else 0.0
+    # 加上最新的
+    if current_hour_ts >= energy_start_ts:
+        latest_energy_all, _ = calculate_energy_consumption(max(energy_start_ts, current_hour_ts), int(time.time()))
+        total_energy_wh += latest_energy_all
+    
+    conn.close()
+    
+    # 转换为 kWh
+    stats['energy_interval'] = round(interval_energy_wh / 1000.0, 3)
+    stats['energy_total'] = round(total_energy_wh / 1000.0, 3)
+    stats['energy_start_date'] = datetime.fromtimestamp(energy_start_ts).strftime('%Y-%m-%d')
+    stats['energy_earliest_date'] = datetime.fromtimestamp(abs_min_ts).strftime('%Y-%m-%d')
+
     return jsonify({
         'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in final_data],
         'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in final_data],
@@ -1011,14 +1163,38 @@ def api_history_gpu():
         'power': [d[6] for d in final_data]
     })
 
+def http_redirect_server():
+    """在 80 端口或备用端口启动一个简单的 HTTP 服务器，仅负责重定向到 HTTPS"""
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            target = f"https://{self.headers.get('Host')}{self.path}"
+            self.send_response(301)
+            self.send_header('Location', target)
+            self.end_headers()
+        def log_message(self, format, *args): pass # 禁用日志以防干扰
+
+    # 尝试在常用 HTTP 端口启动跳转服务
+    for p in [80, 8080]:
+        if p == PORT: continue # 避免冲突
+        try:
+            httpd = HTTPServer(('0.0.0.0', p), RedirectHandler)
+            print(f" * HTTP Redirect Server started on port {p}")
+            httpd.serve_forever()
+            break
+        except: continue
+
 if __name__ == '__main__':
     check_environment()
     init_db()
     # 启动后台工作线程
     threading.Thread(target=background_worker, daemon=True).start()
     threading.Thread(target=gpu_worker, daemon=True).start()
+    threading.Thread(target=energy_maintenance_task, daemon=True).start()
     
     if HAS_CERT:
+        # 如果开启了 HTTPS，启动一个额外的线程处理 HTTP 到 HTTPS 的跳转（尝试监听 80）
+        threading.Thread(target=http_redirect_server, daemon=True).start()
         print(f" * SSL Certificate found, starting HTTPS on port {PORT}")
         app.run(host='0.0.0.0', port=PORT, threaded=True, ssl_context=(cert_file, key_file))
     else:
