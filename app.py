@@ -810,14 +810,19 @@ def api_history():
     sampled_data = data[::step]
 
     # [修复断点显示] 注入 null 值处理数据缺失
+    # 逻辑与 api_history_custom 保持高度一致
     final_data = []
-    gap_threshold = max(30, step * 3)
+    # 动态断点阈值：正常记录间隔是 1s，步长是 step。允许 3 倍步长或最小 30s 的抖动。
+    gap_threshold = max(30, step * 3) 
+    
     for i in range(len(sampled_data)):
         if i > 0:
             prev_ts = sampled_data[i-1][0]
             curr_ts = sampled_data[i][0]
             if curr_ts - prev_ts > gap_threshold:
-                final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
+                # 插入一个 null 数据点，时间戳取中间，各字段设为 None
+                final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
+        
         final_data.append(sampled_data[i])
 
     return jsonify({
@@ -985,6 +990,116 @@ def api_history_custom():
     stats['energy_start_date'] = datetime.fromtimestamp(energy_start_ts).strftime('%Y-%m-%d')
     stats['energy_earliest_date'] = datetime.fromtimestamp(abs_min_ts).strftime('%Y-%m-%d')
 
+    # --- 深度聚合分析数据 (基于全量 raw_data 以保证 100% 精确度) ---
+    analysis = {
+        'cpu_power_avg': 0, 'gpu_power_avg': 0,
+        'cpu_temp_labels': [], 'cpu_temp_dist': [], 
+        'gpu_temp_dist': [],
+        'cpu_load_dist': [0]*5, # <10, 10-30, 30-60, 60-90, >90
+        'gpu_load_dist': [0]*5,
+        'vram_efficiency': []
+    }
+    
+    # 1. 预处理全量数据
+    raw_total_points = len(raw_data)
+    if raw_total_points > 0:
+        # 温度精度优化：1度步长，自动寻找范围
+        all_cpu_temps = [d[1] for d in raw_data if d[1] is not None]
+        all_gpu_temps = [g[1] for g in gpu_raw if g[1] is not None]
+        
+        min_t = int(min(all_cpu_temps + all_gpu_temps + [30]))
+        max_t = int(max(all_cpu_temps + all_gpu_temps + [80]))
+        
+        temp_labels = list(range(min_t, max_t + 1))
+        analysis['cpu_temp_labels'] = [f"{t}°C" for t in temp_labels]
+        cpu_temp_counts = {t: 0 for t in temp_labels}
+        gpu_temp_counts = {t: 0 for t in temp_labels}
+        
+        cpu_load_counts = [0]*5
+        gpu_load_counts = [0]*5
+        gpu_pwr_sum = 0
+        cpu_pwr_sum = 0
+        gpu_pwr_points = 0
+        
+        # 散点图空间聚类预处理 (50x50 网格)
+        grid_size = 50
+        vram_eff_grid = {} # {(gx, gy): weight}
+        
+        # 建立快速查找 GPU 数据的映射 (用于全量计算)
+        gpu_raw_map = {g[0]: g for g in gpu_raw}
+        
+        for d in raw_data:
+            ts, t, _, p, l, _, _, _, _, _ = d
+            
+            # CPU 温度分布 (1度精度)
+            if t is not None:
+                it = int(round(t))
+                if it in cpu_temp_counts: cpu_temp_counts[it] += 1
+                
+            # CPU 负载分布
+            if l is not None:
+                if l < 10: cpu_load_counts[0] += 1
+                elif l < 30: cpu_load_counts[1] += 1
+                elif l < 60: cpu_load_counts[2] += 1
+                elif l < 90: cpu_load_counts[3] += 1
+                else: cpu_load_counts[4] += 1
+            
+            # GPU 关联计算
+            g = gpu_raw_map.get(ts)
+            if g:
+                # g: (ts, temp, util_gpu, util_mem, mem_used, power)
+                gt, gl, gm, gp = g[1], g[2], g[3], g[5]
+                if gt is not None:
+                    igt = int(round(gt))
+                    if igt in gpu_temp_counts: gpu_temp_counts[igt] += 1
+                if gl is not None:
+                    if gl < 10: gpu_load_counts[0] += 1
+                    elif gl < 30: gpu_load_counts[1] += 1
+                    elif gl < 60: gpu_load_counts[2] += 1
+                    elif gl < 90: gpu_load_counts[3] += 1
+                    else: gpu_load_counts[4] += 1
+                if gl is not None and gm is not None:
+                    # 空间聚类：将 0-100% 映射到 0-grid_size 整数坐标
+                    gx = int(gl * grid_size / 100.1)
+                    gy = int(gm * grid_size / 100.1)
+                    vram_eff_grid[(gx, gy)] = vram_eff_grid.get((gx, gy), 0) + 1
+                    
+                if gp is not None:
+                    gpu_pwr_sum += gp
+                    cpu_pwr_sum += max(0, p - gp)
+                    gpu_pwr_points += 1
+                else:
+                    cpu_pwr_sum += p
+            else:
+                cpu_pwr_sum += p
+
+        # 转换聚类后的散点数据
+        max_weight = max(vram_eff_grid.values()) if vram_eff_grid else 1
+        for (gx, gy), weight in vram_eff_grid.items():
+            analysis['vram_efficiency'].append({
+                'x': round(gx * 100 / grid_size, 1),
+                'y': round(gy * 100 / grid_size, 1),
+                'r': round(2 + (weight / max_weight) * 8, 1) # 动态半径增加视觉深度
+            })
+
+        # 归一化为百分比 (CPU 以系统总点数为分母，GPU 以 GPU 实际有效采样点数为分母)
+        gpu_total_points = sum(gpu_temp_counts.values()) # GPU 实际在线采样数
+        
+        analysis['cpu_temp_dist'] = [round(cpu_temp_counts[t] / raw_total_points * 100, 2) for t in temp_labels]
+        analysis['cpu_load_dist'] = [round(c / raw_total_points * 100, 2) for c in cpu_load_counts]
+        
+        if gpu_total_points > 0:
+            analysis['gpu_temp_dist'] = [round(gpu_temp_counts[t] / gpu_total_points * 100, 2) for t in temp_labels]
+            analysis['gpu_load_dist'] = [round(c / gpu_total_points * 100, 2) for c in gpu_load_counts]
+        else:
+            analysis['gpu_temp_dist'] = [0] * len(temp_labels)
+            analysis['gpu_load_dist'] = [0] * 5
+        
+        if raw_total_points > 0:
+            analysis['cpu_power_avg'] = round(cpu_pwr_sum / raw_total_points, 1)
+            if gpu_pwr_points > 0:
+                analysis['gpu_power_avg'] = round(gpu_pwr_sum / gpu_pwr_points, 1)
+
     return jsonify({
         'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in final_data],
         'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in final_data],
@@ -997,7 +1112,8 @@ def api_history_custom():
         'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data],
         'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data],
         'gpu': aligned_gpu, # 直接包含对齐后的 GPU 数据
-        'stats': stats
+        'stats': stats,
+        'analysis': analysis
     })
 
 # --- [关键修复] Config 路由重写，防止数据库连接错误 ---
