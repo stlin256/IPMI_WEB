@@ -7,7 +7,7 @@
 ![alt text](/img/image.jpeg)
 ![alt text](/img/image-1.jpeg)
 ![alt text](/img/image-2.jpeg)
-![alt text](/img/image-3.png)
+![alt text](/img/image-3.jpeg)
 
 <p align="center">
   <img src="img/phone-1.jpg" width="24%" />
