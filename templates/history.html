@@ -464,11 +464,27 @@
         charts.loadDist = new Chart(document.getElementById('chartLoadDist'), {
             type: 'bar',
             data: { labels: ['<10%', '10-30%', '30-60%', '60-90%', '>90%'], datasets: [] },
-            options: { ...deepCommonOptions, scales: { x: { grid: { display: false } }, y: pctScale } }
+            options: { 
+                ...deepCommonOptions, 
+                scales: { x: { grid: { display: false } }, y: pctScale },
+                plugins: {
+                    ...deepCommonOptions.plugins,
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== undefined) label += context.parsed.y.toFixed(1) + '%';
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         charts.vramEff = new Chart(document.getElementById('chartVRAMEff'), {
-            type: 'bubble', // 改为 bubble 以支持动态半径
+            type: 'bubble',
             data: { datasets: [{ label: 'GPU efficiency', data: [], backgroundColor: 'rgba(57, 197, 187, 0.5)', borderColor: 'rgba(57, 197, 187, 0.8)', borderWidth: 1 }] },
             options: { 
                 ...deepCommonOptions,
@@ -476,6 +492,16 @@
                 scales: { 
                     x: { ...pctScale, title: { display: true, text: 'GPU Core Util %', color: '#8b949e' } },
                     y: { ...pctScale, title: { display: true, text: 'VRAM Util %', color: '#8b949e' } }
+                },
+                plugins: {
+                    ...deepCommonOptions.plugins,
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Core: ${context.raw.x}% | VRAM: ${context.raw.y}%`;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -487,7 +513,20 @@
                 ...deepCommonOptions, 
                 fill: true, 
                 elements: { line: { tension: 0.4, borderWidth: 2 } },
-                scales: { x: { grid: { display: false } }, y: pctScale }
+                scales: { x: { grid: { display: false } }, y: pctScale },
+                plugins: {
+                    ...deepCommonOptions.plugins,
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== undefined) label += context.parsed.y.toFixed(2) + '%';
+                                return label;
+                            }
+                        }
+                    }
+                }
             }
         });
 
