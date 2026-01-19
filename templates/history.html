@@ -189,8 +189,7 @@
 
                         <div class="col-12 col-xl-6">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-1 text-uppercase fw-bold">VRAM Efficiency</div>
-                                <div class="small text-muted mb-3" style="font-size: 0.75rem">Correlation between GPU Compute & VRAM Usage</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold">VRAM Efficiency</div>
                                 <div class="insights-chart-container" style="height: 300px">
                                     <canvas id="chartVRAMEff"></canvas>
                                 </div>
@@ -436,7 +435,24 @@
         charts.pwrDist = new Chart(document.getElementById('chartPowerDist'), {
             type: 'doughnut',
             data: { labels: ['CPU + Others', 'GPU'], datasets: [{ data: [0, 0], backgroundColor: ['#1f6feb', '#39c5bb'], borderWidth: 0 }] },
-            options: { ...deepCommonOptions, cutout: '70%', onHover: null, plugins: { legend: { position: 'bottom' } } }
+            options: { 
+                ...deepCommonOptions, 
+                cutout: '70%', 
+                onHover: null, 
+                plugins: { 
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed !== undefined) label += context.parsed.toFixed(1) + '%';
+                                return label;
+                            }
+                        }
+                    }
+                } 
+            }
         });
 
         const pctScale = { 
@@ -699,8 +715,16 @@
         if (rawData.analysis) {
             const ana = rawData.analysis;
 
-            // 1. 功耗占比
-            charts.pwrDist.data.datasets[0].data = [ana.cpu_power_avg, ana.gpu_power_avg];
+            // 1. 功耗占比 (转换成百分比展示)
+            const totalPwr = (ana.cpu_power_avg || 0) + (ana.gpu_power_avg || 0);
+            if (totalPwr > 0) {
+                charts.pwrDist.data.datasets[0].data = [
+                    (ana.cpu_power_avg / totalPwr * 100).toFixed(1),
+                    (ana.gpu_power_avg / totalPwr * 100).toFixed(1)
+                ];
+            } else {
+                charts.pwrDist.data.datasets[0].data = [0, 0];
+            }
             charts.pwrDist.update();
 
             // 2. 负载分布
