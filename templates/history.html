@@ -300,8 +300,8 @@
 
             <div class="d-flex flex-column gap-5 mt-2" id="charts-wrapper">
                 <!-- 原始历史图表 -->
-                <div class="pt-5">
-                    <div class="h4 mb-4 fw-bold text-muted"><i class="fas fa-chart-line me-2"></i>History</div>
+                <div class="pt-3">
+                    <div class="h4 mb-3 fw-bold text-muted"><i class="fas fa-chart-line me-2"></i>History</div>
                     <div class="d-flex flex-column gap-5">
                         <div style="height: 300px; width: 100%">
                             <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-thermometer-half me-1"></i> Thermal Status</div>
@@ -413,20 +413,19 @@
             interaction: { mode: 'index', intersect: false },
             group_id: 'insights_group', // 独立的组 ID，防止跨组同步
             onHover: (event, elements, chart) => {
+                // Insights 组内不再跨表同步准星
                 const x = event.x;
                 const isOut = event.type === 'mouseout' || !chart.chartArea || x < chart.chartArea.left || x > chart.chartArea.right;
                 
-                // 仅同步 Insights 组内的图表
-                ['pwrDist', 'loadDist', 'vramEff', 'tempDist'].forEach(key => {
-                    const c = charts[key];
-                    if (!c) return;
+                // 只有 Thermal Stability (tempDist) 需要准星
+                if (chart === charts.tempDist) {
                     if (isOut) {
-                        c.crosshair = { x: null, active: false };
+                        chart.crosshair = { x: null, active: false };
                     } else {
-                        c.crosshair = { x, active: true };
+                        chart.crosshair = { x, active: true };
                     }
-                    c.draw();
-                });
+                    chart.draw();
+                }
             },
             plugins: {
                 legend: { position: 'top', align: 'end', labels: { color: '#8b949e', usePointStyle: true, boxWidth: 8 } },
