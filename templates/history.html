@@ -10,7 +10,7 @@
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <style>
         :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", system-ui, sans-serif; padding-bottom: 60px; }
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
         .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
         .nav-link:hover, .nav-link.active { color: #fff !important; }
@@ -799,5 +799,10 @@
     checkLogStatus();
     setInterval(checkLogStatus, 30000);
 </script>
+<footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
+    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
+        <i class="fab fa-github me-1"></i>GitHub @stlin256
+    </a>
+</footer>
 </body>
 </html>
