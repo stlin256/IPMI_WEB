@@ -362,7 +362,10 @@
         group_id: 'history_group', // 默认组 ID
         onHover: (event, elements, chart) => {
             const x = event.x;
-            const isOut = event.type === 'mouseout' || !chart.chartArea || x < chart.chartArea.left || x > chart.chartArea.right;
+            const y = event.y;
+            const isOut = !chart.chartArea || 
+                          x < chart.chartArea.left || x > chart.chartArea.right || 
+                          y < chart.chartArea.top || y > chart.chartArea.bottom;
             
             Object.values(charts).forEach(c => {
                 if (!c) return;
@@ -370,10 +373,10 @@
                 if (c.options.group_id === chart.options.group_id) {
                     if (isOut) {
                         c.crosshair = { x: null, active: false };
-                        c.tooltip.setActiveElements([], { x: 0, y: 0 });
+                        if (c.tooltip) c.tooltip.setActiveElements([], { x: 0, y: 0 });
                     } else {
                         c.crosshair = { x, active: true };
-                        if (c !== chart) {
+                        if (c.tooltip) {
                             const items = c.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
                             c.tooltip.setActiveElements(items || [], { x: event.x, y: event.y });
                         }
@@ -405,6 +408,22 @@
     };
 
     function init() {
+        // 监听所有图表容器的鼠标移出，确保清理状态
+        ['chartTemp', 'chartLoad', 'chartIO'].forEach(id => {
+            const canvas = document.getElementById(id);
+            if (canvas) {
+                canvas.addEventListener('mouseleave', () => {
+                    Object.values(charts).forEach(c => {
+                        if (c && c.options.group_id === 'history_group') {
+                            c.crosshair = { x: null, active: false };
+                            if (c.tooltip) c.tooltip.setActiveElements([], { x: 0, y: 0 });
+                            c.draw();
+                        }
+                    });
+                });
+            }
+        });
+
         // 监听 Insights 折叠展开事件，实现懒加载
         const collapseEl = document.getElementById('collapseInsights');
         collapseEl.addEventListener('show.bs.collapse', () => {
