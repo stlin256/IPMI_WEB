@@ -502,6 +502,7 @@
             data: { datasets: [{ label: 'GPU efficiency', data: [], backgroundColor: 'rgba(57, 197, 187, 0.5)', borderColor: 'rgba(57, 197, 187, 0.8)', borderWidth: 1 }] },
             options: { 
                 ...deepCommonOptions,
+                interaction: { mode: 'nearest', intersect: true }, // 修正气泡图交互模式
                 onHover: null,
                 scales: { 
                     x: { ...pctScale, title: { display: true, text: 'GPU Core Util %', color: '#8b949e' } },
