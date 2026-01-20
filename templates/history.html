@@ -134,10 +134,15 @@
     </div>
 
     <div class="card h-100">
-        <div class="card-header d-flex justify-content-between align-items-center py-3 flex-wrap gap-2">
-            <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i>History Explorer</span>
+        <div class="card-header d-flex justify-content-between align-items-center py-3 flex-wrap gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i>History Explorer</span>
+                <button class="btn btn-sm btn-outline-secondary px-2 border-0" onclick="exportData()" title="Export CSV Data">
+                    <i class="fas fa-file-export"></i>
+                </button>
+            </div>
             
-            <div class="d-flex gap-1 gap-md-3 align-items-center ms-auto">
+            <div class="d-flex gap-1 gap-md-3 align-items-center ms-auto flex-wrap justify-content-end">
                 <button class="btn btn-sm btn-outline-info px-2 px-md-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInsights">
                     <i id="btn-insights-icon" class="fas fa-lightbulb me-1"></i> <span id="btn-insights-text">Insights</span>
                 </button>
@@ -325,6 +330,7 @@
 <script>
     let charts = { temp: null, load: null, io: null, pwrDist: null, loadDist: null, vramEff: null, tempDist: null };
     let rawData = {};
+    let isBaseDataLoading = false;
 
     // 准星同步插件 (增加 group_id 隔离逻辑)
     const crosshairPlugin = {
@@ -399,6 +405,14 @@
     };
 
     function init() {
+        // 监听 Insights 折叠展开事件，实现懒加载
+        const collapseEl = document.getElementById('collapseInsights');
+        collapseEl.addEventListener('show.bs.collapse', () => {
+            // 如果正在加载基础数据，或者基础数据还没加载完，点开立刻处理
+            // 如果基础数据加载完了，loadInsights 内部会判断是否需要重新请求
+            loadInsights();
+        });
+
         // 注册插件
         Chart.register(crosshairPlugin);
         
@@ -568,16 +582,64 @@
         return gradient;
     }
 
+    let lastInsightsHours = -1;
+
+    function loadInsights() {
+        const rangeEl = document.querySelector('input[name="timeRange"]:checked');
+        const hours = rangeEl ? parseInt(rangeEl.value) : 1;
+        
+        // 如果时间范围没变且数据已存在，跳过重复请求
+        if (hours === lastInsightsHours && rawData.analysis) return;
+
+        // 为 Insights 区域的四个图表卡片分别添加骨架屏覆盖
+        const insightCardSelectors = [
+            '#chartPowerDist',
+            '#chartLoadDist',
+            '#chartVRAMEff',
+            '#chartTempDist'
+        ];
+
+        insightCardSelectors.forEach(selector => {
+            const canvas = document.querySelector(selector);
+            if (canvas) {
+                const card = canvas.closest('.card');
+                if (card) {
+                    card.classList.add('position-relative');
+                    if (!card.querySelector('.insights-mask')) {
+                        const mask = document.createElement('div');
+                        mask.className = 'skeleton rounded-3 position-absolute top-0 start-0 w-100 h-100 insights-mask';
+                        mask.style.backgroundColor = 'var(--bg-card)';
+                        mask.style.zIndex = '10';
+                        card.appendChild(mask);
+                    }
+                }
+            }
+        });
+
+        fetch(`/api/insights?hours=${hours}`).then(r => r.json()).then(data => {
+            rawData.analysis = data;
+            lastInsightsHours = hours;
+            
+            // 移除 Insights 区域的所有覆盖遮罩
+            document.querySelectorAll('.insights-mask').forEach(m => m.remove());
+            
+            updateInsightsCharts();
+        }).catch(e => {
+            console.error('Insights Load Error:', e);
+            document.querySelectorAll('.insights-mask').forEach(m => m.remove());
+        });
+    }
+
     function loadData() {
         const rangeEl = document.querySelector('input[name="timeRange"]:checked');
         const hours = rangeEl ? rangeEl.value : 1;
         
         const wrapper = document.getElementById('charts-wrapper');
         const skeleton = document.getElementById('skeleton-screen');
-        const insightsSection = document.getElementById('deep-analysis-section');
         
         wrapper.classList.add('opacity-25');
         skeleton.classList.remove('d-none');
+        isBaseDataLoading = true;
 
         // 为 6 个统计卡片应用背景覆盖流光效果
         const statIds = ['stat-temp', 'stat-load', 'stat-net', 'stat-disk', 'stat-energy-interval', 'stat-energy-total'];
@@ -596,44 +658,55 @@
             }
         });
         
-        // 为 Insights 板块应用流光动画效果 (通过直接控制子元素的显示)
-        if (insightsSection) {
-            insightsSection.style.position = 'relative';
-            if (!document.getElementById('insights-skeleton')) {
-                const s = document.createElement('div');
-                s.id = 'insights-skeleton';
-                s.className = 'skeleton rounded-3 position-absolute top-0 start-0 w-100 h-100';
-                s.style.zIndex = '10';
-                insightsSection.appendChild(s);
-            }
-        }
+        const isInsightsShown = document.getElementById('collapseInsights').classList.contains('show');
         
+        // 逻辑修正：
+        // 1. 如果是展开的，那么同时处理
+        if (isInsightsShown) {
+            loadInsights();
+        } else {
+            // 如果没展开，标记数据已过期，下次打开时再请求
+            rawData.analysis = null;
+            lastInsightsHours = -1;
+        }
+
         const energyStart = localStorage.getItem('energy_start_ts') || 0;
         
-        // 请求系统历史 (现在已经包含了对齐后的 GPU 历史数据)
+        // 请求基础历史数据 (不包含 heavy insights 计算)
         fetch(`/api/history_custom?hours=${hours}&energy_start=${energyStart}`).then(r => r.json()).then(sys => {
-            rawData = sys;
+            isBaseDataLoading = false;
+            rawData = { ...rawData, ...sys }; // 合并数据，保留分析结果
             wrapper.classList.remove('opacity-25');
             skeleton.classList.add('d-none');
             
             // 移除 6 个统计卡片的背景覆盖遮罩
-            const statIds = ['stat-temp', 'stat-load', 'stat-net', 'stat-disk', 'stat-energy-interval', 'stat-energy-total'];
             statIds.forEach(id => {
                 const m = document.getElementById('mask-' + id);
                 if (m) m.remove();
             });
-
-            // 移除 Insights 流光效果
-            const iskel = document.getElementById('insights-skeleton');
-            if (iskel) iskel.remove();
             
             updateChart();
+
+            // 2. 如果不展开，那就是先处理图表，加载后再处理上面的 (如果展开了就不需要在这里再次触发了)
+            if (!isInsightsShown && document.getElementById('collapseInsights').classList.contains('show')) {
+                // 这种情况属于加载一半点开了，或者在加载完瞬间点开了
+                loadInsights();
+            } else if (!isInsightsShown) {
+                // 这里其实可以不主动加载，直到用户点开。
+                // 但按要求：如果不展开，“加载后再处理上面的”，可能意味着即使没展开也要在后台静默加载？
+                // 重新阅读要求：“如果不展开...那就是先处理下面的图表，加载后再处理上面的”
+                // 这可能意味着即便没展开，加载完图表后也应该去加载 insights 数据，以便点开时立刻显示。
+                loadInsights();
+            }
         }).catch(e => {
+            isBaseDataLoading = false;
             console.error(e);
             skeleton.classList.add('d-none');
             wrapper.classList.remove('opacity-25');
-            const iskel = document.getElementById('insights-skeleton');
-            if (iskel) iskel.remove();
+            statIds.forEach(id => {
+                const m = document.getElementById('mask-' + id);
+                if (m) m.remove();
+            });
         });
     }
 
@@ -750,7 +823,11 @@
         updateSingleChart(charts.load, dsLoad);
         updateSingleChart(charts.io, dsIO);
 
-        // --- 更新深度分析图表 ---
+        // --- 更新深度分析图表 (支持独立调用) ---
+        updateInsightsCharts();
+    }
+
+    function updateInsightsCharts() {
         if (rawData.analysis) {
             const ana = rawData.analysis;
 
@@ -793,6 +870,20 @@
             if (d.unread) dot.classList.remove('d-none');
             else dot.classList.add('d-none');
         });
+    }
+
+    function exportData() {
+        const btn = event.currentTarget;
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        window.location.href = '/api/export_data';
+        
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }, 2000);
     }
 
     init();
