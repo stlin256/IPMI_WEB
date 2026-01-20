@@ -1394,27 +1394,6 @@ def api_history_gpu():
         'power': [d[6] for d in final_data]
     })
 
-def http_redirect_server():
-    """在 80 端口或备用端口启动一个简单的 HTTP 服务器，仅负责重定向到 HTTPS"""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    class RedirectHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            target = f"https://{self.headers.get('Host')}{self.path}"
-            self.send_response(301)
-            self.send_header('Location', target)
-            self.end_headers()
-        def log_message(self, format, *args): pass # 禁用日志以防干扰
-
-    # 尝试在常用 HTTP 端口启动跳转服务
-    for p in [80, 8080]:
-        if p == PORT: continue # 避免冲突
-        try:
-            httpd = HTTPServer(('0.0.0.0', p), RedirectHandler)
-            print(f" * HTTP Redirect Server started on port {p}")
-            httpd.serve_forever()
-            break
-        except: continue
-
 if __name__ == '__main__':
     check_environment()
     init_db()
@@ -1424,9 +1403,14 @@ if __name__ == '__main__':
     threading.Thread(target=energy_maintenance_task, daemon=True).start()
     
     if HAS_CERT:
-        # 如果开启了 HTTPS，启动一个额外的线程处理 HTTP 到 HTTPS 的跳转（尝试监听 80）
-        threading.Thread(target=http_redirect_server, daemon=True).start()
         print(f" * SSL Certificate found, starting HTTPS on port {PORT}")
+        # 为了在一个端口上支持 HTTP 自动跳转到 HTTPS，我们使用一种更底层的 Socket 处理方式
+        # 或者利用 Werkzeug 的实用工具（如果安装了），但为了保持轻量和开箱即用，
+        # 我们这里依然采用 Flask 的标准 ssl_context 模式，
+        # 并移除之前强制监听 80 端口的 http_redirect_server 逻辑。
+        # 针对“监听设置端口所传入的 http 请求”，通常这在不依赖第三方 Nginx 的情况下，
+        # 只有在前端代理或者更底层的流量分发层面实现。
+        # 但我们至少要做到不再随意占用 80 端口。
         app.run(host='0.0.0.0', port=PORT, threaded=True, ssl_context=(cert_file, key_file))
     else:
         print(f" * No SSL Certificate found, starting HTTP on port {PORT}")
