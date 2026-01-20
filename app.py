@@ -1160,8 +1160,8 @@ def api_insights():
     cpu_pwr_sum = 0
     gpu_pwr_points = 0
     
-    # 散点图空间聚类预处理 (50x50 网格)
-    grid_size = 50
+    # 散点图空间聚类预处理 (100x100 网格，精确到 1%)
+    grid_size = 100
     vram_eff_grid = {} 
     
     gpu_raw_map = {g[0]: g for g in gpu_raw}
