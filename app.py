@@ -891,20 +891,23 @@ def api_history_custom():
     # 时间格式优化：如果是 1H 视图，显示到秒
     time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
   
-    # [修复断点显示] 注入 null 值处理数据缺失
+    # [优化断点显示] 更加宽容的断点检测
+    # 核心思路：步进采样本身就会拉大点距。只有当两点间距远大于步长 *且* 大于一个绝对阈值（10分钟）时，才判定为关机/断电
     final_data = []
-    # 动态断点阈值：根据采样步长调整
-    # 正常记录间隔是 1s，如果步长是 step，那么预期间隔是 step 秒。
-    # 我们允许一定的抖动，比如 3 * step。如果超过这个值，认为存在断点。
-    gap_threshold = max(30, step * 3) 
+    
+    # 绝对断裂阈值 (秒) - 设定为 2 分钟，只有较长时间失联才断开，解决 CPU 满载漏点问题
+    ABSOLUTE_GAP_LIMIT = 120 
     
     for i in range(len(sampled_data)):
         if i > 0:
             prev_ts = sampled_data[i-1][0]
             curr_ts = sampled_data[i][0]
-            if curr_ts - prev_ts > gap_threshold:
-                # 插入一个 null 数据点，时间戳取中间
-                # 使用 None 表示断点，前端 Chart.js 会识别并断开连线
+            
+            # 判断逻辑：不仅要超过 step 的倍数，还要超过 ABSOLUTE_GAP_LIMIT
+            # 这样在 7D 视图下 (step 较大)，普通的小抖动会被 step 本身覆盖，不会误判
+            if curr_ts - prev_ts > max(ABSOLUTE_GAP_LIMIT, step * 10):
+                # 插入一个 null 数据点，时间戳取中间，各字段设为 None
+                # 前端 Chart.js 会识别并断开连线
                 final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
         
         final_data.append(sampled_data[i])
