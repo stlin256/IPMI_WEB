@@ -12,6 +12,8 @@ import shutil
 import io
 import zipfile
 import csv
+import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 
@@ -66,6 +68,83 @@ app.config.update(
     SESSION_COOKIE_SECURE=HAS_CERT,
     SESSION_COOKIE_HTTPONLY=True
 )
+
+# --- 日志配置 ---
+def setup_logging():
+    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # 文件日志 (Rotating 10MB, keep 5 backups)
+    file_handler = RotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
+    file_handler.setFormatter(log_formatter)
+    file_handler.setLevel(logging.INFO)
+    
+    # 控制台日志
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+    console_handler.setLevel(logging.INFO)
+    
+    # Root Logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+setup_logging()
+
+# 全局变量：记录上次检测到的时间戳，用于间隔检测
+last_audit_check_ts = {}
+
+
+def write_audit(level, module, action, message, details=None, operator=None, force_check=False):
+    """
+    全方位审计日志写入函数
+    :param level: INFO/WARN/ERROR/SECURITY
+    :param module: AUTH, FAN, SYSTEM, CONFIG, CALIBRATION
+    :param action: LOGIN, UPDATE, IMPORT, etc.
+    :param message: Human readable message
+    :param details: JSON object or dict with technical details
+    :param operator: IP address or 'SYSTEM'
+    """
+    try:
+        if operator is None:
+            # 尝试自动获取 IP
+            try:
+                operator = get_client_ip()
+            except:
+                operator = 'SYSTEM'
+        
+        # 尝试自动获取 UA
+        ua = 'Unknown'
+        try:
+            ua = request.headers.get('User-Agent', 'Unknown')
+        except: 
+            pass
+
+        now = int(time.time())
+        details_json = json.dumps(details) if details else '{}'
+        
+        # 1. 写入数据库
+        try:
+            conn = get_db_connection()
+            conn.execute('''INSERT INTO audit_logs (timestamp, level, module, operator, action, message, details, ua)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
+                         (now, level, module, operator, action, message, details_json, ua))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logging.error(f"Failed to write audit log to DB: {e}")
+
+        # 2. 写入文件日志 (作为备份和调试)
+        log_msg = f"[{module}][{action}] {message} | Op: {operator} | Details: {details_json}"
+        if level == 'ERROR' or level == 'SECURITY':
+            logging.error(log_msg)
+        elif level == 'WARN':
+            logging.warning(log_msg)
+        else:
+            logging.info(log_msg)
+            
+    except Exception as e:
+        print(f"CRITICAL LOGGING FAILURE: {e}")
 
 # 全局缓存 (带默认值防止启动时读取失败)
 cache_lock = threading.Lock()
@@ -167,7 +246,44 @@ def init_db():
     # 耗电量永久化表 (Wh)
     c.execute('''CREATE TABLE IF NOT EXISTS energy_hourly 
                  (timestamp INTEGER PRIMARY KEY, energy_wh REAL, samples INTEGER)''')
+
+    # 全方位审计日志表 (Audit Log)
+    c.execute('''CREATE TABLE IF NOT EXISTS audit_logs
+                 (timestamp INTEGER, level TEXT, module TEXT, operator TEXT, 
+                  action TEXT, message TEXT, details TEXT, ua TEXT)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_ts ON audit_logs(timestamp)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_level ON audit_logs(level)')
   
+    # --- 一次性历史日志迁移逻辑 ---
+    c.execute("SELECT value FROM config WHERE key='log_migration_done'")
+    if not c.fetchone() and os.path.exists('login_errors.log'):
+        print("Migrating legacy login logs to database...")
+        try:
+            with open('login_errors.log', 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                for line in lines:
+                    match = re.search(r'\[(.*?)\] IP: (.*?) \| UA: (.*?) \| 失败次数: (.*?) \| 惩罚等待: (.*?)s', line)
+                    if match:
+                        time_str, ip, ua, count, wait = match.groups()
+                        try:
+                            # 转换时间字符串为时间戳
+                            dt = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+                            ts = int(dt.timestamp())
+                            details = json.dumps({'fail_count': int(count), 'wait_time': int(wait)})
+                            c.execute('''INSERT INTO audit_logs (timestamp, level, module, operator, action, message, details, ua)
+                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
+                                      (ts, 'SECURITY', 'AUTH', ip, 'LOGIN_FAIL', f'登录失败 (次数: {count})', details, ua))
+                        except Exception as e:
+                            print(f"Failed to migrate line: {line.strip()} | Error: {e}")
+            
+            c.execute("INSERT INTO config (key, value) VALUES ('log_migration_done', 'true')")
+            print(f"Successfully migrated {len(lines)} log entries.")
+            # 迁移完成后重命名旧文件
+            os.rename('login_errors.log', 'login_errors.log.bak')
+        except Exception as e:
+            print(f"Log migration error: {e}")
+
     conn.commit()
     conn.close()
     load_calibration_map()
@@ -232,20 +348,24 @@ def get_ipmi_dump():
     try: return subprocess.check_output(['ipmitool', 'sensor'], encoding='utf-8', timeout=3)
     except: return ""
 
-def log_login_error(ip, ua, count, wait_time):
-    with open('login_errors.log', 'a', encoding='utf-8') as f:
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        f.write(f"[{timestamp}] IP: {ip} | UA: {ua} | 失败次数: {count} | 惩罚等待: {wait_time}s\n")
-
 def get_log_unread_status():
     try:
-        if not os.path.exists('login_errors.log'): return False
-        log_time = int(os.path.getmtime('login_errors.log'))
+        # 检查 audit_logs 中是否有新的 ERROR, SECURITY 或 WARN 级别的日志
+        # WARN 级别包括异常间隔检测 (DATA_GAP)
         conn = get_db_connection()
-        res = conn.execute("SELECT value FROM config WHERE key='last_log_check'").fetchone()
-        conn.close()
+        c = conn.cursor()
+        
+        # 获取上次检查时间
+        c.execute("SELECT value FROM config WHERE key='last_log_check'")
+        res = c.fetchone()
         last_check = int(res[0]) if res else 0
-        return log_time > last_check
+        
+        # 查询是否有更新的警告日志（包括异常间隔）
+        c.execute("SELECT COUNT(*) FROM audit_logs WHERE timestamp > ? AND (level='ERROR' OR level='SECURITY' OR level='WARN')", (last_check,))
+        count = c.fetchone()[0]
+        conn.close()
+        
+        return count > 0
     except: return False
 
 def parse_ipmi_value(dump, regex):
@@ -423,8 +543,10 @@ def calibration_task():
             conn.commit()
             load_calibration_map()
             sys_cache['calibration']['log'] = 'Done!'
+            write_audit('INFO', 'CALIBRATION', 'SUCCESS', '风扇校准完成', details={'points': len(calibration_data)})
     except Exception as e:
         sys_cache['calibration']['log'] = f'Err: {str(e)}'
+        write_audit('ERROR', 'CALIBRATION', 'FAIL', f'风扇校准失败: {str(e)}')
         print(e)
     finally:
         sys_cache['calibration']['active'] = False
@@ -439,6 +561,10 @@ def background_worker():
     
     # 记录上一次有效的 IPMI 数据用于容错
     last_valid_hw = {'power': 0, 'fan_rpm': 0, 'timestamp': 0}
+    
+    # 异常间隔检测：记录上次审计日志时间戳
+    global last_audit_check_ts
+    last_audit_check_ts['last_check'] = int(time.time())
 
     while True:
         try:
@@ -554,11 +680,28 @@ def background_worker():
                          (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
                           net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
               
-                # Cleanup old data
+                # Cleanup old data (metrics_v2 遵循 RETENTION_DAYS，但 audit_logs 永久保存)
                 cutoff = int(now) - (RETENTION_DAYS * 86400)
                 c.execute("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
+                # audit_logs 永久保存，不执行清理
                 conn.commit()
                 last_db_log_time = now
+                
+                # === 异常间隔检测：检查数据采集是否连续 ===
+                current_ts = int(now)
+                last_check = last_audit_check_ts.get('last_check', current_ts)
+                gap_seconds = current_ts - last_check
+                
+                # 如果间隔超过 2 分钟（120秒），记录异常间隔日志
+                if gap_seconds > 120:
+                    # 写入异常间隔日志（级别为 WARN，触发小红点刷新）
+                    write_audit('WARN', 'SYSTEM', 'DATA_GAP', f'检测到 {gap_seconds} 秒无数据采集区间', 
+                               details={'gap_seconds': gap_seconds, 'last_check': last_check, 'current': current_ts},
+                               operator='SYSTEM')
+                    print(f"[DATA_GAP] Detected gap of {gap_seconds} seconds (last_check: {last_check}, current: {current_ts})")
+                
+                # 更新最后检查时间戳
+                last_audit_check_ts['last_check'] = current_ts
           
             # [关键修复] 显式关闭连接
             conn.close()
@@ -702,6 +845,8 @@ def login():
             conn.close()
             session['logged_in'] = True
             session.permanent = True
+            
+            write_audit('INFO', 'AUTH', 'LOGIN_SUCCESS', '用户登录成功', operator=ip)
             return redirect(url_for('hardware_page'))
         else:
             # 密码错误：执行正常的阶梯式惩罚
@@ -719,7 +864,11 @@ def login():
                 time.sleep(5)
 
             conn.close()
-            log_login_error(ip, ua, fail_count, wait_current)
+            
+            # 记录审计日志
+            write_audit('SECURITY', 'AUTH', 'LOGIN_FAIL', f'登录失败 (次数: {fail_count})', 
+                       details={'fail_count': fail_count, 'wait_time': wait_current}, operator=ip)
+            
             # PRG 模式重定向
             session['login_error'] = "密码错误次数过多，请稍后重试。"
             return redirect(url_for('login'))
@@ -832,6 +981,156 @@ def api_logs():
         })
 
     return jsonify(result)
+
+@app.route('/api/audit_logs')
+@login_required
+def api_audit_logs():
+    limit = int(request.args.get('limit', 100))
+    offset = int(request.args.get('offset', 0))
+    module = request.args.get('module')
+    level = request.args.get('level')
+    search = request.args.get('search')
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    query = "SELECT * FROM audit_logs WHERE 1=1"
+    params = []
+    
+    if module:
+        query += " AND module = ?"
+        params.append(module)
+    if level:
+        query += " AND level = ?"
+        params.append(level)
+    if search:
+        query += " AND (message LIKE ? OR action LIKE ? OR operator LIKE ?)"
+        wildcard = f"%{search}%"
+        params.extend([wildcard, wildcard, wildcard])
+        
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    c.execute(query, params)
+    rows = c.fetchall()
+    
+    # Get total count for pagination
+    count_query = "SELECT COUNT(*) FROM audit_logs WHERE 1=1"
+    count_params = []
+    if module:
+        count_query += " AND module = ?"
+        count_params.append(module)
+    if level:
+        count_query += " AND level = ?"
+        count_params.append(level)
+    if search:
+        count_query += " AND (message LIKE ? OR action LIKE ? OR operator LIKE ?)"
+        wildcard = f"%{search}%"
+        count_params.extend([wildcard, wildcard, wildcard])
+        
+    c.execute(count_query, count_params)
+    total = c.fetchone()[0]
+    conn.close()
+    
+    logs = []
+    for row in rows:
+        logs.append({
+            'timestamp': row['timestamp'],
+            'time_str': datetime.fromtimestamp(row['timestamp']).strftime('%Y-%m-%d %H:%M:%S'),
+            'level': row['level'],
+            'module': row['module'],
+            'operator': row['operator'],
+            'action': row['action'],
+            'message': row['message'],
+            'details': json.loads(row['details']) if row['details'] else {},
+            'ua': row['ua']
+        })
+        
+    return jsonify({
+        'total': total,
+        'logs': logs
+    })
+
+@app.route('/api/config/export')
+@login_required
+def api_config_export():
+    # 导出完整配置快照
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT key, value FROM config")
+    config_rows = c.fetchall()
+    conn.close()
+    
+    settings = {}
+    for row in config_rows:
+        try:
+            # 尝试解析 JSON 值，如果不是 JSON 则按字符串存储
+            settings[row['key']] = json.loads(row['value'])
+        except:
+            settings[row['key']] = row['value']
+            
+    export_data = {
+        "metadata": {
+            "version": 1,
+            "timestamp": int(time.time()),
+            "export_by": get_client_ip(),
+            "server_name": SERVER_NAME
+        },
+        "settings": settings
+    }
+    
+    # Audit log
+    write_audit('INFO', 'CONFIG', 'EXPORT', '导出系统配置', operator=get_client_ip())
+    
+    return jsonify(export_data)
+
+@app.route('/api/config/import', methods=['POST'])
+@login_required
+def api_config_import():
+    try:
+        data = request.json
+        if not data or 'metadata' not in data or 'settings' not in data:
+            return jsonify({'error': '无效的配置文件格式'}), 400
+            
+        settings = data['settings']
+        version = data['metadata'].get('version', 0)
+        
+        # 记录变更详情
+        changes = []
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # 遍历设置并更新
+        for key, value in settings.items():
+            # 获取旧值用于对比
+            c.execute("SELECT value FROM config WHERE key=?", (key,))
+            old_row = c.fetchone()
+            old_val = old_row['value'] if old_row else None
+            
+            # 将值转回字符串存储
+            new_val_str = json.dumps(value) if isinstance(value, (dict, list, bool, int, float)) else str(value)
+            
+            # 简单对比 (字符串层面)
+            if old_val != new_val_str:
+                changes.append(f"{key}: {old_val} -> {new_val_str}")
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, new_val_str))
+        
+        conn.commit()
+        conn.close()
+        
+        # 刷新缓存
+        load_calibration_map()
+        
+        write_audit('WARN', 'CONFIG', 'IMPORT', '导入系统配置', 
+                   details={'version': version, 'changes_count': len(changes), 'changes': changes},
+                   operator=get_client_ip())
+        
+        return jsonify({'status': 'success', 'changes': len(changes)})
+        
+    except Exception as e:
+        write_audit('ERROR', 'CONFIG', 'IMPORT_FAIL', f'配置导入失败: {str(e)}')
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/status_hardware')
 @login_required
@@ -1162,7 +1461,7 @@ def api_insights():
     
     # 散点图空间聚类预处理 (100x100 网格，精确到 1%)
     grid_size = 100
-    vram_eff_grid = {} 
+    vram_eff_grid = {}
     
     gpu_raw_map = {g[0]: g for g in gpu_raw}
     
@@ -1271,23 +1570,37 @@ def api_config():
     if request.method == 'POST':
         try:
             data = request.json
+            details = {}
+            msg_parts = []
+            
             if 'mode' in data: 
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('mode', ?)", (data['mode'],))
+                details['mode'] = data['mode']
+                msg_parts.append(f"模式->{data['mode']}")
           
             if 'curve' in data: 
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('curve', ?)", (json.dumps(data['curve']),))
+                details['curve_updated'] = True
+                msg_parts.append("更新曲线")
           
             # 兼容性保存
             if 'enabled' in data:
                 val = 'true' if data['enabled'] else 'false'
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', ?)", (val,))
+                details['fixed_enabled'] = val
+                msg_parts.append(f"定速开启->{val}")
           
             if 'target' in data:
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_target', ?)", (str(data['target']),))
+                details['fixed_target'] = data['target']
+                msg_parts.append(f"定速目标->{data['target']}")
 
             conn.commit()
+            
+            write_audit('INFO', 'FAN', 'UPDATE_CONFIG', f"更新风扇配置: {', '.join(msg_parts)}", details=details)
             return jsonify({'status': 'ok'})
         except Exception as e:
+            write_audit('ERROR', 'FAN', 'UPDATE_FAIL', f"更新风扇配置失败: {str(e)}")
             print(f"Config POST Error: {e}")
             return jsonify({'error': str(e)}), 500
         finally:
@@ -1300,13 +1613,26 @@ def api_config_fixed_fan_speed():
     c = conn.cursor()
     try:
         data = request.json
+        details = {}
+        msg_parts = []
+        
         if 'enabled' in data:
-            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_enabled'", (str(data['enabled']).lower(),))
+            val = str(data['enabled']).lower()
+            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_enabled'", (val,))
+            details['enabled'] = val
+            msg_parts.append(f"开启->{val}")
+            
         if 'target' in data:
-            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_target'", (str(data['target']),))
+            val = str(data['target'])
+            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_target'", (val,))
+            details['target'] = val
+            msg_parts.append(f"目标->{val}")
+            
         conn.commit()
+        write_audit('INFO', 'FAN', 'UPDATE_FIXED', f"更新定速设置: {', '.join(msg_parts)}", details=details)
         return jsonify({'status': 'ok'})
     except Exception as e:
+        write_audit('ERROR', 'FAN', 'UPDATE_FIXED_FAIL', f"更新定速设置失败: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
@@ -1315,6 +1641,7 @@ def api_config_fixed_fan_speed():
 @login_required
 def api_calib_start():
     if not sys_cache['calibration']['active']:
+        write_audit('INFO', 'CALIBRATION', 'START', '启动风扇校准', operator=get_client_ip())
         t = threading.Thread(target=calibration_task, daemon=True)
         t.start()
         return jsonify({'status': 'started'})
@@ -1338,16 +1665,36 @@ def api_config_gpu():
         return jsonify(res)
     
     if request.method == 'POST':
-        data = request.json
-        if 'gpu_agent_enabled' in data:
-            c.execute("UPDATE config SET value=? WHERE key='gpu_agent_enabled'", (str(data['gpu_agent_enabled']).lower(),))
-        if 'gpu_agent_host' in data:
-            c.execute("UPDATE config SET value=? WHERE key='gpu_agent_host'", (data['gpu_agent_host'],))
-        if 'gpu_agent_port' in data:
-            c.execute("UPDATE config SET value=? WHERE key='gpu_agent_port'", (str(data['gpu_agent_port']),))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success'})
+        try:
+            data = request.json
+            details = {}
+            msg_parts = []
+            
+            if 'gpu_agent_enabled' in data:
+                val = str(data['gpu_agent_enabled']).lower()
+                c.execute("UPDATE config SET value=? WHERE key='gpu_agent_enabled'", (val,))
+                details['enabled'] = val
+                msg_parts.append(f"Agent开启->{val}")
+                
+            if 'gpu_agent_host' in data:
+                c.execute("UPDATE config SET value=? WHERE key='gpu_agent_host'", (data['gpu_agent_host'],))
+                details['host'] = data['gpu_agent_host']
+                msg_parts.append(f"Host->{data['gpu_agent_host']}")
+                
+            if 'gpu_agent_port' in data:
+                val = str(data['gpu_agent_port'])
+                c.execute("UPDATE config SET value=? WHERE key='gpu_agent_port'", (val,))
+                details['port'] = val
+                msg_parts.append(f"Port->{val}")
+                
+            conn.commit()
+            write_audit('INFO', 'GPU', 'UPDATE_CONFIG', f"更新GPU Agent配置: {', '.join(msg_parts)}", details=details)
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            write_audit('ERROR', 'GPU', 'UPDATE_CONFIG_FAIL', f"更新GPU Agent配置失败: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
 
 # --- GPU 历史数据接口 ---
 @app.route('/api/history_gpu')

@@ -3,27 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Login Logs - {{ server_name }} Ops</title>
-   <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
-   <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
-   <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <title>系统日志 - {{ server_name }} Ops</title>
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; }
-        .ua-box { font-size: 0.75rem; color: var(--text-muted); background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px; word-break: break-all; margin-top: 8px; }
-        .log-group { border-left: 3px solid #1f6feb; padding-left: 15px; margin-bottom: 25px; transition: transform 0.2s; }
-        .log-group:hover { transform: translateX(5px); }
-        .badge-ip { background-color: rgba(31, 111, 235, 0.15); color: #58a6ff; font-family: monospace; font-size: 1rem; }
-        .badge-wait { background-color: rgba(248, 81, 73, 0.15); color: #f85149; }
-        .badge-ua { background-color: rgba(35, 134, 54, 0.15); color: #3fb950; }
-        .timeline-item { position: relative; padding-bottom: 10px; border-left: 1px solid var(--border-color); padding-left: 20px; margin-left: 10px; }
-        .timeline-item::before { content: ""; position: absolute; left: -5px; top: 5px; width: 9px; height: 9px; background: #30363d; border-radius: 50%; }
-
-        /* 按钮箭头翻转动画 */
-        .btn-toggle-arrow i { transition: transform 0.3s ease; }
-        .btn-toggle-arrow:not(.collapsed) i { transform: rotate(180deg); }
+        :root { 
+            --bg-body: #0d1117; 
+            --border-color: #30363d; 
+            --text-main: #e6edf3; 
+            --text-muted: #8b949e;
+            --text-success: #3fb950;
+            --text-danger: #f85149;
+            --text-warning: #d29922;
+            --text-blue: #58a6ff;
+            --accent-blue: #1f6feb;
+            --accent-red: #f85149;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+        }
+        body { 
+            background-color: var(--bg-body); 
+            color: var(--text-main); 
+            font-family: "Segoe UI", sans-serif;
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-size: 13px;
+        }
+        
+        /* 统一导航栏样式 */
+        .navbar { 
+            background-color: rgba(22, 27, 34, 0.95) !important; 
+            backdrop-filter: blur(10px); 
+            border-bottom: 1px solid var(--border-color); 
+            flex-shrink: 0;
+        }
+        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
+        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        
+        /* CLI 风格容器 */
+        .cli-container { 
+            padding: 0 20px;
+            max-width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            margin-top: 1rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+        
+        .cli-line {
+            display: flex;
+            align-items: flex-start;
+            padding: 8px 0;
+            line-height: 1.5;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+        }
+        .cli-line:last-child { border-bottom: none; }
+        
+        .cli-time {
+            color: var(--text-muted);
+            min-width: 140px;
+            flex-shrink: 0;
+        }
+        
+        .cli-status {
+            min-width: 80px;
+            flex-shrink: 0;
+            font-weight: 600;
+        }
+        .cli-status.success { color: var(--text-success); }
+        .cli-status.fail { color: var(--text-danger); }
+        .cli-status.warn { color: var(--text-warning); }
+        .cli-status.info { color: var(--text-blue); }
+        
+        .cli-content {
+            flex-grow: 1;
+            word-break: break-all;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+        }
+        
+n        /* 标签样式 */
+        .cli-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-right: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .cli-tag-ip { 
+            background: rgba(31, 111, 235, 0.15); 
+            color: var(--text-blue); 
+            border-color: rgba(31, 111, 235, 0.3); 
+        }
+        .cli-tag-ip:hover { background: rgba(31, 111, 235, 0.25); }
+        .cli-tag-ua { 
+            background: rgba(139, 148, 158, 0.15); 
+            color: var(--text-muted); 
+            border-color: rgba(139, 148, 158, 0.3); 
+        }
+        .cli-tag-ua:hover { background: rgba(139, 148, 158, 0.25); color: var(--text-main); }
+        
+        /* 高亮效果 */
+        .highlighted .cli-tag-ip {
+            background: rgba(31, 111, 235, 0.4) !important;
+            border-color: var(--accent-blue) !important;
+            box-shadow: 0 0 12px rgba(31, 111, 235, 0.5);
+        }
+        .highlighted .cli-tag-ua {
+            background: rgba(31, 111, 235, 0.3) !important;
+            border-color: var(--accent-blue) !important;
+        }
+        
+        /* 详情折叠区 - 全宽度显示 */
+        .cli-details {
+            margin: 8px 0;
+            padding: 16px;
+            background: rgba(13, 17, 23, 0.95);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+        
+        .cli-details pre {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text-muted);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        /* 折叠动画 */
+        .cli-details.collapse {
+            display: none;
+        }
+        .cli-details.collapse.show {
+            display: block;
+            animation: slideDown 0.25s ease-out;
+        }
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+                max-height: 500px;
+            }
+        }
+        
+        .cli-details-title {
+            color: var(--text-muted);
+            font-size: 11px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .cli-history-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .cli-history-item:last-child { border-bottom: none; }
+        .cli-history-time {
+            color: var(--text-muted);
+            min-width: 130px;
+        }
+        .cli-history-status {
+            min-width: 70px;
+        }
+        .cli-history-msg {
+            color: var(--text-muted);
+        }
+        
+        .terminal-body {
+            background: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        
+        /* 刷新指示器 */
+        .refresh-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-success);
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            .cli-line { flex-wrap: wrap; }
+            .cli-time { min-width: 100px; font-size: 11px; }
+            .cli-status { min-width: 60px; font-size: 11px; }
+            .cli-details { margin-left: 0; padding: 10px; }
+            .cli-history-item { flex-wrap: wrap; }
+            .cli-history-time { min-width: 80px; }
+        }
+        
+        /* 滚动条美化 */
+        .terminal-body::-webkit-scrollbar { width: 8px; }
+        .terminal-body::-webkit-scrollbar-track { background: var(--bg-body); }
+        .terminal-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        .terminal-body::-webkit-scrollbar-thumb:hover { background: #484f58; }
     </style>
 </head>
 <body>
@@ -34,90 +248,350 @@
             <i class="fas fa-shield-alt me-2 text-warning"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
         </a>
         <div class="navbar-nav flex-row ms-auto">
-            <a href="/hardware" class="btn btn-outline-secondary btn-sm me-2">返回面板</a>
+            <a class="btn btn-outline-secondary me-2" href="/hardware"><i class="fas fa-arrow-left"></i></a>
         </div>
     </div>
 </nav>
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3><i class="fas fa-history me-2 text-primary"></i>登录失败审计日志</h3>
-        <button class="btn btn-primary btn-sm" onclick="loadLogs()"><i class="fas fa-sync-alt me-1"></i>刷新</button>
+<div class="container cli-container">
+    <!-- Toast 容器 -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+        <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas fa-check-circle me-2"></i> <span id="toast-msg">操作成功</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
     </div>
 
-    <div id="logs-container">
+    <!-- 导入配置 Modal -->
+    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark border-secondary">
+                <div class="modal-body p-4">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-file-import fa-3x text-success mb-3"></i>
+                        <h5 class="fw-bold">导入配置文件</h5>
+                        <p class="text-muted small">将覆盖当前系统所有配置，请谨慎操作</p>
+                    </div>
+                    <div id="import-error-msg" class="alert alert-danger d-none small py-2 mb-3"></div>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success fw-bold" onclick="document.getElementById('config-upload').click()">
+                            选择文件
+                        </button>
+                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    </div>
+                    <input type="file" id="config-upload" accept=".json" hidden onchange="handleImport(this.files)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <h4 class="mb-0"><i class="fas fa-list me-2 text-primary"></i>系统日志</h4>
+            <span class="refresh-indicator" id="refreshIndicator" title="自动刷新中"></span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-primary btn-sm px-3" onclick="exportConfig()">
+                <i class="fas fa-download me-1"></i>导出配置
+            </button>
+            <button class="btn btn-outline-success btn-sm px-3" onclick="openImportModal()">
+                <i class="fas fa-upload me-1"></i>导入配置
+            </button>
+        </div>
+    </div>
+
+    <!-- 日志容器 -->
+    <div class="terminal-body" id="logs-container" style="border-radius: 8px;">
         <div class="text-center py-5 text-muted">
-            <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
-            <p>正在解析日志记录...</p>
+            <i class="fas fa-spinner fa-spin fa-lg mb-3"></i>
+            <p>正在加载日志...</p>
         </div>
     </div>
 </div>
 
 <script>
-    function loadLogs() {
-        fetch('/api/logs').then(r => r.json()).then(groups => {
-            const container = document.getElementById('logs-container');
-            if (groups.length === 0) {
-                container.innerHTML = '<div class="card p-5 text-center text-muted">目前没有任何登录失败记录。系统很安全！</div>';
+    let importModal;
+
+    function showToast(msg, isError = false) {
+        const toastEl = document.getElementById('opToast');
+        const toastMsg = document.getElementById('toast-msg');
+        toastMsg.innerText = msg;
+        toastEl.classList.remove('bg-success', 'bg-danger');
+        toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
+        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+        toast.show();
+    }
+
+    // 导出配置
+    async function exportConfig() {
+        try {
+            const response = await fetch('/api/config/export');
+            const data = await response.json();
+            const blob = new Blob([JSON.stringify(data, null, 4)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            a.href = url;
+            a.download = `ipmi_config_${timestamp}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('配置导出成功');
+        } catch (e) {
+            showToast('导出失败: ' + e.message, true);
+        }
+    }
+
+    // 打开导入 Modal
+    function openImportModal() {
+        if (!importModal) importModal = new bootstrap.Modal(document.getElementById('importModal'));
+        document.getElementById('import-error-msg').classList.add('d-none');
+        document.getElementById('config-upload').value = '';
+        importModal.show();
+    }
+
+    // 导入配置
+    async function handleImport(files) {
+        if (files.length === 0) return;
+        const errorEl = document.getElementById('import-error-msg');
+        errorEl.classList.add('d-none');
+
+        const file = files[0];
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const config = JSON.parse(e.target.result);
+                
+                // 格式校验
+                if (!config.metadata || !config.settings) {
+                    throw new Error('无效的配置文件格式');
+                }
+                if (typeof config.settings !== 'object') {
+                    throw new Error('settings 必须是一个对象');
+                }
+
+                // 二次确认
+                const version = config.metadata.version || 1;
+                if (!confirm(`确定要导入配置文件吗？\n版本: ${version}\n这将覆盖当前所有配置。`)) {
+                    return;
+                }
+
+                const res = await fetch('/api/config/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const result = await res.json();
+                
+                if (result.status === 'success') {
+                    importModal.hide();
+                    showToast('导入成功，系统正在应用新配置...');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    throw new Error(result.error || '导入失败');
+                }
+            } catch (err) {
+                errorEl.innerText = '导入失败: ' + err.message;
+                errorEl.classList.remove('d-none');
+            } finally {
+                document.getElementById('config-upload').value = '';
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function parseUAInfo(ua) {
+        let tag = "Unknown";
+        if (ua.includes("HuaweiBrowser") || ua.includes("ArkWeb")) tag = "Huawei";
+        else if (ua.includes("Edg/")) tag = "Edge";
+        else if (ua.includes("Chrome")) tag = "Chrome";
+        else if (ua.includes("Firefox")) tag = "Firefox";
+        else if (ua.includes("Safari") && !ua.includes("Chrome")) tag = "Safari";
+        else if (ua.toLowerCase().includes("python")) tag = "Python";
+        else if (ua.toLowerCase().includes("curl")) tag = "cURL";
+        return tag;
+    }
+
+    // 生成指纹 ID
+    function getFingerprintId(ip, ua) {
+        const str = `${ip}_${ua}`;
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return 'fp_' + Math.abs(hash).toString(16);
+    }
+
+    // 高亮同指纹的所有标签
+    function highlightFingerprint(fingerprintId, event) {
+        event.stopPropagation();
+        document.querySelectorAll('.cli-tag').forEach(el => {
+            el.classList.remove('highlighted');
+        });
+        document.querySelectorAll(`[data-fingerprint="${fingerprintId}"]`).forEach(el => {
+            el.classList.add('highlighted');
+        });
+        setTimeout(() => {
+            document.querySelectorAll('.cli-tag').forEach(el => {
+                el.classList.remove('highlighted');
+            });
+        }, 3000);
+    }
+
+    // 切换折叠
+    function toggleDetails(id) {
+        const el = document.getElementById(id);
+        el.classList.toggle('show');
+    }
+
+    let lastTimestamp = 0;
+    let isFirstLoad = true;
+
+    function renderLogLine(log, idx) {
+        const fingerprintId = getFingerprintId(log.operator, log.ua);
+        const uaTag = parseUAInfo(log.ua);
+        
+        // 统一状态配置 - 所有状态使用等宽长度 [XXXX] 格式
+        const isSuccess = log.action === 'LOGIN_SUCCESS';
+        const isFail = log.action === 'LOGIN_FAIL' || log.level === 'SECURITY' || log.level === 'ERROR';
+        
+        let statusClass = 'info';
+        let statusText = '[INFO]';
+        
+        if (isSuccess) {
+            statusClass = 'success';
+            statusText = '[ OK ]';
+        } else if (isFail) {
+            statusClass = 'fail';
+            statusText = '[FAIL]';
+        } else if (log.level === 'WARN') {
+            statusClass = 'warn';
+            statusText = '[WARN]';
+        }
+        
+        const detailsId = `detail-${log.timestamp}-${idx}`;
+        
+        // 统一消息格式
+        let mainMsg = log.message;
+        if (log.module === 'AUTH' && log.details) {
+            if (log.details.fail_count) {
+                mainMsg = `${log.message} (失败: ${log.details.fail_count}次)`;
+            }
+        }
+        
+        // 详情内容
+        let detailsContent = '';
+        if (log.details && Object.keys(log.details).length > 0) {
+            detailsContent = JSON.stringify(log.details, null, 2);
+        }
+        if (log.ua) {
+            detailsContent += (detailsContent ? '\n' : '') + `User-Agent: ${log.ua}`;
+        }
+        
+        return `
+            <div class="cli-line fingerprint-group">
+                <span class="cli-time">${log.time_str}</span>
+                <span class="cli-status ${statusClass}">${statusText}</span>
+                <div class="cli-content">
+                    <span class="cli-tag cli-tag-ip" 
+                          data-fingerprint="${fingerprintId}"
+                          onclick="highlightFingerprint('${fingerprintId}', event)"
+                          title="点击高亮相同指纹">${log.operator}</span>
+                    <span class="cli-tag cli-tag-ua" 
+                          data-fingerprint="${fingerprintId}"
+                          onclick="highlightFingerprint('${fingerprintId}', event)"
+                          title="点击高亮相同指纹">${uaTag}</span>
+                    <span class="fw-bold">${log.module}</span>
+                    <span class="text-muted">${mainMsg}</span>
+                    ${detailsContent ? `
+                        <a href="javascript:void(0)" class="text-primary ms-2" onclick="toggleDetails('${detailsId}')">
+                            [详情]
+                        </a>
+                    ` : ''}
+                </div>
+            </div>
+            ${detailsContent ? `
+                <div class="cli-details collapse" id="${detailsId}">
+                    <div class="cli-details-title">
+                        <i class="fas fa-info-circle me-1"></i> 详细信息
+                    </div>
+                    <pre>${detailsContent}</pre>
+                </div>
+            ` : ''}
+        `;
+    }
+
+    async function loadLogs() {
+        const container = document.getElementById('logs-container');
+
+        try {
+            const response = await fetch('/api/audit_logs?limit=500');
+            const data = await response.json();
+            
+            if (!data.logs || data.logs.length === 0) {
+                if (isFirstLoad) {
+                    container.innerHTML = '<div class="text-center py-5 text-muted">暂无日志记录</div>';
+                    isFirstLoad = false;
+                }
                 return;
             }
 
-            container.innerHTML = groups.map((g, idx) => `
-                <div class="card mb-4 shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-                            <div class="d-flex align-items-center">
-                                <span class="badge badge-ip border border-primary me-2">${g.ip}</span>
-                                <span class="badge badge-ua small"><i class="fas fa-laptop me-1"></i>${g.ua_tag}</span>
-                            </div>
-                            <div class="text-end">
-                                <span class="text-muted small">最后尝试：</span>
-                                <span class="fw-bold text-light">${g.last_time}</span>
-                            </div>
-                        </div>
-                        
-                        <div class="row g-2 mb-3">
-                            <div class="col-6 col-md-3">
-                                <div class="bg-dark p-2 rounded text-center border border-secondary">
-                                    <div class="small text-muted">累计尝试</div>
-                                    <div class="h5 mb-0 text-info fw-bold">${g.total_attempts}</div>
-                                </div>
-                            </div>
-                            <div class="col-6 col-md-3">
-                                <div class="bg-dark p-2 rounded text-center border border-secondary">
-                                    <div class="small text-muted">当前惩罚时长</div>
-                                    <div class="h5 mb-0 text-danger fw-bold">${g.max_wait}s</div>
-                                </div>
-                            </div>
-                        </div>
+            // 按时间倒序
+            const sortedLogs = data.logs.sort((a, b) => b.timestamp - a.timestamp);
+            
+            // 首次加载
+            if (isFirstLoad) {
+                let html = '';
+                sortedLogs.forEach((log, idx) => {
+                    html += renderLogLine(log, idx);
+                });
+                container.innerHTML = html;
+                lastTimestamp = sortedLogs[0]?.timestamp || 0;
+                isFirstLoad = false;
+                return;
+            }
 
-                        <div class="ua-box">
-                            <i class="fas fa-fingerprint me-1 text-info"></i> <strong>浏览器指纹 (UA):</strong><br>
-                            ${g.ua}
-                        </div>
-
-                        <div class="mt-4">
-                            <button class="btn btn-dark btn-sm w-100 mb-2 text-muted btn-toggle-arrow collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#hist-${idx}">
-                                查看详细时间轴 <i class="fas fa-chevron-down ms-1"></i>
-                            </button>
-                            <div class="collapse mt-3" id="hist-${idx}">
-                                ${g.history.map(h => `
-                                    <div class="timeline-item">
-                                        <span class="small text-muted me-3">${h.time}</span>
-                                        <span class="badge ${h.wait > 0 ? 'badge-wait' : 'bg-secondary'} small">惩罚: ${h.wait}s</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        });
+            // 增量更新：只添加新日志
+            const newLogs = sortedLogs.filter(log => log.timestamp > lastTimestamp);
+            if (newLogs.length > 0) {
+                let html = '';
+                newLogs.sort((a, b) => b.timestamp - a.timestamp).forEach((log, idx) => {
+                    html += renderLogLine(log, idx);
+                });
+                // 插入到容器开头
+                container.insertAdjacentHTML('afterbegin', html);
+                lastTimestamp = sortedLogs[0].timestamp;
+            }
+            
+        } catch (e) {
+            if (isFirstLoad) {
+                container.innerHTML = `<div class="alert alert-danger">加载失败: ${e.message}</div>`;
+                isFirstLoad = false;
+            }
+        }
     }
 
-    loadLogs();
+    // 自动刷新
+    function startAutoRefresh() {
+        setInterval(() => {
+            loadLogs();
+        }, 3000); // 每3秒检查新日志
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadLogs();
+        startAutoRefresh();
+    });
 </script>
-<footer class="text-center w-100 mb-2" style="position: absolute; bottom: 10px; left: 0; pointer-events: none;">
+
+<footer class="text-center w-100 mb-3 mt-auto" style="pointer-events: none; flex-shrink: 0;">
     <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
         <i class="fab fa-github me-1"></i>GitHub @stlin256
     </a>
