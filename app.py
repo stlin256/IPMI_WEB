@@ -254,6 +254,37 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_ts ON audit_logs(timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_level ON audit_logs(level)')
+
+    # 新增延迟记录表
+    c.execute('''CREATE TABLE IF NOT EXISTS recording_intervals (timestamp INTEGER, interval REAL)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_intervals_ts ON recording_intervals(timestamp)')
+
+    # --- 一次性初始化延迟分布数据库逻辑 ---
+    c.execute("SELECT value FROM config WHERE key='recording_intervals_init_done'")
+    if not c.fetchone():
+        print("Initializing recording intervals database from metrics_v2...")
+        try:
+            # 从 metrics_v2 中重建 recording_intervals 表
+            # 获取 metrics_v2 的时间戳，按时间排序
+            c.execute("SELECT timestamp FROM metrics_v2 ORDER BY timestamp ASC")
+            timestamps = [row[0] for row in c.fetchall()]
+            
+            if len(timestamps) > 1:
+                intervals = []
+                for i in range(1, len(timestamps)):
+                    gap = timestamps[i] - timestamps[i-1]
+                    # 只记录有效的间隔（排除异常大间隔）
+                    if gap > 0 and gap <= 300:  # 最大 300s 间隔
+                        intervals.append((timestamps[i], gap))
+                
+                # 批量插入
+                c.executemany("INSERT INTO recording_intervals VALUES (?, ?)", intervals)
+                print(f"Initialized {len(intervals)} interval records from metrics_v2")
+            
+            c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('recording_intervals_init_done', 'true')")
+            print("Recording intervals initialization completed.")
+        except Exception as e:
+            print(f"Failed to initialize recording intervals: {e}")
   
     # --- 一次性历史日志迁移逻辑 ---
     c.execute("SELECT value FROM config WHERE key='log_migration_done'")
@@ -684,6 +715,10 @@ def background_worker():
                 cutoff = int(now) - (RETENTION_DAYS * 86400)
                 c.execute("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
                 # audit_logs 永久保存，不执行清理
+                
+                # 延迟记录只保留 24 小时
+                c.execute("DELETE FROM recording_intervals WHERE timestamp < ?", (int(now) - 86400,))
+                
                 conn.commit()
                 last_db_log_time = now
                 
@@ -691,6 +726,9 @@ def background_worker():
                 current_ts = int(now)
                 last_check = last_audit_check_ts.get('last_check', current_ts)
                 gap_seconds = current_ts - last_check
+                
+                # 记录每一个循环的实际延迟到数据库
+                c.execute("INSERT INTO recording_intervals VALUES (?, ?)", (current_ts, gap_seconds))
                 
                 # 如果间隔超过 2 分钟（120秒），记录异常间隔日志
                 if gap_seconds > 120:
@@ -1163,6 +1201,11 @@ def api_export_data():
     energy_rows = c.fetchall()
     energy_cols = [description[0] for description in c.description]
     
+    # 导出 recording_intervals
+    c.execute("SELECT * FROM recording_intervals ORDER BY timestamp ASC")
+    interval_rows = c.fetchall()
+    interval_cols = [description[0] for description in c.description]
+    
     conn.close()
 
     # 创建内存 ZIP 文件
@@ -1181,6 +1224,13 @@ def api_export_data():
         writer.writerow(energy_cols)
         writer.writerows(energy_rows)
         zf.writestr('energy_persistence.csv', energy_csv.getvalue())
+        
+        # 写入 recording_intervals.csv
+        interval_csv = io.StringIO()
+        writer = csv.writer(interval_csv)
+        writer.writerow(interval_cols)
+        writer.writerows(interval_rows)
+        zf.writestr('recording_intervals.csv', interval_csv.getvalue())
 
     memory_file.seek(0)
     filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
@@ -1740,6 +1790,32 @@ def api_history_gpu():
         'mem_used': [d[5] for d in final_data],
         'power': [d[6] for d in final_data]
     })
+
+@app.route('/api/recording_stats')
+@login_required
+def api_recording_stats():
+    conn = get_db_connection()
+    c = conn.cursor()
+    cutoff = int(time.time() - 86400)
+    # 获取过去24小时数据
+    c.execute("SELECT timestamp, interval FROM recording_intervals WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    data = c.fetchall()
+    conn.close()
+    
+    if not data: return jsonify([])
+    
+    # 为了前端性能，如果点数过多则进行最大值降采样（保留毛刺）
+    target_points = 500 
+    if len(data) > target_points:
+        step = len(data) // target_points
+        sampled = []
+        for i in range(0, len(data), step):
+            chunk = data[i:i+step]
+            max_val = max([x[1] for x in chunk])
+            sampled.append(max_val)
+        return jsonify(sampled)
+    
+    return jsonify([x[1] for x in data])
 
 if __name__ == '__main__':
     check_environment()

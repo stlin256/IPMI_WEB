@@ -238,6 +238,107 @@ n        /* 标签样式 */
         .terminal-body::-webkit-scrollbar-track { background: var(--bg-body); }
         .terminal-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
         .terminal-body::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+        /* 1. 图表容器比例 */
+        .interval-chart-container {
+            background: rgba(22, 27, 34, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            width: 100%;
+            aspect-ratio: 15 / 1;
+            min-height: 80px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            overflow: hidden;
+        }
+
+        .chart-loading {
+            background: rgba(13, 17, 23, 0.8) !important;
+        }
+
+        /* 流光动画 */
+        .chart-loading::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 150%;
+            height: 100%;
+            background: linear-gradient(
+                90deg, 
+                transparent 25%, 
+                rgba(255, 255, 255, 0.06) 50%, 
+                transparent 75%
+            );
+            animation: chart-shimmer 1.5s infinite linear;
+        }
+        @keyframes chart-shimmer {
+            0% { left: -150%; }
+            100% { left: 150%; }
+        }
+
+        .interval-chart-canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: auto;
+        }
+
+        /* 2. 标题微调 */
+        .chart-label {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            z-index: 2;
+            font-weight: 600;
+        }
+
+        /* 3. 极值标注组 - 放在顶部靠右排列 */
+        .chart-markers-group {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            display: flex;
+            gap: 15px;
+            z-index: 2;
+        }
+
+        .chart-value-marker {
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 1px 6px;
+            background: rgba(13, 17, 23, 0.8);
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: color 0.3s ease;
+        }
+
+        /* Chart tooltip */
+        .chart-tooltip {
+            position: absolute;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 11px;
+            color: var(--text-main);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 10;
+            white-space: nowrap;
+        }
+        .chart-tooltip.visible {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -302,6 +403,24 @@ n        /* 标签样式 */
                 <i class="fas fa-upload me-1"></i>导入配置
             </button>
         </div>
+    </div>
+
+    <!-- 24H 采集延迟图表 -->
+    <div class="interval-chart-container chart-loading" id="chart-wrapper">
+        <div class="chart-label">
+            <i class="fas fa-wave-square me-1"></i> 24H 采集延迟 (s)
+        </div>
+        
+        <!-- 顶部标注组 -->
+        <div class="chart-markers-group">
+            <div class="chart-value-marker" id="chart-max-val">MAX: --</div>
+            <div class="chart-value-marker" id="chart-avg-val">AVG: --</div>
+            <div class="chart-value-marker" id="chart-min-val">MIN: --</div>
+        </div>
+        
+        <canvas id="intervalCanvas" class="interval-chart-canvas"></canvas>
+        <!-- Tooltip -->
+        <div class="chart-tooltip" id="chart-tooltip"></div>
     </div>
 
     <!-- 日志容器 -->
@@ -478,12 +597,13 @@ n        /* 标签样式 */
         
         const detailsId = `detail-${log.timestamp}-${idx}`;
         
-        // 统一消息格式
+        // 统一消息格式：只显示次数和罚时，不重复显示 message 中的内容
         let mainMsg = log.message;
-        if (log.module === 'AUTH' && log.details) {
-            if (log.details.fail_count) {
-                mainMsg = `${log.message} (失败: ${log.details.fail_count}次)`;
-            }
+        if (log.module === 'AUTH' && log.details && log.details.fail_count !== undefined) {
+            const count = log.details.fail_count;
+            const wait = log.details.wait_time || 0;
+            // 直接用次数和罚时格式
+            mainMsg = `登录失败 (次数: ${count}，罚时: ${wait}s)`;
         }
         
         // 详情内容
@@ -578,6 +698,174 @@ n        /* 标签样式 */
         }
     }
 
+    // Chart 数据和事件管理
+    let chartData = [];
+    let chartTooltip = null;
+    let isMouseOnChart = false;
+
+    // 优化后的绘制逻辑
+    async function drawIntervalChart() {
+        const canvas = document.getElementById('intervalCanvas');
+        const wrapper = document.getElementById('chart-wrapper');
+        const maxMarker = document.getElementById('chart-max-val');
+        const avgMarker = document.getElementById('chart-avg-val');
+        const minMarker = document.getElementById('chart-min-val');
+        const ctx = canvas.getContext('2d');
+
+        // 初始化 tooltip
+        if (!chartTooltip) {
+            chartTooltip = document.getElementById('chart-tooltip');
+        }
+
+        // 颜色映射辅助函数
+        const getColor = (val) => {
+            if (val <= 1.5) return '#3fb950'; // 绿色
+            if (val <= 5)   return '#d29922'; // 黄色
+            return '#f85149';                 // 红色
+        };
+
+        try {
+            wrapper.classList.add('chart-loading');
+            const response = await fetch('/api/recording_stats');
+            const data = await response.json();
+            
+            if (!data || data.length === 0) {
+                wrapper.classList.remove('chart-loading');
+                return;
+            }
+
+            chartData = data;
+
+            // 数据统计
+            const maxVal = Math.max(...data);
+            const minVal = Math.min(...data);
+            const avgVal = data.reduce((a, b) => a + b, 0) / data.length;
+            
+            // 更新标注文字和颜色
+            maxMarker.innerText = `MAX: ${maxVal.toFixed(1)}s`;
+            maxMarker.style.color = getColor(maxVal);
+            
+            avgMarker.innerText = `AVG: ${avgVal.toFixed(1)}s`;
+            avgMarker.style.color = getColor(avgVal);
+            
+            minMarker.innerText = `MIN: ${minVal.toFixed(1)}s`;
+            minMarker.style.color = getColor(minVal);
+
+            // 高清 Canvas 处理
+            const dpr = window.devicePixelRatio || 1;
+            const rect = wrapper.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+
+            const width = rect.width;
+            const height = rect.height;
+            const barWidth = width / data.length;
+
+            ctx.clearRect(0, 0, width, height);
+            
+            // 算法优化：平方根缩放 + 预留顶部 20% 空间给标注区
+            const scaledMax = Math.sqrt(maxVal);
+            const usableHeight = height * 0.8; 
+
+            data.forEach((val, i) => {
+                ctx.fillStyle = getColor(val);
+
+                const scaledVal = Math.sqrt(val);
+                let barHeight = (scaledVal / scaledMax) * usableHeight;
+                
+                // 极小值也保持 1px 可见度
+                barHeight = Math.max(1, barHeight);
+                
+                // 绘制柱状图，使用微小的重叠 (0.3px) 消除由于浮点数计算导致的间隙
+                ctx.fillRect(i * barWidth, height - barHeight, barWidth + 0.3, barHeight);
+            });
+
+            wrapper.classList.remove('chart-loading');
+        } catch (e) {
+            console.error("Chart Error:", e);
+            wrapper.classList.remove('chart-loading');
+        }
+    }
+
+    // Chart 鼠标事件处理（移动端禁用）
+    function initChartEvents() {
+        const canvas = document.getElementById('intervalCanvas');
+        
+        // 移动端检测
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                       || window.innerWidth <= 768;
+        
+        if (isMobile) return;
+
+        // 鼠标移动 - 使用 offsetX/offsetY 获取相对于 canvas 的坐标
+        canvas.addEventListener('mousemove', (e) => {
+            if (chartData.length === 0) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.offsetX;
+            const barWidth = rect.width / chartData.length;
+            const index = Math.floor(x / barWidth);
+
+            if (index >= 0 && index < chartData.length) {
+                const val = chartData[index];
+                const getColor = (v) => {
+                    if (v <= 1.5) return '#3fb950';
+                    if (v <= 5)   return '#d29922';
+                    return '#f85149';
+                };
+
+                // 计算时间点：索引 0 是 24 小时前，索引 23 是当前
+                const now = new Date();
+                const targetTime = new Date(now.getTime() - (chartData.length - 1 - index) * 3600000);
+                const timeStr = targetTime.toLocaleTimeString('zh-CN', { hour12: false });
+
+                chartTooltip.innerHTML = `${timeStr} &bull; ${val.toFixed(2)}s`;
+                chartTooltip.style.color = getColor(val);
+
+                // 边界检测：确保 tooltip 不超出屏幕
+                const tooltipWidth = chartTooltip.offsetWidth || 100;
+                const tooltipHeight = chartTooltip.offsetHeight || 24;
+                const padding = 15;
+
+                let left = e.offsetX + 10;
+                let top = e.offsetY - 25;
+
+                // 右侧边界检测
+                if (left + tooltipWidth + padding > window.innerWidth) {
+                    left = e.offsetX - tooltipWidth - 10;
+                }
+                // 左侧边界检测
+                if (left < padding) {
+                    left = padding;
+                }
+                // 顶部边界检测
+                if (top < padding) {
+                    top = e.offsetY + 15;
+                }
+                // 底部边界检测
+                if (top + tooltipHeight + padding > window.innerHeight) {
+                    top = window.innerHeight - tooltipHeight - padding;
+                }
+
+                chartTooltip.style.left = `${left}px`;
+                chartTooltip.style.top = `${top}px`;
+                chartTooltip.classList.add('visible');
+            }
+        });
+
+        // 鼠标离开
+        canvas.addEventListener('mouseleave', () => {
+            chartTooltip.classList.remove('visible');
+        });
+    }
+
+    // 监听窗口大小变化重新绘制
+    window.addEventListener('resize', () => {
+        clearTimeout(window.resizeTimer);
+        window.resizeTimer = setTimeout(drawIntervalChart, 200);
+    });
+
     // 自动刷新
     function startAutoRefresh() {
         setInterval(() => {
@@ -588,6 +876,8 @@ n        /* 标签样式 */
     document.addEventListener('DOMContentLoaded', () => {
         loadLogs();
         startAutoRefresh();
+        drawIntervalChart();
+        initChartEvents();
     });
 </script>
 
