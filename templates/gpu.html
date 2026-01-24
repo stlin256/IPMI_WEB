@@ -130,7 +130,7 @@
             .then(d => {
                 document.getElementById('config-host').value = d.gpu_agent_host || '';
                 document.getElementById('config-port').value = d.gpu_agent_port || '';
-                document.getElementById('config-enabled').checked = d.gpu_agent_enabled === true;
+                document.getElementById('config-enabled').checked = d.gpu_agent_enabled === 'true';
             });
     }
 
@@ -211,7 +211,7 @@
                                     </div>
                                     <div class="mb-3">
                                         <div class="d-flex justify-content-between gpu-label">
-                                            <span>显存占用</span>
+                                            <span>显存活动</span>
                                             <span class="gpu-value" id="gpu-${index}-mem-util-val">--%</span>
                                         </div>
                                         <div class="progress">
@@ -223,7 +223,7 @@
                                     </div>
                                     <div class="mb-0">
                                         <div class="d-flex justify-content-between gpu-label">
-                                            <span>功耗状态</span>
+                                            <span>功耗</span>
                                             <span class="gpu-value" id="gpu-${index}-pwr-val">--W</span>
                                         </div>
                                         <div class="progress">
