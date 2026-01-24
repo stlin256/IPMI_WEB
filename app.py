@@ -751,10 +751,27 @@ def background_worker():
             print(f"Worker Error: {e}")
             time.sleep(3)
 
+# GPU 状态追踪变量（用于日志去重，避免重启后重复记录）
+gpu_tracking = {
+    'was_online': None,  # 上次在线状态
+    'has_logged_offline': False,  # 是否已记录过离线日志
+    'has_logged_online': False,   # 是否已记录过上线路志
+    'last_known_gpus': []  # 最近识别到的 GPU 列表
+}
+
 def gpu_worker():
+    global gpu_tracking
     last_db_log_time = 0
     retry_delay = 1
     max_retry_delay = 30
+    
+    # 初始化：检查是否已有历史记录，决定是否需要记录上线日志
+    # 如果当前缓存显示在线，且之前没有记录过上线路志，说明是重启恢复
+    # 需要在首次成功获取数据后补录上线日志
+    with cache_lock:
+        current_online = sys_cache['gpu']['online']
+        gpu_tracking['was_online'] = current_online
+        gpu_tracking['last_known_gpus'] = sys_cache['gpu']['gpus'] or []
     
     while True:
         try:
@@ -772,8 +789,20 @@ def gpu_worker():
             conn.close()
 
             if not enabled:
+                was_online = gpu_tracking.get('was_online', False)
+                # 如果之前是在线状态，现在被关闭
+                if was_online:
+                    gpus = gpu_tracking.get('last_known_gpus', [])
+                    gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in gpus]
+                    write_audit('INFO', 'GPU', 'AGENT_STOPPED', '用户主动关闭 GPU 监控', 
+                               details={'gpus': gpu_names}, operator='SYSTEM')
+                    gpu_tracking['was_online'] = False
+                    gpu_tracking['has_logged_offline'] = False
+                    gpu_tracking['has_logged_online'] = False
+                
                 with cache_lock:
                     sys_cache['gpu']['online'] = False
+                    sys_cache['gpu']['gpus'] = []
                 time.sleep(5)
                 continue
 
@@ -785,20 +814,39 @@ def gpu_worker():
                     if 'error' in data:
                         raise Exception(data['error'])
                     
+                    current_gpus = data.get('gpus', [])
+                    
                     with cache_lock:
                         sys_cache['gpu']['online'] = True
-                        sys_cache['gpu']['gpus'] = data['gpus']
+                        sys_cache['gpu']['gpus'] = current_gpus
                         sys_cache['gpu']['last_update'] = int(time.time())
                         sys_cache['gpu']['retry_delay'] = 1
                     
                     retry_delay = 1 # 成功后重置延迟
+                    
+                    # === 状态变更检测与日志记录 ===
+                    was_online = gpu_tracking.get('was_online', False)
+                    
+                    # 1. 上线检测：从离线变为在线
+                    if not was_online:
+                        # 如果之前没有记录过上线路志（或者是首次启动/重启恢复）
+                        if not gpu_tracking.get('has_logged_online', False):
+                            gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in current_gpus]
+                            write_audit('INFO', 'GPU', 'AGENT_ONLINE', 'GPU Agent 已上线', 
+                                       details={'gpus': gpu_names}, operator='SYSTEM')
+                            gpu_tracking['has_logged_online'] = True
+                            gpu_tracking['has_logged_offline'] = False
+                    
+                    # 更新追踪状态
+                    gpu_tracking['was_online'] = True
+                    gpu_tracking['last_known_gpus'] = current_gpus
                     
                     # 记录历史数据 (1s一次)
                     now = time.time()
                     if now - last_db_log_time >= 1.0:
                         conn = get_db_connection()
                         c = conn.cursor()
-                        for g in data['gpus']:
+                        for g in current_gpus:
                             c.execute('''INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                                      (int(now), g['index'], g['name'], g['temp'], 
                                       g['util_gpu'], g['util_mem'], g['memory_total'], g['memory_used'],
@@ -817,6 +865,19 @@ def gpu_worker():
                 time.sleep(max(0.1, 1.0 - elapsed))
 
             except Exception as e:
+                # === 离线检测：从在线变为离线 ===
+                was_online = gpu_tracking.get('was_online', False)
+                if was_online and not gpu_tracking.get('has_logged_offline', False):
+                    # 记录离线日志
+                    gpus = gpu_tracking.get('last_known_gpus', [])
+                    gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in gpus]
+                    write_audit('WARN', 'GPU', 'AGENT_OFFLINE', 'GPU Agent 离线', 
+                               details={'gpus': gpu_names}, operator='SYSTEM')
+                    gpu_tracking['has_logged_offline'] = True
+                    gpu_tracking['has_logged_online'] = False
+                
+                gpu_tracking['was_online'] = False
+                
                 with cache_lock:
                     sys_cache['gpu']['online'] = False
                     sys_cache['gpu']['retry_delay'] = retry_delay
