@@ -706,10 +706,11 @@ def background_worker():
                 }
 
             # DB Log (1s precision)
-            if not is_hw_invalid and now - last_db_log_time >= 1.0:
-                c.execute('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                         (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
-                          net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
+            if now - last_db_log_time >= 1.0:
+                if not is_hw_invalid:
+                    c.execute('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                             (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
+                              net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
               
                 # Cleanup old data (metrics_v2 遵循 RETENTION_DAYS，但 audit_logs 永久保存)
                 cutoff = int(now) - (RETENTION_DAYS * 86400)
@@ -719,9 +720,6 @@ def background_worker():
                 # 延迟记录只保留 24 小时
                 c.execute("DELETE FROM recording_intervals WHERE timestamp < ?", (int(now) - 86400,))
                 
-                conn.commit()
-                last_db_log_time = now
-                
                 # === 异常间隔检测：检查数据采集是否连续 ===
                 current_ts = int(now)
                 last_check = last_audit_check_ts.get('last_check', current_ts)
@@ -729,6 +727,9 @@ def background_worker():
                 
                 # 记录每一个循环的实际延迟到数据库
                 c.execute("INSERT INTO recording_intervals VALUES (?, ?)", (current_ts, gap_seconds))
+                
+                conn.commit()
+                last_db_log_time = now
                 
                 # 如果间隔超过 2 分钟（120秒），记录异常间隔日志
                 if gap_seconds > 120:
@@ -1267,6 +1268,11 @@ def api_export_data():
     interval_rows = c.fetchall()
     interval_cols = [description[0] for description in c.description]
     
+    # 导出 gpu_metrics
+    c.execute("SELECT * FROM gpu_metrics ORDER BY timestamp ASC")
+    gpu_rows = c.fetchall()
+    gpu_cols = [description[0] for description in c.description]
+    
     conn.close()
 
     # 创建内存 ZIP 文件
@@ -1292,6 +1298,14 @@ def api_export_data():
         writer.writerow(interval_cols)
         writer.writerows(interval_rows)
         zf.writestr('recording_intervals.csv', interval_csv.getvalue())
+
+        # 写入 gpu_history.csv
+        if gpu_rows:
+            gpu_csv = io.StringIO()
+            writer = csv.writer(gpu_csv)
+            writer.writerow(gpu_cols)
+            writer.writerows(gpu_rows)
+            zf.writestr('gpu_history.csv', gpu_csv.getvalue())
 
     memory_file.seek(0)
     filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
@@ -1868,12 +1882,15 @@ def api_recording_stats():
     # 为了前端性能，如果点数过多则进行最大值降采样（保留毛刺）
     target_points = 500 
     if len(data) > target_points:
-        step = len(data) // target_points
+        step = len(data) / target_points # 使用浮点步长确保更均匀的分布
         sampled = []
-        for i in range(0, len(data), step):
-            chunk = data[i:i+step]
-            max_val = max([x[1] for x in chunk])
-            sampled.append(max_val)
+        for i in range(target_points):
+            idx_start = int(i * step)
+            idx_end = int((i + 1) * step)
+            chunk = data[idx_start:idx_end]
+            if chunk:
+                max_val = max([x[1] for x in chunk])
+                sampled.append(max_val)
         return jsonify(sampled)
     
     return jsonify([x[1] for x in data])

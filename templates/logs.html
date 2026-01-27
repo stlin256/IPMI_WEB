@@ -730,6 +730,11 @@ n        /* 标签样式 */
             const data = await response.json();
             
             if (!data || data.length === 0) {
+                // 如果没有数据，清除画布并显示提示
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                maxMarker.innerText = 'MAX: --';
+                avgMarker.innerText = 'AVG: --';
+                minMarker.innerText = 'MIN: --';
                 wrapper.classList.remove('chart-loading');
                 return;
             }
@@ -764,9 +769,10 @@ n        /* 标签样式 */
 
             ctx.clearRect(0, 0, width, height);
             
-            // 算法优化：平方根缩放 + 预留顶部 20% 空间给标注区
-            const scaledMax = Math.sqrt(maxVal);
-            const usableHeight = height * 0.8; 
+            // 算法优化：平方根缩放 + 预留顶部 30% 空间给标注区
+            // 如果 maxVal 为 0，避免除以零
+            const scaledMax = maxVal > 0 ? Math.sqrt(maxVal) : 1;
+            const usableHeight = height * 0.7; 
 
             data.forEach((val, i) => {
                 ctx.fillStyle = getColor(val);
@@ -774,11 +780,12 @@ n        /* 标签样式 */
                 const scaledVal = Math.sqrt(val);
                 let barHeight = (scaledVal / scaledMax) * usableHeight;
                 
-                // 极小值也保持 1px 可见度
-                barHeight = Math.max(1, barHeight);
+                // 极小值也保持 2px 可见度，确保在大屏幕上也能看清
+                barHeight = Math.max(2, barHeight);
                 
-                // 绘制柱状图，使用微小的重叠 (0.3px) 消除由于浮点数计算导致的间隙
-                ctx.fillRect(i * barWidth, height - barHeight, barWidth + 0.3, barHeight);
+                // 绘制柱状图
+                const x = i * barWidth;
+                ctx.fillRect(x, height - barHeight, barWidth + 0.5, barHeight);
             });
 
             wrapper.classList.remove('chart-loading');
