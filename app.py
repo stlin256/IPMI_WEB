@@ -13,6 +13,7 @@ import io
 import zipfile
 import csv
 import logging
+import queue
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
@@ -94,6 +95,48 @@ setup_logging()
 # 全局变量：记录上次检测到的时间戳，用于间隔检测
 last_audit_check_ts = {}
 
+# --- 异步数据库写入队列 ---
+db_write_queue = queue.Queue(maxsize=1000)
+
+def db_writer_worker():
+    """专门负责数据库写操作的线程"""
+    while True:
+        try:
+            # 从队列获取任务 (sql, params, callback_event)
+            task = db_write_queue.get()
+            if task is None: break
+            
+            sql, params, event = task
+            
+            # 执行写入
+            conn = get_db_connection()
+            try:
+                if isinstance(sql, list): # 支持批量执行
+                    for s, p in zip(sql, params):
+                        conn.execute(s, p)
+                else:
+                    conn.execute(sql, params)
+                conn.commit()
+            except Exception as e:
+                logging.error(f"Async DB Write Error: {e} | SQL: {sql}")
+            finally:
+                conn.close()
+                if event: event.set()
+                db_write_queue.task_done()
+        except Exception as e:
+            logging.error(f"DB Writer Thread Critical Error: {e}")
+
+# 启动写入线程
+threading.Thread(target=db_writer_worker, daemon=True).start()
+
+def execute_db_async(sql, params=None, wait=False):
+    """将数据库写操作放入队列"""
+    event = threading.Event() if wait else None
+    try:
+        db_write_queue.put((sql, params or (), event), timeout=5)
+        if wait: event.wait(timeout=10)
+    except queue.Full:
+        logging.error("DB Write Queue is FULL! Dropping request.")
 
 def write_audit(level, module, action, message, details=None, operator=None, force_check=False):
     """
@@ -123,16 +166,11 @@ def write_audit(level, module, action, message, details=None, operator=None, for
         now = int(time.time())
         details_json = json.dumps(details) if details else '{}'
         
-        # 1. 写入数据库
-        try:
-            conn = get_db_connection()
-            conn.execute('''INSERT INTO audit_logs (timestamp, level, module, operator, action, message, details, ua)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
-                         (now, level, module, operator, action, message, details_json, ua))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logging.error(f"Failed to write audit log to DB: {e}")
+        # 1. 写入数据库 (异步)
+        sql = '''INSERT INTO audit_logs (timestamp, level, module, operator, action, message, details, ua)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
+        params = (now, level, module, operator, action, message, details_json, ua)
+        execute_db_async(sql, params)
 
         # 2. 写入文件日志 (作为备份和调试)
         log_msg = f"[{module}][{action}] {message} | Op: {operator} | Details: {details_json}"
@@ -262,6 +300,42 @@ def init_db():
     # 初始化延迟色彩阈值
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('log_delay_warn', '1.5')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('log_delay_danger', '5.0')")
+
+    # 数据保留及看板设置初始化
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('data_retention_days', '7')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('pending_retention_days', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hw', '[1, 24]')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hist', '[1, 6, 24, 72, 168]')")
+
+    # 新增告警规则表
+    c.execute('''CREATE TABLE IF NOT EXISTS alert_rules
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  name TEXT, 
+                  metric TEXT, 
+                  operator TEXT, 
+                  threshold REAL, 
+                  duration INTEGER, 
+                  notify_interval INTEGER,
+                  enabled INTEGER DEFAULT 1,
+                  level TEXT DEFAULT 'WARN')''')
+
+    # 检查并迁移：为旧表增加 level 字段
+    try:
+        c.execute("PRAGMA table_info(alert_rules)")
+        columns = [col[1] for col in c.fetchall()]
+        if 'level' not in columns:
+            print("Migration: Adding 'level' column to 'alert_rules' table...")
+            c.execute("ALTER TABLE alert_rules ADD COLUMN level TEXT DEFAULT 'WARN'")
+    except Exception as e:
+        print(f"Migration Error (alert_rules level): {e}")
+
+    # 新增告警状态追踪表 (内存中或DB中，此处选DB以防重启丢失)
+    c.execute('''CREATE TABLE IF NOT EXISTS alert_status
+                 (rule_id INTEGER PRIMARY KEY,
+                  start_ts INTEGER, 
+                  last_notify_ts INTEGER,
+                  is_alerting INTEGER DEFAULT 0)''')
 
     # --- 一次性初始化延迟分布数据库逻辑 ---
     c.execute("SELECT value FROM config WHERE key='recording_intervals_init_done'")
@@ -489,7 +563,7 @@ def calculate_energy_consumption(start_ts, end_ts):
     return total_energy_ws / 3600.0, samples
 
 def energy_maintenance_task():
-    """维护 energy_hourly 表，补全缺失的小时数据"""
+    """维护 energy_hourly 表，补全缺失的小时数据，并处理数据保留期变更"""
     while True:
         try:
             now = int(time.time())
@@ -498,6 +572,23 @@ def energy_maintenance_task():
             
             conn = get_db_connection()
             c = conn.cursor()
+
+            # --- 处理数据保留期变更 (3天反悔期) ---
+            c.execute("SELECT value FROM config WHERE key='retention_change_ts'")
+            change_ts_row = c.fetchone()
+            change_ts = int(change_ts_row[0]) if change_ts_row else 0
+
+            if change_ts > 0 and (now - change_ts) >= (3 * 86400):
+                # 3天到期，正式生效
+                c.execute("SELECT value FROM config WHERE key='pending_retention_days'")
+                pending_row = c.fetchone()
+                if pending_row and int(pending_row[0]) > 0:
+                    new_val = pending_row[0]
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (new_val,))
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
+                    conn.commit()
+                    write_audit('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天', operator='SYSTEM')
             
             # 1. 查找 metrics_v2 中最早的数据时间
             c.execute("SELECT MIN(timestamp) FROM metrics_v2")
@@ -600,6 +691,16 @@ def background_worker():
     # 异常间隔检测：记录上次审计日志时间戳
     global last_audit_check_ts
     last_audit_check_ts['last_check'] = int(time.time())
+
+    # 加载告警状态缓存
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT rule_id, start_ts, last_notify_ts, is_alerting FROM alert_status")
+        alert_states = {row['rule_id']: dict(row) for row in cur.fetchall()}
+        conn.close()
+    except:
+        alert_states = {}
 
     while True:
         try:
@@ -711,28 +812,114 @@ def background_worker():
 
             # DB Log (1s precision)
             if now - last_db_log_time >= 1.0:
+                # 获取数据保留配置
+                c.execute("SELECT value FROM config WHERE key='data_retention_days'")
+                retention_row = c.fetchone()
+                current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
+                
                 if not is_hw_invalid:
-                    c.execute('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                    execute_db_async('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
                              (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
                               net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
               
-                # Cleanup old data (metrics_v2 遵循 RETENTION_DAYS，但 audit_logs 永久保存)
-                cutoff = int(now) - (RETENTION_DAYS * 86400)
-                c.execute("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
-                # audit_logs 永久保存，不执行清理
+                # Cleanup old data (遵循动态设置的 current_retention_days)
+                cutoff = int(now) - (current_retention_days * 86400)
+                execute_db_async("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
                 
                 # 延迟记录只保留 24 小时
-                c.execute("DELETE FROM recording_intervals WHERE timestamp < ?", (int(now) - 86400,))
+                execute_db_async("DELETE FROM recording_intervals WHERE timestamp < ?", (int(now) - 86400,))
                 
+                # === 秒级告警规则检测 ===
+                c.execute("SELECT * FROM alert_rules WHERE enabled = 1")
+                rules = c.fetchall()
+                
+                # 包含 GPU 数据用于告警检测 (移除 online 判定，只要缓存中有值就检测)
+                gpu_m = {}
+                with cache_lock:
+                    if sys_cache['gpu']['gpus']:
+                        # 默认取第一个 GPU 的指标作为告警基准
+                        g0 = sys_cache['gpu']['gpus'][0]
+                        gpu_m = {
+                            'gpu_temp': g0.get('temp', 0),
+                            'gpu_util': g0.get('util_gpu', 0),
+                            'gpu_mem': g0.get('util_mem', 0)
+                        }
+
+                current_metrics = {
+                    'cpu_temp': cpu_temp,
+                    'fan_rpm': fan_rpm,
+                    'power': power,
+                    'cpu_usage': cpu_u,
+                    'mem_usage': mem.percent,
+                    'net_in': net_in/1024,
+                    'net_out': net_out/1024,
+                    'gpu_temp': gpu_m.get('gpu_temp', 0),
+                    'gpu_util': gpu_m.get('gpu_util', 0),
+                    'gpu_mem': gpu_m.get('gpu_mem', 0)
+                }
+
+                for rule in rules:
+                    rid = rule['id']
+                    # 获取指标值，如果指标不存在于当前字典中，跳过
+                    if rule['metric'] not in current_metrics:
+                        continue
+                    val = current_metrics[rule['metric']]
+                    op = rule['operator']
+                    threshold = rule['threshold']
+                    
+                    is_anomaly = False
+                    if op == '>' and val > threshold: is_anomaly = True
+                    elif op == '<' and val < threshold: is_anomaly = True
+                    elif op == '>=' and val >= threshold: is_anomaly = True
+                    elif op == '<=' and val <= threshold: is_anomaly = True
+                    elif op == '==' and val == threshold: is_anomaly = True
+                    
+                    state = alert_states.get(rid, {'rule_id': rid, 'start_ts': 0, 'last_notify_ts': 0, 'is_alerting': 0})
+                    
+                    if is_anomaly:
+                        if state['start_ts'] == 0:
+                            state['start_ts'] = int(now)
+                        
+                        duration_met = (int(now) - state['start_ts']) >= rule['duration']
+                        if duration_met:
+                            # 达到触发条件
+                            can_notify = (int(now) - state['last_notify_ts']) >= rule['notify_interval']
+                            if can_notify:
+                                # 健壮性获取级别
+                                r_level = 'WARN'
+                                try:
+                                    if 'level' in rule.keys(): r_level = rule['level']
+                                except: pass
+                                
+                                msg = f"告警触发 [{rule['name']}]: {rule['metric']} 当前值 {round(val, 1)} {rule['operator']} {threshold} (持续 {int(now)-state['start_ts']}s)"
+                                # 强制写入审计日志
+                                write_audit(r_level, 'SYSTEM', 'ALERT_TRIGGER', msg, 
+                                           details={'metric': rule['metric'], 'value': val, 'threshold': threshold, 'rule_id': rid},
+                                           operator='SYSTEM')
+                                state['last_notify_ts'] = int(now)
+                                state['is_alerting'] = 1
+                                # 打印调试信息
+                                print(f"[ALERT] Triggered: {rule['name']} ({val} {rule['operator']} {threshold})")
+                    else:
+                        if state['is_alerting'] == 1:
+                            # 告警恢复
+                            write_audit('INFO', 'SYSTEM', 'ALERT_RECOVER', f"告警恢复 [{rule['name']}]: {rule['metric']} 已恢复正常 (当前值 {round(val, 1)})", 
+                                       details={'metric': rule['metric'], 'value': val, 'rule_id': rid},
+                                       operator='SYSTEM')
+                        state['start_ts'] = 0
+                        state['is_alerting'] = 0
+                    
+                    alert_states[rid] = state
+                    execute_db_async("INSERT OR REPLACE INTO alert_status (rule_id, start_ts, last_notify_ts, is_alerting) VALUES (?, ?, ?, ?)",
+                             (rid, state['start_ts'], state['last_notify_ts'], state['is_alerting']))
+
                 # === 异常间隔检测：检查数据采集是否连续 ===
                 current_ts = int(now)
                 last_check = last_audit_check_ts.get('last_check', current_ts)
                 gap_seconds = current_ts - last_check
                 
                 # 记录每一个循环的实际延迟到数据库
-                c.execute("INSERT INTO recording_intervals VALUES (?, ?)", (current_ts, gap_seconds))
-                
-                conn.commit()
+                execute_db_async("INSERT INTO recording_intervals VALUES (?, ?)", (current_ts, gap_seconds))
                 last_db_log_time = now
                 
                 # 如果间隔超过 2 分钟（120秒），记录异常间隔日志
@@ -849,21 +1036,22 @@ def gpu_worker():
                     # 记录历史数据 (1s一次)
                     now = time.time()
                     if now - last_db_log_time >= 1.0:
-                        conn = get_db_connection()
-                        c = conn.cursor()
+                        # 批量执行优化
+                        sqls = []
+                        all_params = []
                         for g in current_gpus:
-                            c.execute('''INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                     (int(now), g['index'], g['name'], g['temp'], 
+                            sqls.append('''INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''')
+                            all_params.append((int(now), g['index'], g['name'], g['temp'], 
                                       g['util_gpu'], g['util_mem'], g['memory_total'], g['memory_used'],
                                       g['power_draw'], g['power_limit'], g['clock_core'], g['clock_mem'], 
                                       g['fan_speed'], g['ecc_errors']))
                         
                         # 清理旧数据 (遵循 RETENTION_DAYS)
                         cutoff = int(now) - (RETENTION_DAYS * 86400)
-                        c.execute("DELETE FROM gpu_metrics WHERE timestamp < ?", (cutoff,))
+                        sqls.append("DELETE FROM gpu_metrics WHERE timestamp < ?")
+                        all_params.append((cutoff,))
                         
-                        conn.commit()
-                        conn.close()
+                        execute_db_async(sqls, all_params)
                         last_db_log_time = now
                 
                 elapsed = time.time() - start_time
@@ -1155,6 +1343,407 @@ def api_audit_logs():
         'logs': logs
     })
 
+@app.route('/api/config/precheck', methods=['POST'])
+@login_required
+def api_config_precheck():
+    try:
+        new_config = request.json
+        if not new_config or 'settings' not in new_config:
+            return jsonify({'error': '无效的配置文件'}), 400
+            
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # 获取当前设置
+        c.execute("SELECT key, value FROM config")
+        current_rows = c.fetchall()
+        current_settings = {row['key']: row['value'] for row in current_rows}
+        
+        # 获取当前告警规则 (加上 level 字段，防止报错)
+        try:
+            c.execute("SELECT name, metric, operator, threshold, duration, notify_interval, enabled, level FROM alert_rules")
+        except:
+            c.execute("SELECT name, metric, operator, threshold, duration, notify_interval, enabled FROM alert_rules")
+        current_alerts = [dict(row) for row in c.fetchall()]
+        conn.close()
+        
+        diffs = []
+        new_settings = new_config.get('settings', {})
+        
+        # 1. 对比设置
+        all_keys = set(list(current_settings.keys()) + list(new_settings.keys()))
+        # 过滤掉一些不该被导入覆盖的内部状态键
+        ignore_keys = {'last_log_check', 'db_zero_cleanup_done', 'recording_intervals_init_done', 'log_migration_done', 'retention_change_ts', 'pending_retention_days'}
+        
+        for k in all_keys:
+            if k in ignore_keys: continue
+            
+            old_v_raw = current_settings.get(k)
+            new_v_raw = new_settings.get(k)
+            
+            # 智能对比逻辑：统一归一化，解决 6.0 vs 6 等问题
+            def normalize_val(v):
+                if v is None: return None
+                # 统一布尔值表示 (解决 true vs 1)
+                if v is True or v == "true": return True
+                if v is False or v == "false": return False
+                # 尝试转为数值
+                try:
+                    f = float(v)
+                    return f
+                except: pass
+                # 尝试解析 JSON
+                if isinstance(v, str):
+                    try:
+                        parsed = json.loads(v)
+                        # 递归归一化解析后的内容（处理 JSON 字符串里的布尔值/数值）
+                        if isinstance(parsed, (dict, list, bool, int, float)):
+                            return normalize_val(parsed)
+                        return parsed
+                    except:
+                        return v.strip()
+                return v
+
+            old_norm = normalize_val(old_v_raw)
+            new_norm = normalize_val(new_v_raw)
+            
+            # 最终对比逻辑
+            def are_equal(v1, v2):
+                if v1 is v2: return True
+                # 处理数值精度问题 (6.0 == 6)
+                if isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+                    return abs(v1 - v2) < 0.000001
+                # 处理列表/字典
+                if type(v1) != type(v2): return False
+                if isinstance(v1, (dict, list)):
+                    return json.dumps(v1, sort_keys=True) == json.dumps(v2, sort_keys=True)
+                return v1 == v2
+
+            changed = not are_equal(old_norm, new_norm) if new_v_raw is not None else False
+
+            # 序列化用于前端展示：确保样式一致
+            def get_show_val(norm):
+                if norm is None: return "-"
+                if isinstance(norm, (dict, list)): 
+                    return json.dumps(norm, separators=(',', ':'))
+                if norm is True: return "true"
+                if norm is False: return "false"
+                # 数值统一格式
+                if isinstance(norm, (int, float)):
+                    return str(int(norm) if norm == int(norm) else round(norm, 2))
+                return str(norm)
+
+            diffs.append({
+                'type': 'setting',
+                'key': k,
+                'old': get_show_val(old_norm),
+                'new': get_show_val(new_norm),
+                'changed': changed
+            })
+
+        # 2. 对比告警规则 (深度比对，解决数值类型与默认值偏差)
+        new_alerts = new_config.get('alert_rules', [])
+        alert_diffs = []
+        
+        # 定义核心比对函数
+        def are_rules_different(v1, v2, field):
+            # 特殊处理 level：如果一方为 None/null 且另一方为 WARN，视为一致 (处理迁移引起的差异)
+            if field == 'level':
+                v1_clean = str(v1 or 'WARN').strip().upper()
+                v2_clean = str(v2 or 'WARN').strip().upper()
+                return v1_clean != v2_clean
+            
+            if v1 is None or v2 is None:
+                return v1 != v2
+                
+            # 尝试数值比对 (处理 0 vs 0.0, 600 vs 600.0)
+            try:
+                f1, f2 = float(v1), float(v2)
+                return abs(f1 - f2) > 0.000001
+            except (ValueError, TypeError):
+                # 文本比对
+                return str(v1).strip() != str(v2).strip()
+
+        # 创建待匹配池副本，支持同名规则消费
+        alerts_pool = list(current_alerts)
+
+        for na in new_alerts:
+            # 寻找同名规则 (优先匹配完全一致的，其次匹配名字相同的)
+            existing_idx = -1
+            
+            # 第一轮：寻找名称且所有关键字段都完全一致的规则 (避免同名顺序打乱导致的误报)
+            def is_perfect_match(na, ca):
+                if na['name'] != ca['name']: return False
+                for f in ['metric', 'operator', 'threshold', 'duration', 'notify_interval', 'level']:
+                    if are_rules_different(ca.get(f), na.get(f), f): return False
+                return True
+
+            for i, ca in enumerate(alerts_pool):
+                if is_perfect_match(na, ca):
+                    existing_idx = i
+                    break
+            
+            # 第二轮：如果没找到完美的，则按名称找第一个
+            if existing_idx == -1:
+                for i, ca in enumerate(alerts_pool):
+                    if ca['name'] == na['name']:
+                        existing_idx = i
+                        break
+
+            params_changed = []
+            existing = None
+            if existing_idx != -1:
+                existing = alerts_pool.pop(existing_idx) # 从池中消费掉
+                
+                # 检查所有关键字段
+                for field in ['metric', 'operator', 'threshold', 'duration', 'notify_interval', 'level']:
+                    ev = existing.get(field)
+                    nv = na.get(field)
+                    
+                    if are_rules_different(ev, nv, field):
+                        params_changed.append({
+                            'field': field, 
+                            'old': str(ev) if ev is not None else 'null', 
+                            'new': str(nv) if nv is not None else 'null'
+                        })
+
+            # 只有当规则真正发生变化，或者数据库中完全没有此规则时，才标记为 changed
+            is_new = existing is None
+            has_real_changes = len(params_changed) > 0
+            
+            alert_diffs.append({
+                'type': 'alert',
+                'name': na['name'],
+                'is_new': is_new,
+                'changed': is_new or has_real_changes,
+                'params_changed': params_changed,
+                'data': na
+            })
+            
+        metadata = new_config.get('metadata', {})
+        return jsonify({
+            'version': metadata.get('version', 1),
+            'export_time': metadata.get('export_time', '未知'),
+            'software_version': metadata.get('software_version', '未知'),
+            'diffs': diffs,
+            'alerts': alert_diffs
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/alert_rules', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def api_alert_rules():
+    conn = get_db_connection()
+    c = conn.cursor()
+    if request.method == 'GET':
+        c.execute("SELECT * FROM alert_rules")
+        res = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return jsonify(res)
+    
+    if request.method == 'POST':
+        try:
+            data = request.json
+            if 'id' in data:
+                # 更新 (包含新增的 level 字段)
+                c.execute('''UPDATE alert_rules SET name=?, metric=?, operator=?, threshold=?, duration=?, notify_interval=?, enabled=?, level=?
+                             WHERE id=?''', 
+                          (data['name'], data['metric'], data['operator'], data['threshold'], data['duration'], data['notify_interval'], data['enabled'], data.get('level', 'WARN'), data['id']))
+            else:
+                # 新增 (包含新增的 level 字段)
+                c.execute('''INSERT INTO alert_rules (name, metric, operator, threshold, duration, notify_interval, enabled, level)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                          (data['name'], data['metric'], data['operator'], data['threshold'], data['duration'], data['notify_interval'], 1, data.get('level', 'WARN')))
+            conn.commit()
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
+
+    if request.method == 'DELETE':
+        try:
+            rule_id = request.args.get('id')
+            c.execute("DELETE FROM alert_rules WHERE id=?", (rule_id,))
+            c.execute("DELETE FROM alert_status WHERE rule_id=?", (rule_id,))
+            conn.commit()
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
+
+@app.route('/api/settings', methods=['GET', 'POST'])
+@login_required
+def api_settings():
+    conn = get_db_connection()
+    c = conn.cursor()
+    if request.method == 'GET':
+        keys = ('log_delay_warn', 'log_delay_danger', 'data_retention_days', 
+                'pending_retention_days', 'retention_change_ts', 
+                'dashboard_hours_hw', 'dashboard_hours_hist')
+        c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
+        res = {row['key']: row['value'] for row in c.fetchall()}
+        conn.close()
+        
+        # 格式化处理
+        for k in ('log_delay_warn', 'log_delay_danger'):
+            res[k] = float(res.get(k, 1.5 if 'warn' in k else 5.0))
+        for k in ('data_retention_days', 'pending_retention_days', 'retention_change_ts'):
+            res[k] = int(res.get(k, 0))
+            if k == 'data_retention_days' and res[k] == 0: res[k] = 7
+        for k in ('dashboard_hours_hw', 'dashboard_hours_hist'):
+            try: res[k] = json.loads(res.get(k, '[]'))
+            except: res[k] = []
+            
+        # 获取数据库文件大小 (字节)
+        try:
+            db_size = os.path.getsize(DB_FILE)
+            res['db_size_bytes'] = db_size
+        except:
+            res['db_size_bytes'] = 0
+            
+        return jsonify(res)
+
+    if request.method == 'POST':
+        try:
+            data = request.json
+            now = int(time.time())
+            
+            # 获取当前所有配置用于对比，避免刷写未修改的项
+            c.execute("SELECT key, value FROM config")
+            current_configs = {row['key']: row['value'] for row in c.fetchall()}
+            
+            # 辅助函数：判断是否真正改变（改进版：处理数值精度和数组顺序问题）
+            def is_changed(key, new_val):
+                if key not in current_configs: return True
+                old_val = current_configs[key]
+                
+                # 统一归一化函数
+                def normalize(v):
+                    if v is None: return None
+                    # 布尔值
+                    if v is True or v == "true": return "true"
+                    if v is False or v == "false": return "false"
+                    # 数值类型：处理 7.0 == 7 问题
+                    if isinstance(v, (int, float)):
+                        # 转字符串时去掉无意义的小数点
+                        if v == int(v): return str(int(v))
+                        return str(float(v))
+                    # 数组/字典：排序后转 JSON
+                    if isinstance(v, str):
+                        try:
+                            parsed = json.loads(v)
+                            return normalize(parsed)
+                        except:
+                            return v.strip()
+                    if isinstance(v, (list, dict)):
+                        return json.dumps(v, sort_keys=True)
+                    return str(v)
+                
+                old_norm = normalize(old_val)
+                new_norm = normalize(new_val)
+                
+                # 数组排序后比较顺序
+                if old_norm != new_norm:
+                    # 额外处理：对于 JSON 数组，比较排序后的结果
+                    if old_norm.startswith('[') and new_norm.startswith('['):
+                        try:
+                            old_arr = json.loads(old_norm)
+                            new_arr = json.loads(new_norm)
+                            if sorted(old_arr) == sorted(new_arr):
+                                return False
+                        except:
+                            pass
+                    return True
+                return False
+
+            # 处理保留期变更 (带反悔期逻辑)
+            if 'data_retention_days' in data:
+                new_val = int(data['data_retention_days'])
+                c.execute("SELECT value FROM config WHERE key='data_retention_days'")
+                curr_val_res = c.fetchone()
+                curr_val = int(curr_val_res[0]) if curr_val_res else 7
+                
+                if new_val < curr_val:
+                    # 缩短，进入反悔期
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', ?)", (str(new_val),))
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', ?)", (str(now),))
+                    write_audit('WARN', 'SYSTEM', 'RETENTION_PENDING', f'计划缩短数据保留期至 {new_val} 天 (3天内可撤销)', operator=get_client_ip())
+                else:
+                    # 延长或不变，立即生效并取消 pending
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (str(new_val),))
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+                    write_audit('INFO', 'SYSTEM', 'RETENTION_UPDATE', f'更新数据保留期为 {new_val} 天', operator=get_client_ip())
+
+            # 处理其它简单设置 (仅在变化时更新)
+            if 'log_delay_warn' in data:
+                val = str(float(data['log_delay_warn']))
+                if is_changed('log_delay_warn', val):
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_warn', ?)", (val,))
+            if 'log_delay_danger' in data:
+                val = str(float(data['log_delay_danger']))
+                if is_changed('log_delay_danger', val):
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_danger', ?)", (val,))
+            if 'dashboard_hours_hw' in data:
+                val = json.dumps(data['dashboard_hours_hw'])
+                if is_changed('dashboard_hours_hw', val):
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('dashboard_hours_hw', ?)", (val,))
+            if 'dashboard_hours_hist' in data:
+                val = json.dumps(data['dashboard_hours_hist'])
+                if is_changed('dashboard_hours_hist', val):
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('dashboard_hours_hist', ?)", (val,))
+
+            # 批量处理告警规则：完整处理新增、更新、删除
+            if 'alert_rules' in data and isinstance(data['alert_rules'], list):
+                # 1. 获取前端发来的所有规则 ID
+                frontend_ids = set()
+                for rule in data['alert_rules']:
+                    if 'id' in rule:
+                        frontend_ids.add(int(rule['id']))
+                
+                # 2. 获取数据库中当前的所有规则 ID
+                c.execute("SELECT id FROM alert_rules")
+                db_ids = {row['id'] for row in c.fetchall()}
+                
+                # 3. 计算需要删除的 ID（数据库有但前端没有的）
+                ids_to_delete = db_ids - frontend_ids
+                
+                # 4. 执行更新和新增
+                sqls = []
+                all_params = []
+                for rule in data['alert_rules']:
+                    if 'id' in rule:
+                        # 更新现有规则
+                        sqls.append('''UPDATE alert_rules SET name=?, metric=?, operator=?, threshold=?, duration=?, notify_interval=?, enabled=?, level=?
+                                     WHERE id=?''')
+                        all_params.append((rule['name'], rule['metric'], rule['operator'], rule['threshold'], rule['duration'], rule['notify_interval'], rule['enabled'], rule.get('level', 'WARN'), rule['id']))
+                    else:
+                        # 新增规则（没有 id）
+                        sqls.append('''INSERT INTO alert_rules (name, metric, operator, threshold, duration, notify_interval, enabled, level)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''')
+                        all_params.append((rule['name'], rule['metric'], rule['operator'], rule['threshold'], rule['duration'], rule['notify_interval'], rule['enabled'], rule.get('level', 'WARN')))
+                
+                # 5. 执行删除（使用 DELETE FROM alert_status）
+                for del_id in ids_to_delete:
+                    sqls.append("DELETE FROM alert_rules WHERE id=?")
+                    all_params.append((del_id,))
+                    sqls.append("DELETE FROM alert_status WHERE rule_id=?")
+                    all_params.append((del_id,))
+                
+                if sqls:
+                    execute_db_async(sqls, all_params, wait=True) # 等待完成以确保后续读操作正确
+            
+            conn.commit()
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            if conn: conn.rollback()
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
+
 @app.route('/api/log_delay_config', methods=['GET', 'POST'])
 @login_required
 def api_log_delay_config():
@@ -1187,13 +1776,18 @@ def api_log_delay_config():
 @app.route('/api/config/export')
 @login_required
 def api_config_export():
-    # 导出完整配置快照
+    """
+    导出完整配置快照
+    [开发者注意]：
+    1. 每次增加或修改 config 表的 key，或修改 alert_rules 表结构时，需考虑是否需要提升 metadata.version。
+    2. 提升版本号后，需在导入逻辑 (api_config_import/api_config_precheck) 中保持向下兼容。
+    3. 当前版本 4: 包含所有 config 项、告警规则（含 level）、导出时间文本。
+    """
     conn = get_db_connection()
     c = conn.cursor()
-    # 确保导出最新的延迟配置等所有配置项
+    # 确保导出所有的配置项 (config 表)
     c.execute("SELECT key, value FROM config")
     config_rows = c.fetchall()
-    conn.close()
     
     settings = {}
     for row in config_rows:
@@ -1202,15 +1796,24 @@ def api_config_export():
             settings[row['key']] = json.loads(row['value'])
         except:
             settings[row['key']] = row['value']
+
+    # 导出告警规则 (包含新增的 level 字段)
+    c.execute("SELECT name, metric, operator, threshold, duration, notify_interval, enabled, level FROM alert_rules")
+    alert_rules = [dict(row) for row in c.fetchall()]
+    conn.close()
             
+    now_ts = int(time.time())
     export_data = {
         "metadata": {
-            "version": 1,
-            "timestamp": int(time.time()),
+            "version": 4, # 提升至版本 4
+            "timestamp": now_ts,
+            "export_time": datetime.fromtimestamp(now_ts).strftime('%Y-%m-%d %H:%M:%S'),
             "export_by": get_client_ip(),
-            "server_name": SERVER_NAME
+            "server_name": SERVER_NAME,
+            "software_version": "1.2.0" # 建议此处记录当前软件版本号
         },
-        "settings": settings
+        "settings": settings,
+        "alert_rules": alert_rules
     }
     
     # Audit log
@@ -1221,6 +1824,13 @@ def api_config_export():
 @app.route('/api/config/import', methods=['POST'])
 @login_required
 def api_config_import():
+    """
+    执行配置导入
+    [向下兼容说明]：
+    - 版本 3 及以下：可能缺少 export_time，且告警规则可能缺少 level。
+    - 版本 4：包含 level 字段及完整 metadata。
+    - 逻辑：遍历 settings 键值对，若 config 表中已存在则更新，不存在则忽略（防止版本跨度过大导致无效键污染）。
+    """
     try:
         data = request.json
         if not data or 'metadata' not in data or 'settings' not in data:
@@ -1929,6 +2539,17 @@ def api_recording_stats():
     
     return jsonify([{'t': x[0], 'v': x[1]} for x in data])
 
+from werkzeug.serving import WSGIRequestHandler
+
+class SilentHandler(WSGIRequestHandler):
+    """静默处理常见的网络中断报错"""
+    def log_error(self, format, *args):
+        # 忽略 BrokenPipe 和 SSL 相关的非致命错误
+        err_msg = str(args[0]) if args else ""
+        if "BrokenPipeError" in err_msg or "Errno 32" in err_msg or "SSLError" in err_msg or "EOF" in err_msg:
+            return
+        super().log_error(format, *args)
+
 if __name__ == '__main__':
     check_environment()
     init_db()
@@ -1939,14 +2560,7 @@ if __name__ == '__main__':
     
     if HAS_CERT:
         print(f" * SSL Certificate found, starting HTTPS on port {PORT}")
-        # 为了在一个端口上支持 HTTP 自动跳转到 HTTPS，我们使用一种更底层的 Socket 处理方式
-        # 或者利用 Werkzeug 的实用工具（如果安装了），但为了保持轻量和开箱即用，
-        # 我们这里依然采用 Flask 的标准 ssl_context 模式，
-        # 并移除之前强制监听 80 端口的 http_redirect_server 逻辑。
-        # 针对“监听设置端口所传入的 http 请求”，通常这在不依赖第三方 Nginx 的情况下，
-        # 只有在前端代理或者更底层的流量分发层面实现。
-        # 但我们至少要做到不再随意占用 80 端口。
-        app.run(host='0.0.0.0', port=PORT, threaded=True, ssl_context=(cert_file, key_file))
+        app.run(host='0.0.0.0', port=PORT, threaded=True, ssl_context=(cert_file, key_file), request_handler=SilentHandler)
     else:
         print(f" * No SSL Certificate found, starting HTTP on port {PORT}")
-        app.run(host='0.0.0.0', port=PORT, threaded=True)
+        app.run(host='0.0.0.0', port=PORT, threaded=True, request_handler=SilentHandler)

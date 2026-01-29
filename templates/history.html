@@ -146,21 +146,12 @@
                 <button class="btn btn-sm btn-outline-info px-2 px-md-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInsights">
                     <i id="btn-insights-icon" class="fas fa-lightbulb me-1"></i> <span id="btn-insights-text">Insights</span>
                 </button>
-                <div class="btn-group btn-group-sm" role="group">
+                <div class="btn-group btn-group-sm" role="group" id="tr-container">
                     <input type="radio" class="btn-check" name="timeRange" id="tr1" value="1" checked onchange="loadData()">
                     <label class="btn btn-outline-secondary px-2 px-md-3" for="tr1">1H</label>
                     
-                    <input type="radio" class="btn-check" name="timeRange" id="tr6" value="6" onchange="loadData()">
-                    <label class="btn btn-outline-secondary px-2 px-md-3" for="tr6">6H</label>
-                    
                     <input type="radio" class="btn-check" name="timeRange" id="tr24" value="24" onchange="loadData()">
                     <label class="btn btn-outline-secondary px-2 px-md-3" for="tr24">24H</label>
-                    
-                    <input type="radio" class="btn-check" name="timeRange" id="tr72" value="72" onchange="loadData()">
-                    <label class="btn btn-outline-secondary px-2 px-md-3" for="tr72">3D</label>
-                    
-                    <input type="radio" class="btn-check" name="timeRange" id="tr168" value="168" onchange="loadData()">
-                    <label class="btn btn-outline-secondary px-2 px-md-3" for="tr168">7D</label>
                 </div>
                 <button class="btn btn-sm btn-primary px-2 px-md-3" onclick="loadData()"><i class="fas fa-sync-alt"></i></button>
             </div>
@@ -407,6 +398,24 @@
         }
     };
 
+    // --- 动态看板选项处理 ---
+    async function loadDashboardOptions() {
+        try {
+            const res = await fetch('/api/settings');
+            const settings = await res.json();
+            const container = document.getElementById('tr-container');
+            if (container && settings.dashboard_hours_hist) {
+                container.innerHTML = settings.dashboard_hours_hist.map((h, i) => {
+                    const label = h > 24 ? (h/24).toFixed(0) + 'D' : h + 'H';
+                    return `
+                        <input type="radio" class="btn-check" name="timeRange" id="tr${h}" value="${h}" ${h==24?'checked':''} onchange="loadData()">
+                        <label class="btn btn-outline-secondary px-2 px-md-3" for="tr${h}">${label}</label>
+                    `;
+                }).join('');
+            }
+        } catch (e) {}
+    }
+
     function init() {
         // 监听所有图表容器的鼠标移出，确保清理状态
         ['chartTemp', 'chartLoad', 'chartIO'].forEach(id => {
@@ -567,6 +576,11 @@
         loadPrefs();
         loadData();
     }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadDashboardOptions();
+        init();
+    });
 
     function handleTagChange() {
         savePrefs();
@@ -908,7 +922,7 @@
 
     init();
     checkLogStatus();
-    setInterval(checkLogStatus, 30000);
+    setInterval(checkLogStatus, 5000);
 </script>
 <footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
     <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">

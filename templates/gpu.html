@@ -364,7 +364,7 @@
     // 初始化加载配置并启动轮询
     document.addEventListener('DOMContentLoaded', () => {
         checkLogStatus();
-        setInterval(checkLogStatus, 30000);
+        setInterval(checkLogStatus, 5000);
         loadGpuConfig();
         refreshGpuData();
         setInterval(refreshGpuData, 1000); 

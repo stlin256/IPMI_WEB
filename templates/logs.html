@@ -239,6 +239,26 @@ n        /* 标签样式 */
         .terminal-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
         .terminal-body::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
+        /* 动画效果 */
+        .fade-in-up { animation: fadeInUp 0.3s ease-out; }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .tab-pane.active { animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .rule-card {
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-color) !important;
+            background: rgba(255,255,255,0.02) !important;
+        }
+        .rule-card:hover { border-color: var(--accent-blue) !important; background: rgba(255,255,255,0.04) !important; }
+
         /* 1. 图表容器比例 */
         .interval-chart-container {
             background: rgba(22, 27, 34, 0.4);
@@ -356,7 +376,7 @@ n        /* 标签样式 */
 
 <div class="container cli-container">
     <!-- Toast 容器 -->
-    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 2000;">
         <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body">
@@ -367,24 +387,179 @@ n        /* 标签样式 */
         </div>
     </div>
 
-    <!-- 导入配置 Modal -->
+    <!-- 确认删除 Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content bg-dark border-danger shadow-lg">
+                <div class="modal-body p-4 text-center">
+                    <i class="fas fa-exclamation-circle text-danger fs-1 mb-3"></i>
+                    <h5 class="fw-bold">确认删除此规则？</h5>
+                    <p class="text-muted small mb-4" id="confirm-msg">删除后将无法恢复</p>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-secondary flex-grow-1" data-bs-dismiss="modal">取消</button>
+                        <button class="btn btn-danger flex-grow-1 fw-bold" id="confirm-execute-btn">确认删除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 综合设置 Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content bg-dark border-secondary shadow-lg">
+                <div class="modal-header border-secondary py-2">
+                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i>系统设置中心</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0 d-flex" style="min-height: 450px;">
+                    <!-- 左侧侧边栏 Tab -->
+                    <div class="border-end border-secondary bg-black bg-opacity-25" style="width: 160px; flex-shrink: 0;">
+                        <div class="nav flex-column nav-pills p-2" id="settings-tabs" role="tablist">
+                            <button class="nav-link active text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-display" type="button">
+                                <i class="fas fa-desktop me-2"></i> 图表设置
+                            </button>
+                            <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-storage" type="button">
+                                <i class="fas fa-database me-2"></i> 存储管理
+                            </button>
+                            <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-alerts" type="button">
+                                <i class="fas fa-bell me-2"></i> 告警规则
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 右侧内容区 -->
+                    <div class="tab-content p-4 flex-grow-1 overflow-auto" style="max-height: 550px;">
+                        <!-- 图表设置 Tab -->
+                        <div class="tab-pane fade show active" id="tab-display">
+                            <h6 class="text-primary mb-4 fw-bold">采集延迟色彩阈值</h6>
+                            <div class="row g-3 mb-5">
+                                <div class="col-md-6">
+                                    <label class="form-label text-warning small fw-bold">警告阈值 (WARN) - 黄色</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" id="set-warn" class="form-control bg-dark border-secondary text-light" step="0.1">
+                                        <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-danger small fw-bold">危险阈值 (DANGER) - 红色</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" id="set-danger" class="form-control bg-dark border-secondary text-light" step="0.1">
+                                        <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <h6 class="text-primary mb-4 fw-bold">页面看板小时级设置</h6>
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">Hardware 页面选项</label>
+                                <div id="check-hw-hours" class="d-flex flex-wrap gap-2">
+                                    <!-- 动态生成勾选框 -->
+                                </div>
+                                <div class="form-text text-muted-plus small mt-2">>24H 将自动转换为天 (D) 展示</div>
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">History 页面选项</label>
+                                <div id="check-hist-hours" class="d-flex flex-wrap gap-2">
+                                    <!-- 动态生成勾选框 -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 存储管理 Tab -->
+                        <div class="tab-pane fade" id="tab-storage">
+                            <h6 class="text-primary mb-4 fw-bold">数据保留策略</h6>
+                            <div class="alert alert-info bg-info bg-opacity-10 border-info border-opacity-25 py-3 mb-4">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <span class="small text-info">缩短保留期后将有 3 天的“反悔期”。调回原时长可取消待处理的删除任务。</span>
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">数据保留时长 (天)</label>
+                                <div class="input-group">
+                                    <input type="number" id="set-retention" class="form-control bg-dark border-secondary text-light" min="7">
+                                    <span class="input-group-text bg-dark border-secondary text-muted">天</span>
+                                </div>
+                                <div class="mt-3 d-flex justify-content-between align-items-center">
+                                    <div id="retention-status"></div>
+                                    <div class="text-muted small">
+                                        <i class="fas fa-hdd me-1"></i>数据库占用: <span id="db-size-val" class="text-light fw-bold">--</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 告警规则 Tab -->
+                        <div class="tab-pane fade" id="tab-alerts">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h6 class="text-primary mb-0 fw-bold">自定义告警</h6>
+                                <button class="btn btn-sm btn-outline-primary" onclick="addNewAlertRule()">
+                                    <i class="fas fa-plus me-1"></i>添加规则
+                                </button>
+                            </div>
+                            <div id="alert-rules-container" class="d-flex flex-column gap-2 pb-3">
+                                <!-- 告警规则列表 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary py-2 bg-black bg-opacity-25">
+                    <button class="btn btn-sm btn-outline-secondary px-4" data-bs-dismiss="modal">关闭</button>
+                    <button class="btn btn-sm btn-primary px-5 fw-bold" id="btn-save-global" onclick="saveGlobalSettings()">
+                        <span id="save-btn-text">应用并保存</span>
+                        <i id="save-btn-spinner" class="fas fa-spinner fa-spin d-none"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入预览 Modal -->
     <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content bg-dark border-secondary">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content bg-dark border-secondary shadow-lg">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-file-import me-2"></i>导入配置</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
                 <div class="modal-body p-4">
-                    <div class="text-center mb-4">
-                        <i class="fas fa-file-import fa-3x text-success mb-3"></i>
-                        <h5 class="fw-bold">导入配置文件</h5>
-                        <p class="text-muted small">将覆盖当前系统所有配置，请谨慎操作</p>
+                    <div id="import-precheck-view">
+                        <div class="text-center py-5">
+                            <i class="fas fa-file-upload fa-3x text-muted mb-3"></i>
+                            <h5>选择配置文件以开始</h5>
+                            <button class="btn btn-primary mt-3 px-4" onclick="document.getElementById('config-upload').click()">选择 JSON 文件</button>
+                        </div>
                     </div>
-                    <div id="import-error-msg" class="alert alert-danger d-none small py-2 mb-3"></div>
-                    <div class="d-grid gap-2">
-                        <button class="btn btn-success fw-bold" onclick="document.getElementById('config-upload').click()">
-                            选择文件
-                        </button>
-                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <div id="import-diff-view" class="d-none">
+                        <div class="alert alert-info small py-2 mb-3 d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-info-circle me-2"></i>
+                                备份版本: <span id="import-version-val" class="fw-bold me-3">--</span>
+                                导出时间: <span id="import-time-val" class="fw-bold">--</span>
+                            </div>
+                            <div class="text-muted">软件版本: <span id="import-sw-val">--</span></div>
+                        </div>
+                        <div class="alert alert-warning small py-2 mb-3">
+                            <i class="fas fa-exclamation-triangle me-2"></i>请勾选您希望导入的项目。若缩短保留期，将自动触发 3 天反悔期。
+                        </div>
+                        <div class="table-responsive" style="max-height: 400px;">
+                            <table class="table table-dark table-sm align-middle small">
+                                <thead class="text-muted">
+                                    <tr>
+                                        <th width="40"><input type="checkbox" id="import-select-all" checked onchange="toggleImportSelectAll(this.checked)"></th>
+                                        <th>设置项</th>
+                                        <th>当前值</th>
+                                        <th>导入值</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="import-diff-table"></tbody>
+                            </table>
+                        </div>
                     </div>
+                    <div id="import-error-msg" class="alert alert-danger d-none small py-2 mt-3"></div>
                     <input type="file" id="config-upload" accept=".json" hidden onchange="handleImport(this.files)">
+                </div>
+                <div class="modal-footer border-secondary d-none" id="import-modal-footer">
+                    <button class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal">取消</button>
+                    <button class="btn btn-success btn-sm px-4 fw-bold" onclick="executeImport()">确认导入</button>
                 </div>
             </div>
         </div>
@@ -511,7 +686,9 @@ n        /* 标签样式 */
         importModal.show();
     }
 
-    // 导入配置
+    let pendingImportConfig = null;
+
+    // 导入预检
     async function handleImport(files) {
         if (files.length === 0) return;
         const errorEl = document.getElementById('import-error-msg');
@@ -522,43 +699,152 @@ n        /* 标签样式 */
         reader.onload = async (e) => {
             try {
                 const config = JSON.parse(e.target.result);
-                
-                // 格式校验
-                if (!config.metadata || !config.settings) {
-                    throw new Error('无效的配置文件格式');
-                }
-                if (typeof config.settings !== 'object') {
-                    throw new Error('settings 必须是一个对象');
-                }
+                pendingImportConfig = config;
 
-                // 二次确认
-                const version = config.metadata.version || 1;
-                if (!confirm(`确定要导入配置文件吗？\n版本: ${version}\n这将覆盖当前所有配置。`)) {
-                    return;
-                }
-
-                const res = await fetch('/api/config/import', {
+                const res = await fetch('/api/config/precheck', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
-                const result = await res.json();
-                
-                if (result.status === 'success') {
-                    importModal.hide();
-                    showToast('导入成功，系统正在应用新配置...');
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    throw new Error(result.error || '导入失败');
-                }
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                // 显示元数据
+                document.getElementById('import-version-val').innerText = data.version || '1';
+                document.getElementById('import-time-val').innerText = data.export_time || '未知';
+                document.getElementById('import-sw-val').innerText = data.software_version || '未知';
+
+                renderImportDiff(data);
             } catch (err) {
-                errorEl.innerText = '导入失败: ' + err.message;
+                errorEl.innerText = '解析失败: ' + err.message;
                 errorEl.classList.remove('d-none');
-            } finally {
-                document.getElementById('config-upload').value = '';
             }
         };
         reader.readAsText(file);
+    }
+
+    function renderImportDiff(data) {
+        document.getElementById('import-precheck-view').classList.add('d-none');
+        document.getElementById('import-diff-view').classList.remove('d-none');
+        document.getElementById('import-modal-footer').classList.remove('d-none');
+
+        const tbody = document.getElementById('import-diff-table');
+        let html = '';
+
+        // 渲染基础设置差异
+        data.diffs.sort((a, b) => (b.changed - a.changed)).forEach(d => {
+            const isChanged = d.changed;
+            // 美化高亮：移除浅蓝色背景，改用柔和的 GitHub 风格变更提示
+            html += `
+                <tr class="${isChanged ? 'border-start border-4 border-success' : 'opacity-50'}" 
+                    style="${isChanged ? 'background: rgba(63, 185, 80, 0.05);' : ''}">
+                    <td class="ps-3"><input type="checkbox" class="import-item-check" data-type="setting" data-key="${d.key}" ${isChanged?'checked':''}></td>
+                    <td class="fw-bold py-3">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-sliders-h me-2 text-muted" style="width: 16px;"></i>
+                            <span>${d.key}</span>
+                            ${!isChanged ? '<span class="badge bg-dark text-muted border border-secondary ms-2" style="font-size: 9px; padding: 2px 4px;">UNCHANGED</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="text-muted font-monospace small">
+                        <div style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${d.old.length > 30 ? d.old : ''}">
+                            ${d.old}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            ${isChanged ? `
+                                <i class="fas fa-long-arrow-alt-right text-success mx-2"></i>
+                                <span class="text-success-emphasis fw-bold font-monospace small bg-success bg-opacity-10 px-2 py-1 rounded">${d.new}</span>
+                            ` : `
+                                <span class="text-muted font-monospace small px-2">${d.new}</span>
+                            `}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        // 渲染告警规则差异 (参数级对比)
+        data.alerts.sort((a, b) => (b.changed - a.changed)).forEach((a, idx) => {
+            const isChanged = a.changed;
+            let detailHtml = '';
+            if (a.params_changed && a.params_changed.length > 0) {
+                detailHtml = a.params_changed.map(p => `
+                    <div class="mt-1 d-flex align-items-center gap-2" style="font-size: 11px;">
+                        <span class="text-muted-plus">${p.field}:</span>
+                        <span class="text-danger text-decoration-line-through opacity-75">${p.old}</span>
+                        <i class="fas fa-caret-right text-muted small"></i>
+                        <span class="text-success fw-bold">${p.new}</span>
+                    </div>
+                `).join('');
+            }
+
+            html += `
+                <tr class="${isChanged ? 'border-start border-4 border-info' : 'opacity-50'}"
+                    style="${isChanged ? 'background: rgba(56, 139, 253, 0.05);' : ''}">
+                    <td class="ps-3"><input type="checkbox" class="import-item-check" data-type="alert" data-idx="${idx}" ${isChanged?'checked':''}></td>
+                    <td class="py-3">
+                        <div class="fw-bold d-flex align-items-center">
+                            <i class="fas fa-bell me-2 text-warning" style="width: 16px;"></i>
+                            ${a.name}
+                        </div>
+                        ${detailHtml}
+                    </td>
+                    <td class="text-muted small">指标: ${a.data.metric}</td>
+                    <td>
+                        ${isChanged ? `
+                            <span class="badge rounded-pill ${a.is_new ? 'bg-success' : 'bg-info'}" style="font-size: 10px;">
+                                ${a.is_new ? 'NEW RULE' : 'UPDATE'}
+                            </span>
+                        ` : `
+                            <span class="badge border border-secondary text-muted rounded-pill" style="font-size: 10px;">NO CHANGE</span>
+                        `}
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function toggleImportSelectAll(checked) {
+        document.querySelectorAll('.import-item-check').forEach(el => el.checked = checked);
+    }
+
+    async function executeImport() {
+        if (!pendingImportConfig) return;
+        
+        const selectedSettings = {};
+        const selectedAlerts = [];
+        
+        document.querySelectorAll('.import-item-check:checked').forEach(el => {
+            if (el.dataset.type === 'setting') {
+                selectedSettings[el.dataset.key] = pendingImportConfig.settings[el.dataset.key];
+            } else {
+                selectedAlerts.push(pendingImportConfig.alert_rules[el.dataset.idx]);
+            }
+        });
+
+        try {
+            const res = await fetch('/api/config/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    settings: selectedSettings,
+                    alert_rules: selectedAlerts
+                })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('导入成功');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                throw new Error(result.error || '导入失败');
+            }
+        } catch (e) {
+            showToast(e.message, true);
+        }
     }
 
     function parseUAInfo(ua) {
@@ -735,60 +1021,281 @@ n        /* 标签样式 */
         }
     }
 
-    // Chart 数据和事件管理
-    let chartData = [];
-    let chartTooltip = null;
-    let isMouseOnChart = false;
-    let delayConfig = { log_delay_warn: 1.5, log_delay_danger: 5.0 };
-    let delayModal;
+    // --- 综合设置中心逻辑 ---
+    let settingsModal;
+    let confirmModal;
+    let globalSettings = {};
+    let alertRules = [];
+
+    function showConfirmModal(msg, onConfirm) {
+        if (!confirmModal) confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+        document.getElementById('confirm-msg').innerText = msg;
+        const btn = document.getElementById('confirm-execute-btn');
+        btn.onclick = () => {
+            onConfirm();
+            confirmModal.hide();
+        };
+        confirmModal.show();
+    }
+
+    const DASHBOARD_PRESETS = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720];
 
     async function openDelaySettings() {
-        if (!delayModal) delayModal = new bootstrap.Modal(document.getElementById('delayModal'));
+        if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
         
         try {
-            const res = await fetch('/api/log_delay_config');
-            const data = await res.json();
-            document.getElementById('input-warn').value = data.log_delay_warn;
-            document.getElementById('input-danger').value = data.log_delay_danger;
-            delayModal.show();
+            // 1. 获取全局设置
+            const res = await fetch('/api/settings');
+            globalSettings = await res.json();
+            
+            // 填充 UI
+            document.getElementById('set-warn').value = globalSettings.log_delay_warn;
+            document.getElementById('set-danger').value = globalSettings.log_delay_danger;
+            document.getElementById('set-retention').value = globalSettings.data_retention_days;
+            
+            // 显示数据库体积
+            const formatBytes = (bytes) => {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            };
+            document.getElementById('db-size-val').innerText = formatBytes(globalSettings.db_size_bytes || 0);
+
+            // 动态渲染勾选框 (优化视觉：激活状态使用 primary)
+            const renderChecks = (containerId, currentArr) => {
+                const container = document.getElementById(containerId);
+                container.innerHTML = DASHBOARD_PRESETS.map(h => {
+                    const label = h > 24 ? (h/24).toFixed(0) + 'D' : h + 'H';
+                    const checked = currentArr.includes(h) ? 'checked' : '';
+                    return `
+                        <div class="form-check form-check-inline m-0">
+                            <input class="btn-check" type="checkbox" id="${containerId}-${h}" value="${h}" ${checked}>
+                            <label class="btn btn-outline-primary btn-sm px-3" for="${containerId}-${h}">${label}</label>
+                        </div>
+                    `;
+                }).join('');
+            };
+            renderChecks('check-hw-hours', globalSettings.dashboard_hours_hw);
+            renderChecks('check-hist-hours', globalSettings.dashboard_hours_hist);
+            
+            // 处理保留期状态
+            const statusEl = document.getElementById('retention-status');
+            if (globalSettings.retention_change_ts > 0) {
+                const elapsed = (Date.now() / 1000) - globalSettings.retention_change_ts;
+                const remaining = Math.max(0, 3 * 24 - (elapsed / 3600)).toFixed(1);
+                statusEl.innerHTML = `<span class="badge bg-warning text-dark">待处理: ${globalSettings.pending_retention_days} 天 (剩余约 ${remaining} 小时生效)</span>`;
+            } else {
+                statusEl.innerHTML = `<span class="badge bg-success">当前已生效</span>`;
+            }
+
+            // 2. 获取告警规则
+            await loadAlertRules();
+            
+            settingsModal.show();
         } catch (e) {
-            showToast('获取配置失败: ' + e.message, true);
+            showToast('加载设置失败: ' + e.message, true);
         }
     }
 
-    async function saveDelaySettings() {
-        const warn = parseFloat(document.getElementById('input-warn').value);
-        const danger = parseFloat(document.getElementById('input-danger').value);
-        
-        if (isNaN(warn) || isNaN(danger) || warn <= 0 || danger <= 0) {
-            showToast('请输入有效的数值', true);
+    async function loadAlertRules() {
+        const res = await fetch('/api/alert_rules');
+        alertRules = await res.json();
+        renderAlertRules();
+    }
+
+    function renderAlertRules() {
+        const container = document.getElementById('alert-rules-container');
+        if (alertRules.length === 0) {
+            container.innerHTML = '<div class="text-center py-4 text-muted small">暂无告警规则</div>';
             return;
         }
 
+        container.innerHTML = alertRules.map(rule => {
+            const isDeleted = rule._deleted === true;
+            return `
+            <div class="card rule-card fade-in-up ${isDeleted ? 'opacity-50' : ''}" style="${isDeleted ? 'border-style: dashed;' : ''}">
+                <div class="card-body p-2 px-3">
+                    <div class="d-flex align-items-center gap-2">
+                        ${!isDeleted ? `
+                        <div class="form-check form-switch me-1">
+                            <input class="form-check-input" type="checkbox" ${rule.enabled ? 'checked' : ''} 
+                                   onchange="updateRuleLocal(${rule.id}, 'enabled', this.checked ? 1 : 0)">
+                        </div>
+                        ` : '<div class="me-1"></div>'}
+                        
+                        <input type="text" class="form-control form-control-sm bg-transparent border-0 ${isDeleted ? 'text-muted text-decoration-line-through' : 'text-primary'} fw-bold p-0 flex-grow-1" 
+                               value="${rule.name}" onchange="updateRuleLocal(${rule.id}, 'name', this.value)" style="min-width:80px;" ${isDeleted ? 'readonly' : ''}>
+                        
+                        <div class="d-flex align-items-center gap-1 small text-muted-plus">
+                            ${!isDeleted ? `
+                            <!-- 等级选择 -->
+                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:65px; height:24px; font-size:10px;"
+                                       onchange="updateRuleLocal(${rule.id}, 'level', this.value)">
+                                <option value="WARN" ${rule.level==='WARN'?'selected':''}>WARN</option>
+                                <option value="INFO" ${rule.level==='INFO'?'selected':''}>INFO</option>
+                            </select>
+
+                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:90px; height:24px; font-size:11px;"
+                                       onchange="updateRuleLocal(${rule.id}, 'metric', this.value)">
+                                <option value="cpu_temp" ${rule.metric==='cpu_temp'?'selected':''}>CPU温度</option>
+                                <option value="fan_rpm" ${rule.metric==='fan_rpm'?'selected':''}>风扇转速</option>
+                                <option value="power" ${rule.metric==='power'?'selected':''}>功耗</option>
+                                <option value="cpu_usage" ${rule.metric==='cpu_usage'?'selected':''}>CPU负载</option>
+                                <option value="mem_usage" ${rule.metric==='mem_usage'?'selected':''}>内存占用</option>
+                                <option value="gpu_temp" ${rule.metric==='gpu_temp'?'selected':''}>GPU温度</option>
+                                <option value="gpu_util" ${rule.metric==='gpu_util'?'selected':''}>GPU负载</option>
+                                <option value="gpu_mem" ${rule.metric==='gpu_mem'?'selected':''}>显存占用</option>
+                            </select>
+                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
+                                       onchange="updateRuleLocal(${rule.id}, 'operator', this.value)">
+                                <option value=">" ${rule.operator==='>'?'selected':''}>></option>
+                                <option value="<" ${rule.operator==='<'?'selected':''}><</option>
+                                <option value=">=" ${rule.operator==='>='?'selected':''}>&ge;</option>
+                            </select>
+                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
+                                       value="${rule.threshold}" onchange="updateRuleLocal(${rule.id}, 'threshold', parseFloat(this.value))">
+                            ` : ''}
+                        </div>
+
+                        <div class="vr mx-1" style="height:15px; opacity:0.2;"></div>
+
+                        ${!isDeleted ? `
+                        <div class="d-flex align-items-center gap-1 small text-muted" title="持续时间 / 通知频率">
+                            <i class="fas fa-clock" style="font-size:10px;"></i>
+                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:40px; height:24px; font-size:11px;"
+                                                     value="${rule.duration}" onchange="updateRuleLocal(${rule.id}, 'duration', parseInt(this.value))">
+                            <span>/</span>
+                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
+                                                       value="${rule.notify_interval}" onchange="updateRuleLocal(${rule.id}, 'notify_interval', parseInt(this.value))">
+                        </div>
+                        ` : '<span class="badge bg-danger ms-2">待删除</span>'}
+
+                        ${!isDeleted ? `
+                        <button class="btn btn-link btn-sm text-danger p-0 ms-2" onclick="markDeleteRule(${rule.id})" title="标记删除 (保存后生效)">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        ` : `
+                        <button class="btn btn-link btn-sm text-success p-0 ms-2" onclick="undoDeleteRule(${rule.id})" title="撤销删除">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `}).join('');
+    }
+
+    function updateRuleLocal(id, field, value) {
+        const rule = alertRules.find(r => r.id === id);
+        if (rule) rule[field] = value;
+    }
+
+    async function addNewAlertRule() {
+        const newRule = { name: "新规则", metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN" };
         try {
-            const res = await fetch('/api/log_delay_config', {
+            await fetch('/api/alert_rules', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ log_delay_warn: warn, log_delay_danger: danger })
+                body: JSON.stringify(newRule)
+            });
+            await loadAlertRules();
+        } catch (e) { showToast('添加失败', true); }
+    }
+
+    // 标记删除规则（前端本地标记，保存时生效）
+    function markDeleteRule(id) {
+        const rule = alertRules.find(r => r.id === id);
+        if (rule) {
+            rule._deleted = true;
+            renderAlertRules();
+        }
+    }
+
+    // 撤销删除规则
+    function undoDeleteRule(id) {
+        const rule = alertRules.find(r => r.id === id);
+        if (rule) {
+            delete rule._deleted;
+            renderAlertRules();
+        }
+    }
+
+    // 旧版直接删除函数（保留但不再使用）
+    async function deleteRule(id) {
+        showConfirmModal('规则删除后将无法恢复，确定继续吗？', async () => {
+            try {
+                await fetch(`/api/alert_rules?id=${id}`, { method: 'DELETE' });
+                await loadAlertRules();
+                showToast('规则已删除');
+            } catch (e) { showToast('删除失败', true); }
+        });
+    }
+
+    async function saveGlobalSettings() {
+        const btn = document.getElementById('btn-save-global');
+        const text = document.getElementById('save-btn-text');
+        const spinner = document.getElementById('save-btn-spinner');
+
+        const getChecked = (containerId) => {
+            return Array.from(document.querySelectorAll(`#${containerId} input:checked`)).map(el => parseInt(el.value));
+        };
+
+        // 过滤掉被标记为删除的规则（不发送到后端）
+        const rulesToSave = alertRules.filter(r => !r._deleted).map(r => {
+            const { _deleted, ...cleanRule } = r; // 移除 _deleted 字段
+            return cleanRule;
+        });
+
+        // 封装统一 payload，减少请求次数和数据库锁定时间
+        const payload = {
+            log_delay_warn: parseFloat(document.getElementById('set-warn').value),
+            log_delay_danger: parseFloat(document.getElementById('set-danger').value),
+            data_retention_days: parseInt(document.getElementById('set-retention').value),
+            dashboard_hours_hw: getChecked('check-hw-hours'),
+            dashboard_hours_hist: getChecked('check-hist-hours'),
+            alert_rules: rulesToSave // 只发送未被标记删除的规则
+        };
+
+        try {
+            btn.disabled = true;
+            text.classList.add('d-none');
+            spinner.classList.remove('d-none');
+
+            // 一次性发送请求，提升性能并防止阻塞数据采集
+            const res = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
             
             if (res.ok) {
-                delayConfig = { log_delay_warn: warn, log_delay_danger: danger };
-                delayModal.hide();
-                showToast('设置保存成功');
-                drawIntervalChart(); // 重新绘制图表
-            } else {
-                throw new Error('保存失败');
+                showToast('系统设置已应用并保存成功');
+                settingsModal.hide();
+                delayConfig = { log_delay_warn: payload.log_delay_warn, log_delay_danger: payload.log_delay_danger };
+                drawIntervalChart();
             }
         } catch (e) {
             showToast('保存失败: ' + e.message, true);
+        } finally {
+            btn.disabled = false;
+            text.classList.remove('d-none');
+            spinner.classList.add('d-none');
         }
     }
+
+    // 定义全局变量以防报错
+    let chartData = [];
+    let delayConfig = { log_delay_warn: 1.5, log_delay_danger: 5.0 };
+    let chartTooltip;
 
     // 优化后的绘制逻辑
     async function drawIntervalChart() {
         const canvas = document.getElementById('intervalCanvas');
         const wrapper = document.getElementById('chart-wrapper');
+        if (!canvas || !wrapper) return;
+
         const maxMarker = document.getElementById('chart-max-val');
         const avgMarker = document.getElementById('chart-avg-val');
         const minMarker = document.getElementById('chart-min-val');
@@ -801,43 +1308,55 @@ n        /* 标签样式 */
 
         // 颜色映射辅助函数
         const getColor = (val) => {
-            if (val <= delayConfig.log_delay_warn) return '#1a7f37'; // 进一步加深绿色
-            if (val <= delayConfig.log_delay_danger) return '#d29922'; // 黄色
-            return '#f85149';                 // 红色
+            const warn = parseFloat(delayConfig.log_delay_warn) || 1.5;
+            const danger = parseFloat(delayConfig.log_delay_danger) || 5.0;
+            if (val <= warn) return '#1a7f37'; 
+            if (val <= danger) return '#d29922';
+            return '#f85149';
         };
 
         try {
-            // 先获取最新配置
+            wrapper.classList.add('chart-loading');
+
+            // 1. 获取配置 (如果 DOMContentLoaded 里的请求还没回来，这里做个兜底)
             try {
                 const configRes = await fetch('/api/log_delay_config');
-                delayConfig = await configRes.json();
-            } catch (e) {}
+                if (configRes.ok) {
+                    const cfg = await configRes.json();
+                    if (cfg && cfg.log_delay_warn) delayConfig = cfg;
+                }
+            } catch (e) { console.warn("Failed to load delay config", e); }
 
-            wrapper.classList.add('chart-loading');
+            // 2. 获取数据
             const response = await fetch('/api/recording_stats');
+            if (!response.ok) throw new Error('API Response Error');
             const data = await response.json();
             
-            if (!data || data.length === 0) {
-                // 如果没有数据，清除画布并显示提示
+            if (!data || !Array.isArray(data) || data.length === 0) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                maxMarker.innerText = 'MAX: --';
-                avgMarker.innerText = 'AVG: --';
-                minMarker.innerText = 'MIN: --';
+                if (maxMarker) maxMarker.innerText = 'MAX: --';
+                if (avgMarker) avgMarker.innerText = 'AVG: --';
+                if (minMarker) minMarker.innerText = 'MIN: --';
                 wrapper.classList.remove('chart-loading');
                 return;
             }
 
             chartData = data;
 
-            // 处理对象数组或旧版纯数值数组
-            const values = data.map(item => typeof item === 'object' ? item.v : item);
+            // 3. 数据归一化处理 (防止 NaN)
+            const values = data.map(item => {
+                const v = typeof item === 'object' ? item.v : item;
+                return isNaN(parseFloat(v)) ? 0 : parseFloat(v);
+            });
 
-            // 数据统计
+            if (values.length === 0) return;
+
+            // 4. 数据统计
             const maxVal = Math.max(...values);
             const minVal = Math.min(...values);
             const avgVal = values.reduce((a, b) => a + b, 0) / values.length;
             
-            // 更新标注文字和颜色
+            // 更新标注
             maxMarker.innerText = `MAX: ${maxVal.toFixed(1)}s`;
             maxMarker.style.color = getColor(maxVal);
             
@@ -882,9 +1401,10 @@ n        /* 标签样式 */
                 ctx.fillRect(x, height - barHeight, barWidth + 0.5, barHeight);
             });
 
-            wrapper.classList.remove('chart-loading');
         } catch (e) {
-            console.error("Chart Error:", e);
+            console.error("Chart Render Error:", e);
+        } finally {
+            // 无论成功失败，强制移除加载状态
             wrapper.classList.remove('chart-loading');
         }
     }
@@ -982,7 +1502,26 @@ n        /* 标签样式 */
         }, 3000); // 每3秒检查新日志
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        // 监听导入 Modal 关闭事件，重置状态
+        const impModalEl = document.getElementById('importModal');
+        if (impModalEl) {
+            impModalEl.addEventListener('hidden.bs.modal', () => {
+                document.getElementById('import-precheck-view').classList.remove('d-none');
+                document.getElementById('import-diff-view').classList.add('d-none');
+                document.getElementById('import-modal-footer').classList.add('d-none');
+                document.getElementById('import-error-msg').classList.add('d-none');
+                document.getElementById('config-upload').value = '';
+                pendingImportConfig = null;
+            });
+        }
+
+        // 先获取一次配置，确保 drawIntervalChart 能拿到正确的颜色阈值
+        try {
+            const configRes = await fetch('/api/log_delay_config');
+            delayConfig = await configRes.json();
+        } catch (e) {}
+
         loadLogs();
         startAutoRefresh();
         drawIntervalChart();
