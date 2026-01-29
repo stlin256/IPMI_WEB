@@ -394,6 +394,8 @@ n        /* 标签样式 */
         <div class="d-flex align-items-center gap-3">
             <h4 class="mb-0"><i class="fas fa-list me-2 text-primary"></i>系统日志</h4>
             <span class="refresh-indicator" id="refreshIndicator" title="自动刷新中"></span>
+            <i class="fas fa-cog text-muted cursor-pointer hover-white transition-all" 
+               onclick="openDelaySettings()" title="延迟色彩阈值设置" style="cursor: pointer;"></i>
         </div>
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-outline-primary btn-sm px-3" onclick="exportConfig()">
@@ -402,6 +404,41 @@ n        /* 标签样式 */
             <button class="btn btn-outline-success btn-sm px-3" onclick="openImportModal()">
                 <i class="fas fa-upload me-1"></i>导入配置
             </button>
+        </div>
+    </div>
+
+    <!-- 延迟设置 Modal -->
+    <div class="modal fade" id="delayModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title"><i class="fas fa-palette me-2"></i>延迟色彩阈值设置</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label text-warning small fw-bold">警告阈值 (WARN) - 黄色</label>
+                        <div class="input-group">
+                            <input type="number" id="input-warn" class="form-control bg-dark text-light border-secondary" step="0.1" min="0.1">
+                            <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                        </div>
+                        <div class="form-text text-muted">延迟超过此值且低于危险阈值时显示为黄色</div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label text-danger small fw-bold">危险阈值 (DANGER) - 红色</label>
+                        <div class="input-group">
+                            <input type="number" id="input-danger" class="form-control bg-dark text-light border-secondary" step="0.1" min="0.1">
+                            <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                        </div>
+                        <div class="form-text text-muted">延迟超过此值时显示为红色</div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary fw-bold" onclick="saveDelaySettings()">
+                            保存设置
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -702,6 +739,51 @@ n        /* 标签样式 */
     let chartData = [];
     let chartTooltip = null;
     let isMouseOnChart = false;
+    let delayConfig = { log_delay_warn: 1.5, log_delay_danger: 5.0 };
+    let delayModal;
+
+    async function openDelaySettings() {
+        if (!delayModal) delayModal = new bootstrap.Modal(document.getElementById('delayModal'));
+        
+        try {
+            const res = await fetch('/api/log_delay_config');
+            const data = await res.json();
+            document.getElementById('input-warn').value = data.log_delay_warn;
+            document.getElementById('input-danger').value = data.log_delay_danger;
+            delayModal.show();
+        } catch (e) {
+            showToast('获取配置失败: ' + e.message, true);
+        }
+    }
+
+    async function saveDelaySettings() {
+        const warn = parseFloat(document.getElementById('input-warn').value);
+        const danger = parseFloat(document.getElementById('input-danger').value);
+        
+        if (isNaN(warn) || isNaN(danger) || warn <= 0 || danger <= 0) {
+            showToast('请输入有效的数值', true);
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/log_delay_config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ log_delay_warn: warn, log_delay_danger: danger })
+            });
+            
+            if (res.ok) {
+                delayConfig = { log_delay_warn: warn, log_delay_danger: danger };
+                delayModal.hide();
+                showToast('设置保存成功');
+                drawIntervalChart(); // 重新绘制图表
+            } else {
+                throw new Error('保存失败');
+            }
+        } catch (e) {
+            showToast('保存失败: ' + e.message, true);
+        }
+    }
 
     // 优化后的绘制逻辑
     async function drawIntervalChart() {
@@ -719,12 +801,18 @@ n        /* 标签样式 */
 
         // 颜色映射辅助函数
         const getColor = (val) => {
-            if (val <= 1.5) return '#3fb950'; // 绿色
-            if (val <= 5)   return '#d29922'; // 黄色
+            if (val <= delayConfig.log_delay_warn) return '#1a7f37'; // 进一步加深绿色
+            if (val <= delayConfig.log_delay_danger) return '#d29922'; // 黄色
             return '#f85149';                 // 红色
         };
 
         try {
+            // 先获取最新配置
+            try {
+                const configRes = await fetch('/api/log_delay_config');
+                delayConfig = await configRes.json();
+            } catch (e) {}
+
             wrapper.classList.add('chart-loading');
             const response = await fetch('/api/recording_stats');
             const data = await response.json();
@@ -741,10 +829,13 @@ n        /* 标签样式 */
 
             chartData = data;
 
+            // 处理对象数组或旧版纯数值数组
+            const values = data.map(item => typeof item === 'object' ? item.v : item);
+
             // 数据统计
-            const maxVal = Math.max(...data);
-            const minVal = Math.min(...data);
-            const avgVal = data.reduce((a, b) => a + b, 0) / data.length;
+            const maxVal = Math.max(...values);
+            const minVal = Math.min(...values);
+            const avgVal = values.reduce((a, b) => a + b, 0) / values.length;
             
             // 更新标注文字和颜色
             maxMarker.innerText = `MAX: ${maxVal.toFixed(1)}s`;
@@ -770,11 +861,14 @@ n        /* 标签样式 */
             ctx.clearRect(0, 0, width, height);
             
             // 算法优化：平方根缩放 + 预留顶部 30% 空间给标注区
-            // 如果 maxVal 为 0，避免除以零
-            const scaledMax = maxVal > 0 ? Math.sqrt(maxVal) : 1;
+            // 确保在数值很小时，3s 位于中间高度 (50%)
+            // 3s 的平方根是 1.732，如果要在 50% 高度显示，则逻辑上的最大值平方根应为 1.732 * 2 = 3.464
+            // 对应的逻辑最大值约为 12s
+            const scaledMax = Math.max(Math.sqrt(maxVal), Math.sqrt(3) * 2);
             const usableHeight = height * 0.7; 
 
-            data.forEach((val, i) => {
+            data.forEach((item, i) => {
+                const val = typeof item === 'object' ? item.v : item;
                 ctx.fillStyle = getColor(val);
 
                 const scaledVal = Math.sqrt(val);
@@ -815,17 +909,25 @@ n        /* 标签样式 */
             const index = Math.floor(x / barWidth);
 
             if (index >= 0 && index < chartData.length) {
-                const val = chartData[index];
+                const item = chartData[index];
+                const val = typeof item === 'object' ? item.v : item;
+                const ts = typeof item === 'object' ? item.t : null;
+                
                 const getColor = (v) => {
-                    if (v <= 1.5) return '#3fb950';
-                    if (v <= 5)   return '#d29922';
-                    return '#f85149';
+                    if (v <= delayConfig.log_delay_warn) return '#1a7f37'; // 进一步加深绿色
+                    if (v <= delayConfig.log_delay_danger) return '#d29922'; // 黄色
+                    return '#f85149';                 // 红色
                 };
 
-                // 计算时间点：索引 0 是 24 小时前，索引 23 是当前
-                const now = new Date();
-                const targetTime = new Date(now.getTime() - (chartData.length - 1 - index) * 3600000);
-                const timeStr = targetTime.toLocaleTimeString('zh-CN', { hour12: false });
+                // 计算时间点
+                let timeStr;
+                if (ts) {
+                    timeStr = new Date(ts * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+                } else {
+                    const now = new Date();
+                    const targetTime = new Date(now.getTime() - (chartData.length - 1 - index) * (86400000 / chartData.length));
+                    timeStr = targetTime.toLocaleTimeString('zh-CN', { hour12: false });
+                }
 
                 chartTooltip.innerHTML = `${timeStr} &bull; ${val.toFixed(2)}s`;
                 chartTooltip.style.color = getColor(val);

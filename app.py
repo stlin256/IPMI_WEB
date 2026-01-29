@@ -259,6 +259,10 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS recording_intervals (timestamp INTEGER, interval REAL)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_intervals_ts ON recording_intervals(timestamp)')
 
+    # 初始化延迟色彩阈值
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('log_delay_warn', '1.5')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('log_delay_danger', '5.0')")
+
     # --- 一次性初始化延迟分布数据库逻辑 ---
     c.execute("SELECT value FROM config WHERE key='recording_intervals_init_done'")
     if not c.fetchone():
@@ -1151,12 +1155,42 @@ def api_audit_logs():
         'logs': logs
     })
 
+@app.route('/api/log_delay_config', methods=['GET', 'POST'])
+@login_required
+def api_log_delay_config():
+    conn = get_db_connection()
+    c = conn.cursor()
+    if request.method == 'GET':
+        c.execute("SELECT key, value FROM config WHERE key IN ('log_delay_warn', 'log_delay_danger')")
+        res = {row['key']: float(row['value']) for row in c.fetchall()}
+        conn.close()
+        # 补全缺失值
+        if 'log_delay_warn' not in res: res['log_delay_warn'] = 1.5
+        if 'log_delay_danger' not in res: res['log_delay_danger'] = 5.0
+        return jsonify(res)
+    
+    if request.method == 'POST':
+        try:
+            data = request.json
+            if 'log_delay_warn' in data:
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_warn', ?)", (str(float(data['log_delay_warn'])),))
+            if 'log_delay_danger' in data:
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_danger', ?)", (str(float(data['log_delay_danger'])),))
+            conn.commit()
+            write_audit('INFO', 'CONFIG', 'UPDATE_DELAY', '更新采集延迟阈值', details=data, operator=get_client_ip())
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        finally:
+            conn.close()
+
 @app.route('/api/config/export')
 @login_required
 def api_config_export():
     # 导出完整配置快照
     conn = get_db_connection()
     c = conn.cursor()
+    # 确保导出最新的延迟配置等所有配置项
     c.execute("SELECT key, value FROM config")
     config_rows = c.fetchall()
     conn.close()
@@ -1890,10 +1924,10 @@ def api_recording_stats():
             chunk = data[idx_start:idx_end]
             if chunk:
                 max_val = max([x[1] for x in chunk])
-                sampled.append(max_val)
+                sampled.append({'t': data[idx_end-1][0], 'v': max_val})
         return jsonify(sampled)
     
-    return jsonify([x[1] for x in data])
+    return jsonify([{'t': x[0], 'v': x[1]} for x in data])
 
 if __name__ == '__main__':
     check_environment()
