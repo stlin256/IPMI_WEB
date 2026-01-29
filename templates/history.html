@@ -405,15 +405,32 @@
             const settings = await res.json();
             const container = document.getElementById('tr-container');
             if (container && settings.dashboard_hours_hist) {
-                container.innerHTML = settings.dashboard_hours_hist.map((h, i) => {
+                // 获取上次选择的时间跨度，如果没有则默认第一个选项
+                const lastSelected = localStorage.getItem('hist_time_range');
+                const allowedHours = settings.dashboard_hours_hist;
+                
+                // 确定默认选中的值：如果上次选择存在于允许的选项中则使用，否则用第一个
+                let defaultChecked = allowedHours[0];
+                if (lastSelected && allowedHours.includes(parseInt(lastSelected))) {
+                    defaultChecked = parseInt(lastSelected);
+                }
+                
+                container.innerHTML = allowedHours.map((h, i) => {
                     const label = h > 24 ? (h/24).toFixed(0) + 'D' : h + 'H';
                     return `
-                        <input type="radio" class="btn-check" name="timeRange" id="tr${h}" value="${h}" ${h==24?'checked':''} onchange="loadData()">
+                        <input type="radio" class="btn-check" name="timeRange" id="tr${h}" value="${h}" ${h===defaultChecked?'checked':''} onchange="loadData(); saveTimeRangePrefs();">
                         <label class="btn btn-outline-secondary px-2 px-md-3" for="tr${h}">${label}</label>
                     `;
                 }).join('');
             }
         } catch (e) {}
+    }
+
+    function saveTimeRangePrefs() {
+        const rangeEl = document.querySelector('input[name="timeRange"]:checked');
+        if (rangeEl) {
+            localStorage.setItem('hist_time_range', rangeEl.value);
+        }
     }
 
     function init() {
@@ -580,6 +597,8 @@
     document.addEventListener('DOMContentLoaded', async () => {
         await loadDashboardOptions();
         init();
+        checkLogStatus();
+        setInterval(checkLogStatus, 5000);
     });
 
     function handleTagChange() {
@@ -920,9 +939,6 @@
         }, 2000);
     }
 
-    init();
-    checkLogStatus();
-    setInterval(checkLogStatus, 5000);
 </script>
 <footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
     <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
