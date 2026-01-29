@@ -231,6 +231,19 @@ n        /* 标签样式 */
             .cli-details { margin-left: 0; padding: 10px; }
             .cli-history-item { flex-wrap: wrap; }
             .cli-history-time { min-width: 80px; }
+            
+            /* 系统设置 Modal 移动端优化 */
+            #settingsModal .modal-body { flex-direction: column !important; }
+            #settingsModal .border-end { border-end-width: 0 !important; border-bottom: 1px solid var(--border-color) !important; width: 100% !important; flex-shrink: 0; }
+            #settingsModal .nav { flex-direction: row !important; overflow-x: auto; overflow-y: hidden; }
+            #settingsModal .nav-link { flex-shrink: 0; padding: 12px 16px !important; }
+            #settingsModal .tab-content { max-height: 60vh; }
+            
+            /* 页面标题栏按钮移动端优化 */
+            .d-flex.flex-wrap.justify-content-between { gap: 10px !important; }
+            .d-flex.align-items-center.gap-3 { gap: 10px !important; flex-wrap: wrap; }
+            .d-flex.align-items-center.gap-2 { gap: 8px !important; flex-wrap: wrap; justify-content: flex-end; }
+            .btn-sm { padding: 6px 12px !important; font-size: 12px !important; }
         }
         
         /* 滚动条美化 */
@@ -409,7 +422,7 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary py-2">
-                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i>系统设置中心</h5>
+                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i>系统设置</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-0 d-flex" style="min-height: 450px;">
@@ -569,8 +582,9 @@ n        /* 标签样式 */
         <div class="d-flex align-items-center gap-3">
             <h4 class="mb-0"><i class="fas fa-list me-2 text-primary"></i>系统日志</h4>
             <span class="refresh-indicator" id="refreshIndicator" title="自动刷新中"></span>
-            <i class="fas fa-cog text-muted cursor-pointer hover-white transition-all" 
-               onclick="openDelaySettings()" title="延迟色彩阈值设置" style="cursor: pointer;"></i>
+            <button class="btn btn-outline-secondary btn-sm px-3" onclick="openDelaySettings()">
+                <i class="fas fa-cog me-1"></i>设置
+            </button>
         </div>
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-outline-primary btn-sm px-3" onclick="exportConfig()">
