@@ -1046,8 +1046,11 @@ def gpu_worker():
                                       g['power_draw'], g['power_limit'], g['clock_core'], g['clock_mem'], 
                                       g['fan_speed'], g['ecc_errors']))
                         
-                        # 清理旧数据 (遵循 RETENTION_DAYS)
-                        cutoff = int(now) - (RETENTION_DAYS * 86400)
+                        # 清理旧数据 (动态读取 data_retention_days 配置)
+                        c.execute("SELECT value FROM config WHERE key='data_retention_days'")
+                        retention_row = c.fetchone()
+                        current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
+                        cutoff = int(now) - (current_retention_days * 86400)
                         sqls.append("DELETE FROM gpu_metrics WHERE timestamp < ?")
                         all_params.append((cutoff,))
                         
