@@ -1047,12 +1047,16 @@ def gpu_worker():
                                       g['fan_speed'], g['ecc_errors']))
                         
                         # 清理旧数据 (动态读取 data_retention_days 配置)
-                        c.execute("SELECT value FROM config WHERE key='data_retention_days'")
-                        retention_row = c.fetchone()
+                        # 注意：需要重新获取数据库连接，因为之前的连接已关闭
+                        cleanup_conn = get_db_connection()
+                        cleanup_c = cleanup_conn.cursor()
+                        cleanup_c.execute("SELECT value FROM config WHERE key='data_retention_days'")
+                        retention_row = cleanup_c.fetchone()
                         current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
                         cutoff = int(now) - (current_retention_days * 86400)
                         sqls.append("DELETE FROM gpu_metrics WHERE timestamp < ?")
                         all_params.append((cutoff,))
+                        cleanup_conn.close()
                         
                         execute_db_async(sqls, all_params)
                         last_db_log_time = now
