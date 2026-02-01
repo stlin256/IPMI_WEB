@@ -15,7 +15,12 @@ import csv
 import logging
 import queue
 import platform
+import smtplib
 import concurrent.futures
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
@@ -39,7 +44,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.2.1'
+VERSION = '1.3.2'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -313,6 +318,29 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hw', '[1, 24]')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hist', '[1, 6, 24, 72, 168]')")
 
+    # 邮件通知设置初始化
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('email_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('email_mode', 'mta')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('smtp_server', '')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('smtp_port', '465')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('smtp_user', '')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('smtp_pass', '')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('smtp_encryption', 'true')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('email_sender_name', 'System@ipmi.web')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('email_receiver', '')")
+
+    # 兼容性升级与初始化：确保所有 SMTP 相关配置项存在
+    smtp_configs = [
+        ('email_mode', 'mta'),
+        ('smtp_server', ''),
+        ('smtp_port', '465'),
+        ('smtp_user', ''),
+        ('smtp_pass', ''),
+        ('smtp_encryption', 'true')
+    ]
+    for key, default in smtp_configs:
+        c.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (key, default))
+
     # 新增告警规则表
     c.execute('''CREATE TABLE IF NOT EXISTS alert_rules
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -457,6 +485,116 @@ def get_client_ip():
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr
+
+def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f6feb'):
+    """发送系统通知邮件 (支持 MTA 和 SMTP)"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT key, value FROM config WHERE key LIKE 'email_%' OR key LIKE 'smtp_%'")
+    configs = {row['key']: row['value'] for row in c.fetchall()}
+    conn.close()
+
+    if configs.get('email_enabled') != 'true':
+        return False, "邮件功能未开启"
+
+    receiver_raw = configs.get('email_receiver', '')
+    # 支持逗号、分号或空格分隔
+    receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
+    
+    if not receivers:
+        return False, "未配置收件人邮箱"
+
+    mode = configs.get('email_mode', 'mta')
+    sender_name = configs.get('email_sender_name', f'System@{SERVER_NAME}.local')
+
+    try:
+        # 渲染 HTML 模板
+        html_content = render_template('email_alert.html',
+                                       subject=subject,
+                                       server_name=SERVER_NAME,
+                                       metric=metric,
+                                       value=value,
+                                       time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                       version=VERSION,
+                                       message=message,
+                                       theme_color=theme_color,
+                                       panel_url=request.url_root)
+
+        if mode == 'smtp':
+            server = configs.get('smtp_server')
+            port = int(configs.get('smtp_port', 465))
+            user = configs.get('smtp_user')
+            password = configs.get('smtp_pass')
+            use_ssl = configs.get('smtp_encryption') == 'true'
+
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = f"{sender_name} <{user}>"
+            msg['To'] = ", ".join(receivers)
+            msg['Date'] = formatdate(localtime=True)
+            msg['Message-ID'] = make_msgid()
+
+            # 构造纯文本备选
+            plain_text = f"Subject: {subject}\nServer: {SERVER_NAME}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n{message}"
+            msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
+            msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+
+            # 智能连接逻辑：如果端口是 465 或显式开启 SSL
+            if port == 465 or use_ssl:
+                try:
+                    with smtplib.SMTP_SSL(server, port, timeout=10) as smtp:
+                        smtp.login(user, password)
+                        smtp.send_message(msg)
+                except Exception as e:
+                    if "WRONG_VERSION_NUMBER" in str(e) and port != 465:
+                        # 尝试降级到 STARTTLS
+                        with smtplib.SMTP(server, port, timeout=10) as smtp:
+                            smtp.starttls()
+                            smtp.login(user, password)
+                            smtp.send_message(msg)
+                    else: raise e
+            else:
+                with smtplib.SMTP(server, port, timeout=10) as smtp:
+                    try: smtp.starttls()
+                    except: pass # 某些内网 25 端口不支持 starttls
+                    smtp.login(user, password)
+                    smtp.send_message(msg)
+            
+            logging.info(f" [EMAIL] Successfully sent via SMTP: Subject='{subject}' To='{receiver}'")
+            return True, "邮件已通过 SMTP 发送"
+
+        else: # MTA 模式 (Linux Only)
+            if platform.system() != 'Linux':
+                return False, "MTA 模式仅在 Linux 环境下可用，请切换为 SMTP 模式"
+
+            # 构造带 HTML 的 MIME 报文
+            mail_msg = [
+                f"From: {sender_name}",
+                f"To: {receiver}",
+                f"Subject: {subject}",
+                "MIME-Version: 1.0",
+                "Content-Type: text/html; charset=UTF-8",
+                "Auto-Submitted: auto-generated",
+                "X-Auto-Response-Suppress: All",
+                "",
+                html_content
+            ]
+
+            process = subprocess.Popen(['/usr/sbin/sendmail', '-t', '-f', sender_name], 
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate(input="\n".join(mail_msg))
+            
+            if process.returncode == 0:
+                logging.info(f" [EMAIL] Successfully submitted to MTA: Subject='{subject}' To='{receiver}'")
+                return True, "邮件已交付给系统 MTA"
+            else:
+                err_msg = stderr.strip() or stdout.strip() or "Unknown MTA error"
+                logging.error(f" [EMAIL] MTA Submission Failed: {err_msg}")
+                return False, f"MTA 发送失败: {err_msg}"
+            
+    except Exception as e:
+        logging.error(f" [EMAIL] Failed: {str(e)}")
+        return False, f"发信失败: {str(e)}"
 
 def get_ipmi_dump():
     try: return subprocess.check_output(['ipmitool', 'sensor'], encoding='utf-8', timeout=3)
@@ -1599,7 +1737,10 @@ def api_settings():
     if request.method == 'GET':
         keys = ('log_delay_warn', 'log_delay_danger', 'data_retention_days', 
                 'pending_retention_days', 'retention_change_ts', 
-                'dashboard_hours_hw', 'dashboard_hours_hist')
+                'dashboard_hours_hw', 'dashboard_hours_hist',
+                'email_enabled', 'email_mode', 'smtp_server', 'smtp_port', 
+                'smtp_user', 'smtp_pass', 'smtp_encryption',
+                'email_sender_name', 'email_receiver')
         c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
         res = {row['key']: row['value'] for row in c.fetchall()}
         conn.close()
@@ -1698,7 +1839,16 @@ def api_settings():
                 'log_delay_warn': '采集延迟(警告)',
                 'log_delay_danger': '采集延迟(危险)',
                 'dashboard_hours_hw': '看板时效(硬件)',
-                'dashboard_hours_hist': '看板时效(历史)'
+                'dashboard_hours_hist': '看板时效(历史)',
+                'email_enabled': '邮件通知开关',
+                'email_mode': '邮件发送模式',
+                'smtp_server': 'SMTP服务器',
+                'smtp_port': 'SMTP端口',
+                'smtp_user': 'SMTP账号',
+                'smtp_pass': 'SMTP密码',
+                'smtp_encryption': 'SMTP加密开关',
+                'email_sender_name': '邮件发件人展示名',
+                'email_receiver': '邮件收件人列表'
             }
             for key, label in mapping.items():
                 if key in data:
@@ -1757,6 +1907,107 @@ def api_settings():
             return jsonify({'error': str(e)}), 500
         finally:
             conn.close()
+
+@app.route('/api/test_email', methods=['POST'])
+@login_required
+def api_test_email():
+    """手动发送测试邮件"""
+    try:
+        data = request.json
+        # 临时更新配置用于测试（不写入数据库）
+        # 这里直接调用重构后的 send_system_mail，但由于它从数据库读取，
+        # 我们需要在测试前临时注入配置或者让用户先保存。
+        # 为了更好的用户体验，这里我们从 request 获取配置并直接构造发送逻辑。
+        
+        mode = data.get('email_mode', 'mta')
+        receiver_raw = data.get('email_receiver', '')
+        receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
+        
+        if not receivers:
+            return jsonify({'status': 'error', 'message': '请先填写收件人邮箱'})
+        
+        sender_name = data.get('email_sender_name', f'System@{SERVER_NAME}.local')
+
+        subject = "IPMI_WEB 连通性测试"
+        message = "这是一封由系统设置发起的连通性测试邮件。如果您收到此信，说明您的邮件通知配置已生效。"
+        
+        # 逻辑：直接使用 request 中的参数尝试发送
+        # 1. 渲染 HTML 模板
+        html_content = render_template('email_alert.html',
+                                       subject=subject,
+                                       server_name=SERVER_NAME,
+                                       metric="Connection Test",
+                                       value="SUCCESS",
+                                       time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                       version=VERSION,
+                                       message=message,
+                                       theme_color='#1f6feb',
+                                       panel_url=request.url_root)
+
+        if mode == 'smtp':
+            server = data.get('smtp_server')
+            port = int(data.get('smtp_port', 465))
+            user = data.get('smtp_user')
+            password = data.get('smtp_pass')
+            use_ssl = data.get('smtp_encryption') == True or data.get('smtp_encryption') == 'true'
+
+            if not all([server, user, password]):
+                return jsonify({'status': 'error', 'message': '请填写完整的 SMTP 配置项'})
+
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = f"{sender_name} <{user}>"
+            msg['To'] = ", ".join(receivers)
+            
+            msg.attach(MIMEText(message, 'plain', 'utf-8'))
+            msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+
+            if port == 465 or use_ssl:
+                try:
+                    with smtplib.SMTP_SSL(server, port, timeout=10) as smtp:
+                        smtp.login(user, password)
+                        smtp.send_message(msg)
+                except Exception as e:
+                    if "WRONG_VERSION_NUMBER" in str(e) and port != 465:
+                        with smtplib.SMTP(server, port, timeout=10) as smtp:
+                            smtp.starttls()
+                            smtp.login(user, password)
+                            smtp.send_message(msg)
+                    else: raise e
+            else:
+                with smtplib.SMTP(server, port, timeout=10) as smtp:
+                    try: smtp.starttls()
+                    except: pass
+                    smtp.login(user, password)
+                    smtp.send_message(msg)
+            
+        else: # MTA 模式
+            if platform.system() != 'Linux':
+                return jsonify({'status': 'error', 'message': 'MTA 模式仅支持 Linux 环境'})
+
+            mail_msg = [
+                f"From: {sender_name}",
+                f"To: {', '.join(receivers)}",
+                f"Subject: {subject}",
+                "MIME-Version: 1.0",
+                "Content-Type: text/html; charset=UTF-8",
+                "Auto-Submitted: auto-generated",
+                "",
+                html_content
+            ]
+
+            process = subprocess.Popen(['/usr/sbin/sendmail', '-t', '-f', sender_name], 
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate(input="\n".join(mail_msg))
+            if process.returncode != 0:
+                return jsonify({'status': 'error', 'message': f'MTA 投递失败: {stderr or stdout}'})
+
+        write_audit('INFO', 'SYSTEM', 'EMAIL_TEST', f"发送测试邮件至 {', '.join(receivers)}", 
+                   details={'receivers': receivers, 'mode': mode}, operator=get_client_ip())
+        return jsonify({'status': 'success', 'message': '测试邮件已发送，请检查收件箱'})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/api/log_delay_config', methods=['GET', 'POST'])
 @login_required

@@ -470,6 +470,9 @@ n        /* 标签样式 */
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-alerts" type="button">
                                 <i class="fas fa-bell me-2"></i> 告警规则
                             </button>
+                            <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-email" type="button">
+                                <i class="fas fa-envelope me-2"></i> 邮件通知
+                            </button>
                             <button class="nav-link text-start py-3 mb-1 mt-auto border-top border-secondary border-opacity-25 rounded-0" data-bs-toggle="pill" data-bs-target="#tab-about" type="button">
                                 <i class="fas fa-info-circle me-2"></i> 关于项目
                             </button>
@@ -545,6 +548,84 @@ n        /* 标签样式 */
                             </div>
                             <div id="alert-rules-container" class="d-flex flex-column gap-2 pb-3">
                                 <!-- 告警规则列表 -->
+                            </div>
+                        </div>
+
+                        <!-- 邮件通知 Tab -->
+                        <div class="tab-pane fade" id="tab-email">
+                            <h6 class="text-primary mb-4 fw-bold">邮件通知配置</h6>
+                            
+                            <div class="mb-4">
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="email-enabled" onchange="markChanged()">
+                                    <label class="form-check-label fw-bold text-light" for="email-enabled">开启邮件通知服务</label>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">发信模式</label>
+                                <div class="d-flex gap-2">
+                                    <input type="radio" class="btn-check" name="email_mode" id="email-mode-mta" value="mta" onchange="toggleEmailMode('mta'); markChanged()">
+                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-mta">系统 MTA (Sendmail)</label>
+                                    
+                                    <input type="radio" class="btn-check" name="email_mode" id="email-mode-smtp" value="smtp" onchange="toggleEmailMode('smtp'); markChanged()">
+                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-smtp">外部 SMTP 服务器</label>
+                                </div>
+                            </div>
+
+                            <div id="mta-settings" class="mb-4">
+                                <div class="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-25 py-2 mb-0">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <span class="small text-warning">MTA 模式仅在 Linux 环境下可用。</span>
+                                </div>
+                            </div>
+
+                            <div id="smtp-settings" class="d-none">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label text-muted small fw-bold">SMTP 服务器</label>
+                                        <input type="text" id="smtp-server" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="smtp.example.com" oninput="markChanged()">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted small fw-bold">端口</label>
+                                        <input type="number" id="smtp-port" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="465" oninput="markChanged()">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">SMTP 账号 (通常为邮箱)</label>
+                                    <input type="text" id="smtp-user" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">SMTP 密码 / 授权码</label>
+                                    <input type="password" id="smtp-pass" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="smtp-encryption" onchange="markChanged()">
+                                        <label class="form-check-label small text-muted" for="smtp-encryption">启用 SSL/TLS 加密 (465端口必选)</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label text-muted small fw-bold">显示发件人名称</label>
+                                <input type="text" id="email-sender" class="form-control bg-dark border-secondary text-light" placeholder="例如: Server@ipmi.web" oninput="markChanged()">
+                                <div class="form-text text-muted small">自定义收件箱里显示的“发件人”名称</div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">收件人邮箱</label>
+                                <input type="text" id="email-receiver" class="form-control bg-dark border-secondary text-light" placeholder="a@ex.com, b@ex.com" oninput="markChanged()">
+                                <div class="form-text text-muted small">支持多个邮箱，请使用英文逗号或分号分隔</div>
+                            </div>
+
+                            <hr class="border-secondary opacity-25 my-4">
+
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary fw-bold" id="btn-test-email" onclick="sendTestEmail()">
+                                    <span id="test-email-text">发送测试邮件</span>
+                                    <i id="test-email-spinner" class="fas fa-spinner fa-spin d-none"></i>
+                                </button>
                             </div>
                         </div>
 
@@ -839,6 +920,8 @@ n        /* 标签样式 */
                         btn.className = "btn btn-warning fw-bold";
                         if (cancelBtn) cancelBtn.style.display = 'block';
                         discardModal.hide();
+                        // 修复硬编码：在预检视图中动态显示当前软件版本
+                        document.getElementById('import-sw-val').innerText = currentSWVersion;
                         await proceedPrecheck(config, currentSWVersion);
                     };
                     discardModal.show();
@@ -880,7 +963,8 @@ n        /* 标签样式 */
             // 显示元数据
             document.getElementById('import-version-val').innerText = data.version || '1';
             document.getElementById('import-time-val').innerText = data.export_time || '未知';
-            document.getElementById('import-sw-val').innerText = data.software_version || '未知';
+            // 修复：import-sw-val 应该始终显示当前软件系统的版本，而不是备份文件里的版本
+            document.getElementById('import-sw-val').innerText = currentSWVersion;
 
             renderImportDiff(data);
         } catch (err) {
@@ -1256,6 +1340,17 @@ n        /* 标签样式 */
     let hasPendingChanges = false;
     let initialSettingsSnapshot = null; // 存储打开时的原始快照
 
+    // 邮件模式切换 UI 交互
+    function toggleEmailMode(mode) {
+        if (mode === 'smtp') {
+            document.getElementById('smtp-settings').classList.remove('d-none');
+            document.getElementById('mta-settings').classList.add('d-none');
+        } else {
+            document.getElementById('smtp-settings').classList.add('d-none');
+            document.getElementById('mta-settings').classList.remove('d-none');
+        }
+    }
+
     // 智能变动检测 (脏检查)
     function checkChanges() {
         if (!initialSettingsSnapshot) return false;
@@ -1267,14 +1362,33 @@ n        /* 标签样式 */
 
         syncAllRulesFromUI();
 
+        // 采集邮件设置
+        const emailEnabled = document.getElementById('email-enabled').checked ? 'true' : 'false';
+        const emailMode = document.querySelector('input[name="email_mode"]:checked')?.value || 'mta';
+        const smtpServer = document.getElementById('smtp-server').value;
+        const smtpPort = document.getElementById('smtp-port').value;
+        const smtpUser = document.getElementById('smtp-user').value;
+        const smtpPass = document.getElementById('smtp-pass').value;
+        const smtpEncryption = document.getElementById('smtp-encryption').checked ? 'true' : 'false';
+        const emailSender = document.getElementById('email-sender').value;
+        const emailReceiver = document.getElementById('email-receiver').value;
+
         const currentSnapshot = {
             log_delay_warn: parseFloat(document.getElementById('set-warn').value),
             log_delay_danger: parseFloat(document.getElementById('set-danger').value),
             data_retention_days: parseInt(document.getElementById('set-retention').value),
             dashboard_hours_hw: JSON.stringify(getChecked('check-hw-hours').sort()),
             dashboard_hours_hist: JSON.stringify(getChecked('check-hist-hours').sort()),
-            alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => rest)) 
-            // 规则比对忽略 id，因为新建的规则没 id
+            alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => rest)),
+            email_enabled: emailEnabled,
+            email_mode: emailMode,
+            smtp_server: smtpServer,
+            smtp_port: smtpPort,
+            smtp_user: smtpUser,
+            smtp_pass: smtpPass,
+            smtp_encryption: smtpEncryption,
+            email_sender_name: emailSender,
+            email_receiver: emailReceiver
         };
 
         const initialSnapshotComp = {
@@ -1283,7 +1397,16 @@ n        /* 标签样式 */
             data_retention_days: initialSettingsSnapshot.data_retention_days,
             dashboard_hours_hw: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hw.sort()),
             dashboard_hours_hist: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hist.sort()),
-            alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => rest))
+            alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => rest)),
+            email_enabled: initialSettingsSnapshot.email_enabled,
+            email_mode: initialSettingsSnapshot.email_mode,
+            smtp_server: initialSettingsSnapshot.smtp_server,
+            smtp_port: initialSettingsSnapshot.smtp_port,
+            smtp_user: initialSettingsSnapshot.smtp_user,
+            smtp_pass: initialSettingsSnapshot.smtp_pass,
+            smtp_encryption: initialSettingsSnapshot.smtp_encryption,
+            email_sender_name: initialSettingsSnapshot.email_sender_name,
+            email_receiver: initialSettingsSnapshot.email_receiver
         };
 
         hasPendingChanges = JSON.stringify(currentSnapshot) !== JSON.stringify(initialSnapshotComp);
@@ -1348,7 +1471,16 @@ n        /* 标签样式 */
                 data_retention_days: parseInt(globalSettings.data_retention_days),
                 dashboard_hours_hw: [...globalSettings.dashboard_hours_hw],
                 dashboard_hours_hist: [...globalSettings.dashboard_hours_hist],
-                alert_rules: JSON.parse(JSON.stringify(alertRules))
+                alert_rules: JSON.parse(JSON.stringify(alertRules)),
+                email_enabled: globalSettings.email_enabled,
+                email_mode: globalSettings.email_mode || 'mta',
+                smtp_server: globalSettings.smtp_server || '',
+                smtp_port: globalSettings.smtp_port || '465',
+                smtp_user: globalSettings.smtp_user || '',
+                smtp_pass: globalSettings.smtp_pass || '',
+                smtp_encryption: globalSettings.smtp_encryption || 'true',
+                email_sender_name: globalSettings.email_sender_name || '',
+                email_receiver: globalSettings.email_receiver || ''
             };
             
             hasPendingChanges = false;
@@ -1357,6 +1489,20 @@ n        /* 标签样式 */
             document.getElementById('set-warn').value = globalSettings.log_delay_warn;
             document.getElementById('set-danger').value = globalSettings.log_delay_danger;
             document.getElementById('set-retention').value = globalSettings.data_retention_days;
+
+            // 填充邮件设置
+            document.getElementById('email-enabled').checked = globalSettings.email_enabled === 'true';
+            const mode = globalSettings.email_mode || 'mta';
+            document.getElementById(`email-mode-${mode}`).checked = true;
+            toggleEmailMode(mode);
+
+            document.getElementById('smtp-server').value = globalSettings.smtp_server || '';
+            document.getElementById('smtp-port').value = globalSettings.smtp_port || '465';
+            document.getElementById('smtp-user').value = globalSettings.smtp_user || '';
+            document.getElementById('smtp-pass').value = globalSettings.smtp_pass || '';
+            document.getElementById('smtp-encryption').checked = globalSettings.smtp_encryption === 'true';
+            document.getElementById('email-sender').value = globalSettings.email_sender_name || '';
+            document.getElementById('email-receiver').value = globalSettings.email_receiver || '';
             
             // 显示数据库体积
             const formatBytes = (bytes) => {
@@ -1581,6 +1727,54 @@ n        /* 标签样式 */
         });
     }
 
+    async function sendTestEmail() {
+        const btn = document.getElementById('btn-test-email');
+        const text = document.getElementById('test-email-text');
+        const spinner = document.getElementById('test-email-spinner');
+        
+        const payload = {
+            email_mode: document.querySelector('input[name="email_mode"]:checked')?.value || 'mta',
+            email_enabled: document.getElementById('email-enabled').checked,
+            email_sender_name: document.getElementById('email-sender').value,
+            email_receiver: document.getElementById('email-receiver').value,
+            smtp_server: document.getElementById('smtp-server').value,
+            smtp_port: document.getElementById('smtp-port').value,
+            smtp_user: document.getElementById('smtp-user').value,
+            smtp_pass: document.getElementById('smtp-pass').value,
+            smtp_encryption: document.getElementById('smtp-encryption').checked
+        };
+
+        if (!payload.email_receiver) {
+            showToast('请先填写收件人邮箱', true);
+            return;
+        }
+
+        try {
+            btn.disabled = true;
+            text.classList.add('d-none');
+            spinner.classList.remove('d-none');
+
+            const res = await fetch('/api/test_email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            
+            if (data.status === 'success') {
+                showToast(data.message);
+            } else {
+                showToast(data.message || '发送失败', true);
+            }
+        } catch (e) {
+            showToast('测试请求失败: ' + e.message, true);
+        } finally {
+            btn.disabled = false;
+            text.classList.remove('d-none');
+            spinner.classList.add('d-none');
+        }
+    }
+
     async function saveGlobalSettings() {
         const btn = document.getElementById('btn-save-global');
         const text = document.getElementById('save-btn-text');
@@ -1606,7 +1800,16 @@ n        /* 标签样式 */
             data_retention_days: parseInt(document.getElementById('set-retention').value),
             dashboard_hours_hw: getChecked('check-hw-hours'),
             dashboard_hours_hist: getChecked('check-hist-hours'),
-            alert_rules: rulesToSave // 只发送未被标记删除的规则
+            alert_rules: rulesToSave, // 只发送未被标记删除的规则
+            email_enabled: document.getElementById('email-enabled').checked ? 'true' : 'false',
+            email_mode: document.querySelector('input[name="email_mode"]:checked')?.value || 'mta',
+            smtp_server: document.getElementById('smtp-server').value,
+            smtp_port: document.getElementById('smtp-port').value,
+            smtp_user: document.getElementById('smtp-user').value,
+            smtp_pass: document.getElementById('smtp-pass').value,
+            smtp_encryption: document.getElementById('smtp-encryption').checked ? 'true' : 'false',
+            email_sender_name: document.getElementById('email-sender').value,
+            email_receiver: document.getElementById('email-receiver').value
         };
 
         try {
@@ -1631,7 +1834,16 @@ n        /* 标签样式 */
                     data_retention_days: payload.data_retention_days,
                     dashboard_hours_hw: [...payload.dashboard_hours_hw],
                     dashboard_hours_hist: [...payload.dashboard_hours_hist],
-                    alert_rules: JSON.parse(JSON.stringify(rulesToSave))
+                    alert_rules: JSON.parse(JSON.stringify(rulesToSave)),
+                    email_enabled: payload.email_enabled,
+                    email_mode: payload.email_mode,
+                    smtp_server: payload.smtp_server,
+                    smtp_port: payload.smtp_port,
+                    smtp_user: payload.smtp_user,
+                    smtp_pass: payload.smtp_pass,
+                    smtp_encryption: payload.smtp_encryption,
+                    email_sender_name: payload.email_sender_name,
+                    email_receiver: payload.email_receiver
                 };
                 hasPendingChanges = false;
                 

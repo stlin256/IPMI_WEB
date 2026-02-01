@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPMI_WEB 系统通知</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f9; color: #333;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <tr>
+            <td style="padding: 30px; background-color: #1f6feb; text-align: center;">
+                <h1 style="margin: 0; color: #ffffff; font-size: 24px; letter-spacing: 1px;">IPMI_WEB</h1>
+                <p style="margin: 5px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">系统自动通知服务</p>
+            </td>
+        </tr>
+        
+        <!-- Content -->
+        <tr>
+            <td style="padding: 40px 30px;">
+                <h2 style="margin: 0 0 20px; color: {{ theme_color|default('#1f6feb') }}; font-size: 20px; border-left: 4px solid {{ theme_color|default('#1f6feb') }}; padding-left: 15px;">{{ subject }}</h2>
+                
+                <p style="line-height: 1.6; font-size: 15px; color: #555;">
+                    您好，这是一封来自 <strong>{{ server_name }}</strong> 的自动化测试/告警邮件。
+                </p>
+
+                <div style="margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                        {% if metric %}
+                        <tr>
+                            <td width="100" style="padding: 8px 0; color: #888; font-size: 14px;">监控指标:</td>
+                            <td style="padding: 8px 0; font-weight: bold; font-size: 14px;">{{ metric }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 14px;">当前数值:</td>
+                            <td style="padding: 8px 0; font-weight: bold; font-size: 14px; color: #f85149;">{{ value }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 14px;">发送时间:</td>
+                            <td style="padding: 8px 0; font-size: 14px;">{{ time }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #888; font-size: 14px;">软件版本:</td>
+                            <td style="padding: 8px 0; font-size: 14px; font-family: monospace;">V{{ version }}</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <p style="line-height: 1.6; font-size: 14px; color: #666;">
+                    {{ message }}
+                </p>
+
+                <div style="margin-top: 40px; text-align: center;">
+                    <a href="{{ panel_url }}" style="display: inline-block; padding: 12px 25px; background-color: #1f6feb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
+                        访问控制面板
+                    </a>
+                </div>
+            </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+            <td style="padding: 20px 30px; background-color: #f8f9fa; text-align: center; border-top: 1px solid #eeeeee;">
+                <p style="margin: 0; font-size: 12px; color: #999;">
+                    本项目由 <a href="https://github.com/stlin256/IPMI_WEB" style="color: #1f6feb; text-decoration: none;">stlin256 @ GitHub</a> 维护
+                </p>
+                <p style="margin: 5px 0 0; font-size: 11px; color: #bbb;">
+                    这是系统自动发送的邮件，请勿直接回复。
+                </p>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
