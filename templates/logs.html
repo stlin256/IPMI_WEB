@@ -1040,6 +1040,24 @@ n        /* 标签样式 */
     let confirmModal;
     let globalSettings = {};
     let alertRules = [];
+    let dbSizeTimer = null;
+
+    // 实时更新数据库体积
+    async function refreshDbSize() {
+        try {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            const formatBytes = (bytes) => {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            };
+            const el = document.getElementById('db-size-val');
+            if (el) el.innerText = formatBytes(data.db_size_bytes || 0);
+        } catch (e) {}
+    }
 
     function showConfirmModal(msg, onConfirm) {
         if (!confirmModal) confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
@@ -1206,7 +1224,40 @@ n        /* 标签样式 */
         if (rule) rule[field] = value;
     }
 
+    // 同步 UI 上的所有输入到内存变量
+    function syncAllRulesFromUI() {
+        const container = document.getElementById('alert-rules-container');
+        if (!container) return;
+        
+        alertRules.forEach(rule => {
+            if (rule._deleted) return;
+            const card = container.querySelector(`input[onchange*="updateRuleLocal(${rule.id}, 'name'"]`)?.closest('.rule-card');
+            if (!card) return;
+
+            const nameInput = card.querySelector('input[type="text"]');
+            const levelSelect = card.querySelector('select[onchange*="\'level\'"]');
+            const metricSelect = card.querySelector('select[onchange*="\'metric\'"]');
+            const opSelect = card.querySelector('select[onchange*="\'operator\'"]');
+            const thresholdInput = card.querySelector('input[type="number"][onchange*="\'threshold\'"]');
+            const durationInput = card.querySelector('input[type="number"][onchange*="\'duration\'"]');
+            const notifyInput = card.querySelector('input[type="number"][onchange*="\'notify_interval\'"]');
+            const enabledCheck = card.querySelector('.form-check-input');
+
+            if (nameInput) rule.name = nameInput.value;
+            if (levelSelect) rule.level = levelSelect.value;
+            if (metricSelect) rule.metric = metricSelect.value;
+            if (opSelect) rule.operator = opSelect.value;
+            if (thresholdInput) rule.threshold = parseFloat(thresholdInput.value);
+            if (durationInput) rule.duration = parseInt(durationInput.value);
+            if (notifyInput) rule.notify_interval = parseInt(notifyInput.value);
+            if (enabledCheck) rule.enabled = enabledCheck.checked ? 1 : 0;
+        });
+    }
+
     async function addNewAlertRule() {
+        // 先同步当前所有正在编辑的内容，防止重新加载列表时丢失修改
+        syncAllRulesFromUI();
+        
         const newRule = { name: "新规则", metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN" };
         try {
             await fetch('/api/alert_rules', {
@@ -1517,6 +1568,23 @@ n        /* 标签样式 */
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+        // 监听设置 Modal 事件
+        const settingsModalEl = document.getElementById('settingsModal');
+        if (settingsModalEl) {
+            settingsModalEl.addEventListener('shown.bs.modal', () => {
+                // 窗口打开时启动定时器，每 5 秒刷新一次数据库大小
+                if (dbSizeTimer) clearInterval(dbSizeTimer);
+                dbSizeTimer = setInterval(refreshDbSize, 5000);
+            });
+            settingsModalEl.addEventListener('hidden.bs.modal', () => {
+                // 窗口关闭时清除定时器
+                if (dbSizeTimer) {
+                    clearInterval(dbSizeTimer);
+                    dbSizeTimer = null;
+                }
+            });
+        }
+
         // 监听导入 Modal 关闭事件，重置状态
         const impModalEl = document.getElementById('importModal');
         if (impModalEl) {
