@@ -1144,7 +1144,7 @@ n        /* 标签样式 */
             return;
         }
 
-        container.innerHTML = alertRules.map(rule => {
+        container.innerHTML = alertRules.map((rule, idx) => {
             const isDeleted = rule._deleted === true;
             return `
             <div class="card rule-card fade-in-up ${isDeleted ? 'opacity-50' : ''}" style="${isDeleted ? 'border-style: dashed;' : ''}">
@@ -1153,24 +1153,24 @@ n        /* 标签样式 */
                         ${!isDeleted ? `
                         <div class="form-check form-switch me-1">
                             <input class="form-check-input" type="checkbox" ${rule.enabled ? 'checked' : ''} 
-                                   onchange="updateRuleLocal(${rule.id}, 'enabled', this.checked ? 1 : 0)">
+                                   onchange="updateRuleLocalByIndex(${idx}, 'enabled', this.checked ? 1 : 0)">
                         </div>
                         ` : '<div class="me-1"></div>'}
                         
                         <input type="text" class="form-control form-control-sm bg-transparent border-0 ${isDeleted ? 'text-muted text-decoration-line-through' : 'text-primary'} fw-bold p-0 flex-grow-1" 
-                               value="${rule.name}" onchange="updateRuleLocal(${rule.id}, 'name', this.value)" style="min-width:80px;" ${isDeleted ? 'readonly' : ''}>
+                               value="${rule.name}" onchange="updateRuleLocalByIndex(${idx}, 'name', this.value)" style="min-width:80px;" ${isDeleted ? 'readonly' : ''}>
                         
                         <div class="d-flex align-items-center gap-1 small text-muted-plus">
                             ${!isDeleted ? `
                             <!-- 等级选择 -->
                             <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:65px; height:24px; font-size:10px;"
-                                       onchange="updateRuleLocal(${rule.id}, 'level', this.value)">
+                                       onchange="updateRuleLocalByIndex(${idx}, 'level', this.value)">
                                 <option value="WARN" ${rule.level==='WARN'?'selected':''}>WARN</option>
                                 <option value="INFO" ${rule.level==='INFO'?'selected':''}>INFO</option>
                             </select>
 
                             <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:90px; height:24px; font-size:11px;"
-                                       onchange="updateRuleLocal(${rule.id}, 'metric', this.value)">
+                                       onchange="updateRuleLocalByIndex(${idx}, 'metric', this.value)">
                                 <option value="cpu_temp" ${rule.metric==='cpu_temp'?'selected':''}>CPU温度</option>
                                 <option value="fan_rpm" ${rule.metric==='fan_rpm'?'selected':''}>风扇转速</option>
                                 <option value="power" ${rule.metric==='power'?'selected':''}>功耗</option>
@@ -1181,13 +1181,13 @@ n        /* 标签样式 */
                                 <option value="gpu_mem" ${rule.metric==='gpu_mem'?'selected':''}>显存占用</option>
                             </select>
                             <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
-                                       onchange="updateRuleLocal(${rule.id}, 'operator', this.value)">
+                                       onchange="updateRuleLocalByIndex(${idx}, 'operator', this.value)">
                                 <option value=">" ${rule.operator==='>'?'selected':''}>></option>
                                 <option value="<" ${rule.operator==='<'?'selected':''}><</option>
                                 <option value=">=" ${rule.operator==='>='?'selected':''}>&ge;</option>
                             </select>
                             <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
-                                       value="${rule.threshold}" onchange="updateRuleLocal(${rule.id}, 'threshold', parseFloat(this.value))">
+                                       value="${rule.threshold}" onchange="updateRuleLocalByIndex(${idx}, 'threshold', parseFloat(this.value))">
                             ` : ''}
                         </div>
 
@@ -1197,19 +1197,19 @@ n        /* 标签样式 */
                         <div class="d-flex align-items-center gap-1 small text-muted" title="持续时间 / 通知频率">
                             <i class="fas fa-clock" style="font-size:10px;"></i>
                             <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:40px; height:24px; font-size:11px;"
-                                                     value="${rule.duration}" onchange="updateRuleLocal(${rule.id}, 'duration', parseInt(this.value))">
+                                                     value="${rule.duration}" onchange="updateRuleLocalByIndex(${idx}, 'duration', parseInt(this.value))">
                             <span>/</span>
                             <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
-                                                       value="${rule.notify_interval}" onchange="updateRuleLocal(${rule.id}, 'notify_interval', parseInt(this.value))">
+                                                       value="${rule.notify_interval}" onchange="updateRuleLocalByIndex(${idx}, 'notify_interval', parseInt(this.value))">
                         </div>
                         ` : '<span class="badge bg-danger ms-2">待删除</span>'}
 
                         ${!isDeleted ? `
-                        <button class="btn btn-link btn-sm text-danger p-0 ms-2" onclick="markDeleteRule(${rule.id})" title="标记删除 (保存后生效)">
+                        <button class="btn btn-link btn-sm text-danger p-0 ms-2" onclick="markDeleteRuleByIndex(${idx})" title="标记删除 (保存后生效)">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         ` : `
-                        <button class="btn btn-link btn-sm text-success p-0 ms-2" onclick="undoDeleteRule(${rule.id})" title="撤销删除">
+                        <button class="btn btn-link btn-sm text-success p-0 ms-2" onclick="undoDeleteRuleByIndex(${idx})" title="撤销删除">
                             <i class="fas fa-undo"></i>
                         </button>
                         `}
@@ -1219,9 +1219,8 @@ n        /* 标签样式 */
         `}).join('');
     }
 
-    function updateRuleLocal(id, field, value) {
-        const rule = alertRules.find(r => r.id === id);
-        if (rule) rule[field] = value;
+    function updateRuleLocalByIndex(idx, field, value) {
+        if (alertRules[idx]) alertRules[idx][field] = value;
     }
 
     // 同步 UI 上的所有输入到内存变量
@@ -1229,10 +1228,10 @@ n        /* 标签样式 */
         const container = document.getElementById('alert-rules-container');
         if (!container) return;
         
-        alertRules.forEach(rule => {
-            if (rule._deleted) return;
-            const card = container.querySelector(`input[onchange*="updateRuleLocal(${rule.id}, 'name'"]`)?.closest('.rule-card');
-            if (!card) return;
+        const cards = container.querySelectorAll('.rule-card');
+        cards.forEach((card, idx) => {
+            const rule = alertRules[idx];
+            if (!rule || rule._deleted) return;
 
             const nameInput = card.querySelector('input[type="text"]');
             const levelSelect = card.querySelector('select[onchange*="\'level\'"]');
@@ -1254,35 +1253,28 @@ n        /* 标签样式 */
         });
     }
 
-    async function addNewAlertRule() {
-        // 先同步当前所有正在编辑的内容，防止重新加载列表时丢失修改
+    function addNewAlertRule() {
+        // 先同步当前所有正在编辑的内容
         syncAllRulesFromUI();
         
-        const newRule = { name: "新规则", metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN" };
-        try {
-            await fetch('/api/alert_rules', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newRule)
-            });
-            await loadAlertRules();
-        } catch (e) { showToast('添加失败', true); }
+        // 仅在前端 Push 暂存，不发起后端请求
+        const newRule = { name: "新规则", metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN", enabled: 1 };
+        alertRules.push(newRule);
+        renderAlertRules();
     }
 
     // 标记删除规则（前端本地标记，保存时生效）
-    function markDeleteRule(id) {
-        const rule = alertRules.find(r => r.id === id);
-        if (rule) {
-            rule._deleted = true;
+    function markDeleteRuleByIndex(idx) {
+        if (alertRules[idx]) {
+            alertRules[idx]._deleted = true;
             renderAlertRules();
         }
     }
 
     // 撤销删除规则
-    function undoDeleteRule(id) {
-        const rule = alertRules.find(r => r.id === id);
-        if (rule) {
-            delete rule._deleted;
+    function undoDeleteRuleByIndex(idx) {
+        if (alertRules[idx]) {
+            delete alertRules[idx]._deleted;
             renderAlertRules();
         }
     }
@@ -1302,6 +1294,9 @@ n        /* 标签样式 */
         const btn = document.getElementById('btn-save-global');
         const text = document.getElementById('save-btn-text');
         const spinner = document.getElementById('save-btn-spinner');
+
+        // 在保存前，务必先同步一次所有 UI 上的最新修改到 alertRules 数组
+        syncAllRulesFromUI();
 
         const getChecked = (containerId) => {
             return Array.from(document.querySelectorAll(`#${containerId} input:checked`)).map(el => parseInt(el.value));
