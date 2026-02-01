@@ -417,6 +417,23 @@ n        /* 标签样式 */
         </div>
     </div>
 
+    <!-- 放弃修改确认 Modal -->
+    <div class="modal fade" id="discardModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content bg-dark border-warning shadow-lg">
+                <div class="modal-body p-4 text-center">
+                    <i class="fas fa-exclamation-triangle text-warning fs-1 mb-3"></i>
+                    <h5 class="fw-bold">未保存的修改</h5>
+                    <p class="text-muted small mb-4">您有未保存的设置，确定要放弃修改并关闭吗？</p>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-warning fw-bold" id="discard-confirm-btn">确认放弃</button>
+                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">继续编辑</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 综合设置 Modal -->
     <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1038,9 +1055,50 @@ n        /* 标签样式 */
     // --- 综合设置中心逻辑 ---
     let settingsModal;
     let confirmModal;
+    let discardModal;
     let globalSettings = {};
     let alertRules = [];
     let dbSizeTimer = null;
+    let hasPendingChanges = false;
+    let initialSettingsSnapshot = null; // 存储打开时的原始快照
+
+    // 智能变动检测 (脏检查)
+    function checkChanges() {
+        if (!initialSettingsSnapshot) return false;
+        
+        // 采集当前 UI 状态
+        const getChecked = (containerId) => {
+            return Array.from(document.querySelectorAll(`#${containerId} input:checked`)).map(el => parseInt(el.value));
+        };
+
+        syncAllRulesFromUI();
+
+        const currentSnapshot = {
+            log_delay_warn: parseFloat(document.getElementById('set-warn').value),
+            log_delay_danger: parseFloat(document.getElementById('set-danger').value),
+            data_retention_days: parseInt(document.getElementById('set-retention').value),
+            dashboard_hours_hw: JSON.stringify(getChecked('check-hw-hours').sort()),
+            dashboard_hours_hist: JSON.stringify(getChecked('check-hist-hours').sort()),
+            alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => rest)) 
+            // 规则比对忽略 id，因为新建的规则没 id
+        };
+
+        const initialSnapshotComp = {
+            log_delay_warn: initialSettingsSnapshot.log_delay_warn,
+            log_delay_danger: initialSettingsSnapshot.log_delay_danger,
+            data_retention_days: initialSettingsSnapshot.data_retention_days,
+            dashboard_hours_hw: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hw.sort()),
+            dashboard_hours_hist: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hist.sort()),
+            alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => rest))
+        };
+
+        hasPendingChanges = JSON.stringify(currentSnapshot) !== JSON.stringify(initialSnapshotComp);
+        return hasPendingChanges;
+    }
+
+    function markChanged() {
+        checkChanges();
+    }
 
     // 实时更新数据库体积
     async function refreshDbSize() {
@@ -1079,6 +1137,22 @@ n        /* 标签样式 */
             // 1. 获取全局设置
             const res = await fetch('/api/settings');
             globalSettings = await res.json();
+
+            // 2. 获取告警规则并深度拷贝，用于后续对比
+            const rulesRes = await fetch('/api/alert_rules');
+            alertRules = await rulesRes.json();
+            
+            // 创建原始数据快照
+            initialSettingsSnapshot = {
+                log_delay_warn: parseFloat(globalSettings.log_delay_warn),
+                log_delay_danger: parseFloat(globalSettings.log_delay_danger),
+                data_retention_days: parseInt(globalSettings.data_retention_days),
+                dashboard_hours_hw: [...globalSettings.dashboard_hours_hw],
+                dashboard_hours_hist: [...globalSettings.dashboard_hours_hist],
+                alert_rules: JSON.parse(JSON.stringify(alertRules))
+            };
+            
+            hasPendingChanges = false;
             
             // 填充 UI
             document.getElementById('set-warn').value = globalSettings.log_delay_warn;
@@ -1111,6 +1185,17 @@ n        /* 标签样式 */
             };
             renderChecks('check-hw-hours', globalSettings.dashboard_hours_hw);
             renderChecks('check-hist-hours', globalSettings.dashboard_hours_hist);
+
+            // 为所有设置输入框添加变更监听
+            const settingInputs = document.querySelectorAll('#settingsModal input, #settingsModal select');
+            settingInputs.forEach(input => {
+                input.removeEventListener('change', markChanged);
+                input.addEventListener('change', markChanged);
+                if (input.type === 'number' || input.type === 'text') {
+                    input.removeEventListener('input', markChanged);
+                    input.addEventListener('input', markChanged);
+                }
+            });
             
             // 处理保留期状态
             const statusEl = document.getElementById('retention-status');
@@ -1122,8 +1207,8 @@ n        /* 标签样式 */
                 statusEl.innerHTML = `<span class="badge bg-success">当前已生效</span>`;
             }
 
-            // 2. 获取告警规则
-            await loadAlertRules();
+            // 渲染告警规则
+            renderAlertRules();
             
             settingsModal.show();
         } catch (e) {
@@ -1261,6 +1346,7 @@ n        /* 标签样式 */
         const newRule = { name: "新规则", metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN", enabled: 1 };
         alertRules.push(newRule);
         renderAlertRules();
+        markChanged();
     }
 
     // 标记删除规则（前端本地标记，保存时生效）
@@ -1268,6 +1354,7 @@ n        /* 标签样式 */
         if (alertRules[idx]) {
             alertRules[idx]._deleted = true;
             renderAlertRules();
+            markChanged();
         }
     }
 
@@ -1276,6 +1363,7 @@ n        /* 标签样式 */
         if (alertRules[idx]) {
             delete alertRules[idx]._deleted;
             renderAlertRules();
+            markChanged();
         }
     }
 
@@ -1332,6 +1420,18 @@ n        /* 标签样式 */
             
             if (res.ok) {
                 showToast('系统设置已应用并保存成功');
+                
+                // 保存成功后，更新快照，使脏检查回归一致状态，从而静默关闭
+                initialSettingsSnapshot = {
+                    log_delay_warn: payload.log_delay_warn,
+                    log_delay_danger: payload.log_delay_danger,
+                    data_retention_days: payload.data_retention_days,
+                    dashboard_hours_hw: [...payload.dashboard_hours_hw],
+                    dashboard_hours_hist: [...payload.dashboard_hours_hist],
+                    alert_rules: JSON.parse(JSON.stringify(rulesToSave))
+                };
+                hasPendingChanges = false;
+                
                 settingsModal.hide();
                 delayConfig = { log_delay_warn: payload.log_delay_warn, log_delay_danger: payload.log_delay_danger };
                 drawIntervalChart();
@@ -1565,13 +1665,30 @@ n        /* 标签样式 */
     document.addEventListener('DOMContentLoaded', async () => {
         // 监听设置 Modal 事件
         const settingsModalEl = document.getElementById('settingsModal');
+        let bypassModalCheck = false;
+
         if (settingsModalEl) {
             settingsModalEl.addEventListener('shown.bs.modal', () => {
                 // 窗口打开时启动定时器，每 5 秒刷新一次数据库大小
                 if (dbSizeTimer) clearInterval(dbSizeTimer);
                 dbSizeTimer = setInterval(refreshDbSize, 5000);
             });
-            settingsModalEl.addEventListener('hidden.bs.modal', () => {
+
+            // 拦截关闭
+            settingsModalEl.addEventListener('hide.bs.modal', (e) => {
+                if (checkChanges() && !bypassModalCheck) {
+                    e.preventDefault(); 
+                    if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
+                    document.getElementById('discard-confirm-btn').onclick = () => {
+                        bypassModalCheck = true;
+                        discardModal.hide();
+                        settingsModal.hide();
+                    };
+                    discardModal.show();
+                    return;
+                }
+                bypassModalCheck = false; // 重置标记
+                
                 // 窗口关闭时清除定时器
                 if (dbSizeTimer) {
                     clearInterval(dbSizeTimer);
@@ -1579,6 +1696,14 @@ n        /* 标签样式 */
                 }
             });
         }
+
+        // 浏览器关闭拦截
+        window.addEventListener('beforeunload', (e) => {
+            if (hasPendingChanges) {
+                e.preventDefault();
+                e.returnValue = ''; // Chrome 需要此设置
+            }
+        });
 
         // 监听导入 Modal 关闭事件，重置状态
         const impModalEl = document.getElementById('importModal');
