@@ -272,6 +272,21 @@ n        /* 标签样式 */
         }
         .rule-card:hover { border-color: var(--accent-blue) !important; background: rgba(255,255,255,0.04) !important; }
 
+        /* 响应式艺术字 */
+        .about-ascii {
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-weight: bold;
+            line-height: 1.1;
+            user-select: none;
+            font-size: 18px; /* 电脑端默认 */
+        }
+        @media (max-width: 768px) {
+            .about-ascii { font-size: 2.2vw; } /* 移动端按比例缩放 */
+        }
+        @media (max-width: 480px) {
+            .about-ascii { font-size: 9px; } /* 极窄屏保底 */
+        }
+
         /* 1. 图表容器比例 */
         .interval-chart-container {
             background: rgba(22, 27, 34, 0.4);
@@ -455,6 +470,9 @@ n        /* 标签样式 */
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-alerts" type="button">
                                 <i class="fas fa-bell me-2"></i> 告警规则
                             </button>
+                            <button class="nav-link text-start py-3 mb-1 mt-auto border-top border-secondary border-opacity-25 rounded-0" data-bs-toggle="pill" data-bs-target="#tab-about" type="button">
+                                <i class="fas fa-info-circle me-2"></i> 关于项目
+                            </button>
                         </div>
                     </div>
                     <!-- 右侧内容区 -->
@@ -527,6 +545,37 @@ n        /* 标签样式 */
                             </div>
                             <div id="alert-rules-container" class="d-flex flex-column gap-2 pb-3">
                                 <!-- 告警规则列表 -->
+                            </div>
+                        </div>
+
+                        <!-- 关于页面 Tab -->
+                        <div class="tab-pane fade h-100" id="tab-about">
+                            <div class="d-flex flex-column align-items-center justify-content-center text-center py-4 h-100">
+                                <pre class="about-ascii text-primary">   ____ ___   __  ___ ____  _      __ ____ ___ 
+  /  _// _ \ /  |/  //  _/ | | /| / // __// _ )
+ _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
+/___//_/   /_/  /_//___/   |__/|__//___//____/ </pre>
+                                <div class="mt-4 mb-3">
+                                    <h5 class="mb-1 fw-bold">IPMI_WEB</h5>
+                                    <p class="text-muted small">精简、高效、实时的服务器资源监控方案</p>
+                                </div>
+                                <div class="d-flex flex-column gap-2 w-100 px-5">
+                                    <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3">
+                                        <span class="text-muted small">软件版本</span>
+                                        <span class="badge bg-primary rounded-pill font-monospace" id="about-ver-val">V --</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3">
+                                        <span class="text-muted small">代码仓库</span>
+                                        <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-primary text-decoration-none small hover-underline">
+                                            <i class="fab fa-github me-1"></i>stlin256/IPMI_WEB
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="mt-auto pt-4 opacity-50 font-monospace">
+                                    <a href="https://github.com/stlin256" target="_blank" class="text-muted text-decoration-none hover-text-primary fs-6 fw-bold">
+                                        <i class="fab fa-github me-1"></i>stlin256 @ GitHub
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1226,6 +1275,11 @@ n        /* 标签样式 */
         if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
         
         try {
+            // 0. 获取版本号
+            const vRes = await fetch('/api/version');
+            const vData = await vRes.json();
+            const currentSWVersion = vData.version;
+
             // 1. 获取全局设置
             const res = await fetch('/api/settings');
             globalSettings = await res.json();
@@ -1301,6 +1355,10 @@ n        /* 标签样式 */
 
             // 渲染告警规则
             renderAlertRules();
+
+            // 更新关于页面的版本号
+            const aboutVer = document.getElementById('about-ver-val');
+            if (aboutVer) aboutVer.innerText = `V ${currentSWVersion}`;
             
             settingsModal.show();
         } catch (e) {
