@@ -1673,17 +1673,19 @@ def api_settings():
                 curr_val_res = c.fetchone()
                 curr_val = int(curr_val_res[0]) if curr_val_res else 7
                 
-                if new_val < curr_val:
-                    # 缩短，进入反悔期
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', ?)", (str(new_val),))
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', ?)", (str(now),))
-                    write_audit('WARN', 'SYSTEM', 'RETENTION_PENDING', f'计划缩短数据保留期至 {new_val} 天 (3天内可撤销)', operator=get_client_ip())
-                else:
-                    # 延长或不变，立即生效并取消 pending
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (str(new_val),))
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
-                    write_audit('INFO', 'SYSTEM', 'RETENTION_UPDATE', f'更新数据保留期为 {new_val} 天', operator=get_client_ip())
+                # 仅在值确实发生变化时才执行后续逻辑
+                if new_val != curr_val:
+                    if new_val < curr_val:
+                        # 缩短，进入反悔期
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', ?)", (str(new_val),))
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', ?)", (str(now),))
+                        write_audit('WARN', 'SYSTEM', 'RETENTION_PENDING', f'计划缩短数据保留期至 {new_val} 天 (3天内可撤销)', operator=get_client_ip())
+                    else:
+                        # 延长，立即生效并取消 pending
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (str(new_val),))
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+                        write_audit('INFO', 'SYSTEM', 'RETENTION_UPDATE', f'更新数据保留期为 {new_val} 天', operator=get_client_ip())
 
             # 处理其它简单设置 (仅在变化时更新)
             if 'log_delay_warn' in data:
