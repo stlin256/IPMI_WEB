@@ -44,7 +44,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.2'
+VERSION = '1.3.3'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -329,14 +329,29 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('email_sender_name', 'System@ipmi.web')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('email_receiver', '')")
 
-    # 兼容性升级与初始化：确保所有 SMTP 相关配置项存在
+    # 概览报告设置初始化
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_daily_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_daily_time', '08:00')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_weekly_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_weekly_day', '1')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_weekly_time', '09:00')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_hours', '24')")
+
+    # 兼容性升级与初始化：确保所有邮件相关配置项存在
     smtp_configs = [
         ('email_mode', 'mta'),
         ('smtp_server', ''),
         ('smtp_port', '465'),
         ('smtp_user', ''),
         ('smtp_pass', ''),
-        ('smtp_encryption', 'true')
+        ('smtp_encryption', 'true'),
+        ('summary_email_enabled', 'false'),
+        ('summary_email_frequency', 'daily'),
+        ('summary_email_time', '08:00'),
+        ('summary_email_range', '24h'),
+        ('last_summary_email_ts', '0')
     ]
     for key, default in smtp_configs:
         c.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (key, default))
@@ -494,8 +509,9 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
     configs = {row['key']: row['value'] for row in c.fetchall()}
     conn.close()
 
-    if configs.get('email_enabled') != 'true':
-        return False, "邮件功能未开启"
+    # 移除强制检查 email_enabled，改为由上层业务逻辑控制
+    # if configs.get('email_enabled') != 'true':
+    #     return False, "邮件功能未开启"
 
     receiver_raw = configs.get('email_receiver', '')
     # 支持逗号、分号或空格分隔
@@ -595,6 +611,367 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
     except Exception as e:
         logging.error(f" [EMAIL] Failed: {str(e)}")
         return False, f"发信失败: {str(e)}"
+
+
+def send_summary_email(report_type, hours=None, force_ts=None):
+    """
+    发送概览报告邮件
+    :param report_type: 'daily', 'weekly', 'custom'
+    :param hours: 报告时间范围（小时），如果为 None 则根据 report_type 动态获取
+    :param force_ts: 强制使用指定的时间戳（用于补发机制），None 表示使用当前时间
+    """
+    # 如果 hours 未指定，根据 report_type 动态获取
+    if hours is None:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT value FROM config WHERE key='summary_custom_hours'")
+        custom_hours_row = c.fetchone()
+        conn.close()
+        custom_hours = int(custom_hours_row[0]) if custom_hours_row else 24
+        
+        hours_map = {
+            'daily': 24,
+            'weekly': 168,
+            'custom': custom_hours,
+            'manual': custom_hours
+        }
+        hours = hours_map.get(report_type, 24)
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # 获取邮件配置
+    c.execute("SELECT key, value FROM config WHERE key LIKE 'email_%' OR key LIKE 'smtp_%' OR key LIKE 'summary_%'")
+    configs = {row['key']: row['value'] for row in c.fetchall()}
+    conn.close()
+    
+    receiver_raw = configs.get('email_receiver', '')
+    receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
+    if not receivers:
+        return False, "未配置收件人邮箱"
+    
+    mode = configs.get('email_mode', 'mta')
+    sender_name = configs.get('email_sender_name', f'System@{SERVER_NAME}.local')
+    
+    # 计算时间范围
+    now = force_ts if force_ts else int(time.time())
+    start_ts = now - (hours * 3600)
+    
+    # 获取统计区间数据
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # 硬件指标统计 (包含当前值)
+    c.execute("""SELECT 
+                    (SELECT cpu_temp FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as cpu_current,
+                    (SELECT fan_rpm FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as fan_current,
+                    (SELECT cpu_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as cpu_current_load,
+                    (SELECT mem_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as mem_current,
+                    MIN(cpu_temp) as cpu_min, MAX(cpu_temp) as cpu_max, AVG(cpu_temp) as cpu_avg,
+                    MIN(fan_rpm) as fan_min, MAX(fan_rpm) as fan_max, AVG(fan_rpm) as fan_avg,
+                    (SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as pwr_current,
+                    MIN(power_watts) as pwr_min, MAX(power_watts) as pwr_max, AVG(power_watts) as pwr_avg,
+                    COUNT(*) as data_points
+                 FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ?""", 
+              (start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now))
+    hw_stats = dict(c.fetchone()) or {}
+    
+    # 资源指标统计
+    c.execute("""SELECT 
+                    MIN(cpu_usage) as cpu_min, MAX(cpu_usage) as cpu_max, AVG(cpu_usage) as cpu_avg,
+                    MIN(mem_usage) as mem_min, MAX(mem_usage) as mem_max, AVG(mem_usage) as mem_avg,
+                    SUM(net_recv_speed) as net_rx_total, SUM(net_sent_speed) as net_tx_total
+                 FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ?""", 
+              (start_ts, now))
+    res_stats = dict(c.fetchone()) or {}
+    
+    # 获取最近系统日志 (用于报告中的日志区域)
+    c.execute("""SELECT timestamp, level, module, action, message 
+                 FROM audit_logs WHERE timestamp >= ? AND timestamp <= ?
+                 ORDER BY timestamp DESC LIMIT 30""", (start_ts, now))
+    logs = c.fetchall()
+    
+    # 获取 GPU 数据
+    c.execute("""SELECT gpu_name, AVG(temp) as temp_avg, MAX(temp) as temp_max, 
+                    AVG(util_gpu) as util_avg, AVG(util_mem) as mem_avg,
+                    AVG(power) as pwr_avg
+                 FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ?
+                 GROUP BY gpu_index""", (start_ts, now))
+    gpu_rows = c.fetchall()
+    conn.close()
+    
+    # 计算在线率 (中断超过60秒才算离线)
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT timestamp, power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    power_data = c.fetchall()
+    conn.close()
+    
+    total_duration = hours * 3600  # 总时长（秒）
+    offline_time = 0  # 离线总时长
+    
+    if power_data and len(power_data) > 1:
+        # 遍历数据，计算断线时间
+        for i in range(1, len(power_data)):
+            gap = power_data[i][0] - power_data[i-1][0]
+            if gap > 60:  # 中断超过60秒才算离线
+                offline_time += gap
+    
+    # 在线率 = (总时长 - 离线时长) / 总时长
+    uptime_percent = round((1 - offline_time / total_duration) * 100, 1) if total_duration > 0 else 100
+    uptime_percent = max(0, min(100, uptime_percent))  # 限制在 0-100%
+    
+    actual_points = hw_stats.get('data_points', 0) or 0
+    
+    # 格式化时间
+    time_start_str = datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d %H:%M')
+    time_end_str = datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M')
+    
+    # 格式化报告类型标签
+    type_labels = {
+        'daily': ('日报', f'过去 {hours} 小时', f'每日 {configs.get("summary_daily_time", "08:00")} 发送'),
+        'weekly': ('周报', f'过去 {hours} 小时', f'每周 {(["周一","周二","周三","周四","周五","周六","周日"][int(configs.get("summary_weekly_day", 1))])} {configs.get("summary_weekly_time", "09:00")} 发送'),
+        'custom': ('自定义报告', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
+        'manual': ('手动报告', f'过去 {hours} 小时', '手动触发发送')
+    }
+    report_type_label, report_range, report_frequency = type_labels.get(report_type, ('概览报告', f'过去 {hours} 小时', '手动触发'))
+    
+    # 格式化日志
+    log_entries = []
+    for row in logs:
+        log_time = datetime.fromtimestamp(row['timestamp']).strftime('%H:%M:%S')
+        level = row['level']
+        color = '#3fb950' if level == 'INFO' else '#d29922' if level == 'WARN' else '#f85149' if level in ('ERROR', 'SECURITY') else '#8b949e'
+        msg = f"[{row['module']}] {row['action']}: {row['message']}"
+        log_entries.append({'time': log_time, 'color': color, 'msg': msg[:100]})
+    
+    # 格式化 GPU 数据
+    gpu_data = []
+    for g in gpu_rows:
+        gpu_data.append({
+            'name': g['gpu_name'] or f"GPU-{gpu_data.index(g)}",
+            'temp': round(g['temp_avg'], 1) if g['temp_avg'] else '--',
+            'temp_max': round(g['temp_max'], 1) if g['temp_max'] else '--',
+            'utilization': round(g['util_avg'], 1) if g['util_avg'] else '--',
+            'mem_used': round(g['mem_avg']/1024, 1) if g['mem_avg'] else '--',  # MB to GB
+            'power': round(g['pwr_avg'], 1) if g['pwr_avg'] else '--'
+        })
+    
+    # 计算耗电量 (简化计算)
+    power_avg = hw_stats.get('pwr_avg', 0) or 0
+    energy_wh = power_avg * hours
+    
+    # 生成趋势图数据 (最多1000点，SVG路径格式)
+    def generate_svg_path(values, max_val, height=40, width=400):
+        """生成SVG路径数据"""
+        if not values or len(values) == 0:
+            return ""
+        
+        # 降采样到最多1000点
+        target_points = min(1000, len(values))
+        step = max(1, len(values) // target_points)
+        sampled = values[::step]
+        
+        if len(sampled) == 0:
+            return ""
+        
+        # 归一化到SVG坐标系
+        points = []
+        for i, val in enumerate(sampled):
+            x = (i / (len(sampled) - 1)) * width if len(sampled) > 1 else width / 2
+            # 高度反转，0在底部
+            y = height - (min(val, 100) / 100) * height if max_val > 0 else height / 2
+            points.append((x, y))
+        
+        # 生成SVG路径
+        if len(points) == 1:
+            return f"M{points[0][0]},{points[0][1]}"
+        
+        path = f"M{points[0][0]},{points[0][1]}"
+        for i in range(1, len(points)):
+            path += f" L{points[i][0]},{points[i][1]}"
+        return path
+    
+    # 获取原始数据用于趋势图
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # 获取 CPU 占用原始数据
+    c.execute("SELECT cpu_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    cpu_load_values = [row[0] or 0 for row in c.fetchall()]
+    
+    # 获取内存使用原始数据
+    c.execute("SELECT mem_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    mem_values = [row[0] or 0 for row in c.fetchall()]
+    
+    # 获取功耗原始数据
+    c.execute("SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    power_values = [row[0] or 0 for row in c.fetchall()]
+    
+    # 获取 GPU 占用原始数据
+    c.execute("SELECT util_gpu FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    gpu_util_values = [row[0] or 0 for row in c.fetchall()]
+    
+    conn.close()
+    
+    # 计算各指标最大值
+    cpu_load_max = round(max(cpu_load_values), 1) if cpu_load_values else 0
+    mem_max = round(max(mem_values), 1) if mem_values else 0
+    power_max = round(max(power_values), 0) if power_values else 0
+    gpu_load_max = round(max(gpu_util_values), 1) if gpu_util_values else 0
+    
+    # 生成SVG路径
+    chart_data = {
+        'cpu_path': generate_svg_path(cpu_load_values, cpu_load_max) if cpu_load_values else "",
+        'mem_path': generate_svg_path(mem_values, mem_max) if mem_values else "",
+        'power_path': generate_svg_path(power_values, power_max) if power_values else "",
+        'cpu_load_max': cpu_load_max,
+        'mem_max': mem_max,
+        'power_max': power_max,
+    }
+    
+    if gpu_util_values:
+        chart_data['gpu_path'] = generate_svg_path(gpu_util_values, gpu_load_max)
+        chart_data['gpu_load_max'] = gpu_load_max
+    
+    # 准备模板数据 (添加 gpu_data)
+    template_data = {
+        'subject': f'{SERVER_NAME} {report_type_label} - {datetime.now().strftime("%Y-%m-%d")}',
+        'server_name': SERVER_NAME,
+        'report_type_label': report_type_label,
+        'send_mode_label': report_frequency,
+        'report_time_start': time_start_str,
+        'report_time_end': time_end_str,
+        'report_duration': f'{hours}小时',
+        'data_points': actual_points,
+        'uptime_percent': uptime_percent,
+        # 硬件数据
+        'cpu_current_temp': round(hw_stats.get('cpu_current', 0), 1) if hw_stats.get('cpu_current') else '--',
+        'cpu_avg_temp': round(hw_stats.get('cpu_avg', 0), 1) if hw_stats.get('cpu_avg') else '--',
+        'cpu_max_temp': round(hw_stats.get('cpu_max', 0), 1) if hw_stats.get('cpu_max') else '--',
+        'temp_color': '#3fb950' if (hw_stats.get('cpu_max', 0) or 0) < 70 else '#d29922' if (hw_stats.get('cpu_max', 0) or 0) < 85 else '#f85149',
+        'power_current': round(hw_stats.get('pwr_current', 0), 0) if hw_stats.get('pwr_current') else '--',
+        'power_avg': round(hw_stats.get('pwr_avg', 0), 0) if hw_stats.get('pwr_avg') else '--',
+        'power_max': round(hw_stats.get('pwr_max', 0), 0) if hw_stats.get('pwr_max') else '--',
+        'power_total_kwh': round(energy_wh / 1000.0, 2),
+        'fan_current_rpm': round(hw_stats.get('fan_current', 0), 0) if hw_stats.get('fan_current') else '--',
+        'fan_avg_rpm': round(hw_stats.get('fan_avg', 0), 0) if hw_stats.get('fan_avg') else '--',
+        'fan_max_rpm': round(hw_stats.get('fan_max', 0), 0) if hw_stats.get('fan_max') else '--',
+        # 资源数据
+        'cpu_current_load': round(hw_stats.get('cpu_current_load', 0), 1) if hw_stats.get('cpu_current_load') else '--',
+        'cpu_avg_load': round(res_stats.get('cpu_avg', 0), 1) if res_stats.get('cpu_avg') else '--',
+        'cpu_max_load': round(res_stats.get('cpu_max', 0), 1) if res_stats.get('cpu_max') else '--',
+        'mem_current': round(hw_stats.get('mem_current', 0), 1) if hw_stats.get('mem_current') else '--',
+        'mem_avg': round(res_stats.get('mem_avg', 0), 1) if res_stats.get('mem_avg') else '--',
+        'mem_max': round(res_stats.get('mem_max', 0), 1) if res_stats.get('mem_max') else '--',
+        # 磁盘读写速度
+        'disk_r': '--',
+        'disk_w': '--',
+        'net_rx_total': f"{round((res_stats.get('net_rx_total', 0) or 0) / 1024 / 1024, 2)} GB",
+        'net_tx_total': f"{round((res_stats.get('net_tx_total', 0) or 0) / 1024 / 1024, 2)} GB",
+        'net_rx_avg': f"{round((res_stats.get('net_rx_total', 0) or 0) / 3600 / 1024, 1)} KB/s",
+        'net_tx_avg': f"{round((res_stats.get('net_tx_total', 0) or 0) / 3600 / 1024, 1)} KB/s",
+        # 日志
+        'logs': log_entries,
+        'chart_data': chart_data,
+        'gpu_data': gpu_data,
+        'version': VERSION,
+        'report_range': report_range,
+        'report_frequency': f"{hours}小时",
+        'panel_url': f"http://{'localhost:5000' if not request else request.url_root.rstrip('/')}"
+    }
+    
+    # 渲染 HTML
+    html_content = render_template('email_summary.html', **template_data)
+    
+    # 发送邮件
+    try:
+        if mode == 'smtp':
+            server = configs.get('smtp_server')
+            port = int(configs.get('smtp_port', 465))
+            user = configs.get('smtp_user')
+            password = configs.get('smtp_pass')
+            use_ssl = configs.get('smtp_encryption') == 'true'
+
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = template_data['subject']
+            msg['From'] = f"{sender_name} <{user}>"
+            msg['To'] = ", ".join(receivers)
+            msg['Date'] = formatdate(localtime=True)
+            msg['Message-ID'] = make_msgid()
+
+            # 纯文本版本
+            plain_text = f"""{SERVER_NAME} {report_type_label}
+统计时间: {time_start_str} ~ {time_end_str}
+
+硬件状态:
+  CPU温度: 当前 {template_data['cpu_current_temp']}°C, 平均 {template_data['cpu_avg_temp']}°C, 峰值 {template_data['cpu_max_temp']}°C
+  系统功耗: 当前 {template_data['power_current']}W, 平均 {template_data['power_avg']}W, 峰值 {template_data['power_max']}W, 预估耗电 {template_data['power_total_kwh']} kWh
+  风扇转速: 平均 {template_data['fan_avg_rpm']} RPM
+
+资源消耗:
+  CPU占用: 平均 {template_data['cpu_avg_load']}%
+  内存使用: 平均 {template_data['mem_avg']}%
+  网络流量: 接收 {template_data['net_rx_total']}, 发送 {template_data['net_tx_total']}
+
+数据点: {actual_points} | 在线率: {uptime_percent}%
+
+生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+由 IPMI_WEB v{VERSION} 自动生成
+"""
+            msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
+            msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+
+            if port == 465 or use_ssl:
+                try:
+                    with smtplib.SMTP_SSL(server, port, timeout=10) as smtp:
+                        smtp.login(user, password)
+                        smtp.send_message(msg)
+                except Exception as e:
+                    if "WRONG_VERSION_NUMBER" in str(e) and port != 465:
+                        with smtplib.SMTP(server, port, timeout=10) as smtp:
+                            smtp.starttls()
+                            smtp.login(user, password)
+                            smtp.send_message(msg)
+                    else: raise e
+            else:
+                with smtplib.SMTP(server, port, timeout=10) as smtp:
+                    try: smtp.starttls()
+                    except: pass
+                    smtp.login(user, password)
+                    smtp.send_message(msg)
+            
+            logging.info(f" [SUMMARY_EMAIL] Sent {report_type} report via SMTP")
+            return True, f"{report_type_label}已发送"
+
+        else:  # MTA 模式
+            if platform.system() != 'Linux':
+                return False, "MTA 模式仅支持 Linux 环境"
+
+            mail_msg = [
+                f"From: {sender_name}",
+                f"To: {', '.join(receivers)}",
+                f"Subject: {template_data['subject']}",
+                "MIME-Version: 1.0",
+                "Content-Type: text/html; charset=UTF-8",
+                "Auto-Submitted: auto-generated",
+                "",
+                html_content
+            ]
+
+            process = subprocess.Popen(['/usr/sbin/sendmail', '-t', '-f', sender_name], 
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate(input="\n".join(mail_msg))
+            
+            if process.returncode == 0:
+                logging.info(f" [SUMMARY_EMAIL] Sent {report_type} report via MTA")
+                return True, f"{report_type_label}已发送"
+            else:
+                return False, f"MTA 发送失败: {stderr or stdout}"
+            
+    except Exception as e:
+        logging.error(f" [SUMMARY_EMAIL] Failed to send {report_type}: {str(e)}")
+        return False, f"发送失败: {str(e)}"
 
 def get_ipmi_dump():
     try: return subprocess.check_output(['ipmitool', 'sensor'], encoding='utf-8', timeout=3)
@@ -1740,7 +2117,10 @@ def api_settings():
                 'dashboard_hours_hw', 'dashboard_hours_hist',
                 'email_enabled', 'email_mode', 'smtp_server', 'smtp_port', 
                 'smtp_user', 'smtp_pass', 'smtp_encryption',
-                'email_sender_name', 'email_receiver')
+                'email_sender_name', 'email_receiver',
+                'summary_enabled', 'summary_daily_enabled', 'summary_daily_time',
+                'summary_weekly_enabled', 'summary_weekly_day', 'summary_weekly_time',
+                'summary_custom_enabled', 'summary_custom_hours')
         c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
         res = {row['key']: row['value'] for row in c.fetchall()}
         conn.close()
@@ -1748,7 +2128,7 @@ def api_settings():
         # 格式化处理
         for k in ('log_delay_warn', 'log_delay_danger'):
             res[k] = float(res.get(k, 1.5 if 'warn' in k else 5.0))
-        for k in ('data_retention_days', 'pending_retention_days', 'retention_change_ts'):
+        for k in ('data_retention_days', 'pending_retention_days', 'retention_change_ts', 'summary_weekly_day', 'summary_custom_hours'):
             res[k] = int(res.get(k, 0))
             if k == 'data_retention_days' and res[k] == 0: res[k] = 7
         for k in ('dashboard_hours_hw', 'dashboard_hours_hist'):
@@ -1848,7 +2228,15 @@ def api_settings():
                 'smtp_pass': 'SMTP密码',
                 'smtp_encryption': 'SMTP加密开关',
                 'email_sender_name': '邮件发件人展示名',
-                'email_receiver': '邮件收件人列表'
+                'email_receiver': '邮件收件人列表',
+                'summary_enabled': '概览报告总开关',
+                'summary_daily_enabled': '日报开关',
+                'summary_daily_time': '日报时间',
+                'summary_weekly_enabled': '周报开关',
+                'summary_weekly_day': '周报发送日',
+                'summary_weekly_time': '周报时间',
+                'summary_custom_enabled': '自定义报告开关',
+                'summary_custom_hours': '自定义报告间隔'
             }
             for key, label in mapping.items():
                 if key in data:
@@ -1907,6 +2295,42 @@ def api_settings():
             return jsonify({'error': str(e)}), 500
         finally:
             conn.close()
+
+@app.route('/api/summary_email/manual', methods=['POST'])
+@login_required
+def api_summary_email_manual():
+    """手动触发概览报告发送"""
+    try:
+        data = request.json
+        report_type = data.get('type', 'manual') # daily, weekly, custom
+        
+        # 从数据库读取 custom_hours 配置
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT value FROM config WHERE key='summary_custom_hours'")
+        custom_hours_row = c.fetchone()
+        conn.close()
+        custom_hours = int(custom_hours_row[0]) if custom_hours_row else 24
+        
+        # 根据类型确定时间范围
+        hours_map = {
+            'daily': 24,
+            'weekly': 168,  # 7天
+            'custom': custom_hours,  # 使用配置的自定义间隔
+            'manual': custom_hours   # 手动触发也使用自定义间隔
+        }
+        hours = hours_map.get(report_type, 24)
+        
+        # 发送报告
+        success, msg = send_summary_email(report_type, hours)
+        
+        if success:
+            write_audit('INFO', 'SYSTEM', 'SUMMARY_MANUAL', f"手动触发{msg}", operator=get_client_ip())
+            return jsonify({'status': 'success', 'message': msg})
+        else:
+            return jsonify({'status': 'error', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/api/test_email', methods=['POST'])
 @login_required
@@ -2786,6 +3210,96 @@ def api_recording_stats():
     
     return jsonify([{'t': x[0], 'v': x[1]} for x in data])
 
+# --- 定时报告调度器 ---
+def summary_scheduler_task():
+    """
+    定时检查并发送概览报告
+    支持三种模式：日报(每日一次)、周报(每周一次)、自定义(每N小时一次)
+    """
+    while True:
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT value FROM config WHERE key LIKE 'summary_%'")
+            configs = {row['key']: row['value'] for row in c.fetchall()}
+            conn.close()
+            
+            enabled = configs.get('summary_enabled') == 'true'
+            if not enabled:
+                time.sleep(60)  # 总开关未开启，每分钟检查一次
+                continue
+            
+            now = datetime.now()
+            current_ts = int(time.time())
+            
+            # 检查日报
+            daily_enabled = configs.get('summary_daily_enabled') == 'true'
+            daily_time = configs.get('summary_daily_time', '08:00')
+            if daily_enabled:
+                daily_hour, daily_min = map(int, daily_time.split(':'))
+                # 判断条件：当前时间等于设定时间，且这分钟内还没发送过
+                if now.hour == daily_hour and now.minute == daily_min:
+                    # 简单防重：检查上次发送时间
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute("SELECT value FROM config WHERE key='last_summary_daily_ts'")
+                    last_ts = int(c.fetchone()[0]) if c.fetchone() else 0
+                    conn.close()
+                    
+                    if current_ts - last_ts > 3600:  # 1小时内没有发送过
+                        logging.info("[SCHEDULER] Triggering daily summary report...")
+                        send_summary_email('daily', 24)
+                        # 记录发送时间
+                        conn = get_db_connection()
+                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_daily_ts', ?)", (str(current_ts),))
+                        conn.commit()
+                        conn.close()
+            
+            # 检查周报
+            weekly_enabled = configs.get('summary_weekly_enabled') == 'true'
+            weekly_day = int(configs.get('summary_weekly_day', 1))  # 0=周日, 1=周一...
+            weekly_time = configs.get('summary_weekly_time', '09:00')
+            if weekly_enabled:
+                weekly_hour, weekly_min = map(int, weekly_time.split(':'))
+                if now.weekday() == weekly_day and now.hour == weekly_hour and now.minute == weekly_min:
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute("SELECT value FROM config WHERE key='last_summary_weekly_ts'")
+                    last_ts = int(c.fetchone()[0]) if c.fetchone() else 0
+                    conn.close()
+                    
+                    if current_ts - last_ts > 86400:  # 24小时内没有发送过
+                        logging.info("[SCHEDULER] Triggering weekly summary report...")
+                        send_summary_email('weekly', 168)  # 7天
+                        conn = get_db_connection()
+                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_weekly_ts', ?)", (str(current_ts),))
+                        conn.commit()
+                        conn.close()
+            
+            # 检查自定义报告
+            custom_enabled = configs.get('summary_custom_enabled') == 'true'
+            custom_hours = int(configs.get('summary_custom_hours', 24))
+            if custom_enabled:
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("SELECT value FROM config WHERE key='last_summary_custom_ts'")
+                last_ts = int(c.fetchone()[0]) if c.fetchone() else 0
+                conn.close()
+                
+                if current_ts - last_ts > (custom_hours * 3600):
+                    logging.info(f"[SCHEDULER] Triggering custom summary report ({custom_hours}h)...")
+                    send_summary_email('custom', custom_hours)
+                    conn = get_db_connection()
+                    conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_ts', ?)", (str(current_ts),))
+                    conn.commit()
+                    conn.close()
+                    
+        except Exception as e:
+            logging.error(f"[SCHEDULER] Error: {e}")
+        
+        # 每 30 秒检查一次
+        time.sleep(30)
+
 from werkzeug.serving import WSGIRequestHandler
 
 class SilentHandler(WSGIRequestHandler):
@@ -2823,6 +3337,7 @@ if __name__ == '__main__':
     threading.Thread(target=background_worker, daemon=True).start()
     threading.Thread(target=gpu_worker, daemon=True).start()
     threading.Thread(target=energy_maintenance_task, daemon=True).start()
+    threading.Thread(target=summary_scheduler_task, daemon=True).start()
     
     if HAS_CERT:
         print(f" * SSL Certificate found, starting HTTPS on port {PORT}")

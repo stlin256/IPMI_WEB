@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ server_name }} 系统运行报告</title>
+    <style>
+        @media only screen and (max-width: 480px) {
+            .mobile-padding { padding: 20px 15px !important; }
+            .ascii-art { font-size: 8px !important; }
+            .header-padding { padding: 20px 10px !important; }
+            .button-full { width: 100% !important; display: block !important; padding: 15px 0 !important; }
+            .grid-item { width: 100% !important; display: block !important; margin-bottom: 20px !important; padding: 0 !important; }
+            .grid-container { padding: 0 !important; }
+            .chart-img { width: 100% !important; height: auto !important; }
+            .data-cell { width: 50% !important; display: inline-block !important; box-sizing: border-box !important; }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #010409; color: #e6edf3; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    <!-- Preheader -->
+    <div style="display: none; max-height: 0px; overflow: hidden; mso-hide: all;">
+        {{ server_name }} {{ report_type_label|default('系统运行') }}报告 - {{ report_range }} 数据概览。发送方式：{{ send_mode_label|default('自动发送') }}
+    </div>
+    
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
+        <tr>
+            <td align="center" style="padding: 20px 10px;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #0d1117; border-radius: 12px; overflow: hidden; border: 1px solid #30363d; box-shadow: 0 15px 50px rgba(0,0,0,0.7);">
+                    <!-- Header -->
+                    <tr>
+                        <td class="header-padding" style="padding: 35px 20px; background-color: #161b22; text-align: center; border-bottom: 2px solid #1f6feb;">
+                            <div style="width: 100%; overflow: hidden;">
+                                <pre class="ascii-art" style="margin: 0; color: #58a6ff; font-family: 'Courier New', Courier, monospace; font-weight: bold; font-size: 13px; line-height: 1.1; display: inline-block; text-align: left; white-space: pre;">   ____ ___   __  ___ ____  _      __ ____ ___ 
+  /  _// _ \ /  |/  //  _/ | | /| / // __// _ )
+ _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
+/___//_/   /_/  /_//___/   |__/|__//___//____/ </pre>
+                            </div>
+                            <div style="margin-top: 15px; color: #8b949e; font-size: 14px; font-weight: 500; letter-spacing: 1px;"></div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td class="mobile-padding" style="padding: 30px 40px;">
+                            <!-- 基础汇总 -->
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 30px;">
+                                <tr>
+                                    <td style="vertical-align: middle;">
+                                        <h2 style="margin: 0; color: #e6edf3; font-size: 24px; font-weight: 600;">{{ report_type_label|default('系统运行') }}报告</h2>
+                                        <div style="margin-top: 8px; display: inline-block; padding: 2px 8px; background-color: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); border-radius: 4px; color: #58a6ff; font-size: 11px; font-weight: bold;">
+                                            {{ send_mode_label|default('自动计划发送') }}
+                                        </div>
+                                        <p style="margin: 8px 0 0; color: #8b949e; font-size: 13px;">
+                                            统计区间: {{ report_time_start }} ~ {{ report_time_end }}
+                                        </p>
+                                        <p style="margin: 5px 0 0; color: #8b949e; font-size: 12px;">
+                                            报告时长: {{ report_duration|default('24小时') }} | 
+                                            数据采集点: {{ data_points|default('--') }} 个
+                                        </p>
+                                    </td>
+                                    <td align="right" style="vertical-align: middle;">
+                                        <div style="display: inline-block; padding: 10px 15px; background-color: rgba(35,197,94,0.1); border: 1px solid #23c55e; border-radius: 50px;">
+                                            <span style="color: #3fb950; font-size: 12px; font-weight: bold;">在线率: {{ uptime_percent|default('100') }}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- 多维硬件事实 -->
+                            <div style="margin-bottom: 25px;">
+                                <div style="color: #58a6ff; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">硬件状态事实</div>
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
+                                    <tr>
+                                        <td style="padding: 15px;">
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <!-- CPU 温度 -->
+                                                    <td class="data-cell" width="33%" style="padding: 10px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">CPU 温度</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
+                                                            当前: <span style="color: {{ temp_color|default('#e6edf3') }}; font-weight: bold;">{{ cpu_current_temp|default('--') }}°C</span><br>
+                                                            平均: {{ cpu_avg_temp|default('--') }}°C<br>
+                                                            峰值: {{ cpu_max_temp|default('--') }}°C
+                                                        </div>
+                                                    </td>
+                                                    <!-- 系统功耗 -->
+                                                    <td class="data-cell" width="33%" style="padding: 10px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">系统功耗</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
+                                                            当前: {{ power_current|default('--') }}W<br>
+                                                            平均: {{ power_avg|default('--') }}W<br>
+                                                            峰值: {{ power_max|default('--') }}W
+                                                        </div>
+                                                        <div style="margin-top: 5px; font-size: 11px; color: #58a6ff;">
+                                                            估算耗电: {{ power_total_kwh|default('--') }} kWh
+                                                        </div>
+                                                    </td>
+                                                    <!-- 风扇转速 -->
+                                                    <td class="data-cell" width="33%" style="padding: 10px;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">风扇转速</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
+                                                            当前: {{ fan_current_rpm|default('--') }} RPM<br>
+                                                            平均: {{ fan_avg_rpm|default('--') }} RPM<br>
+                                                            峰值: {{ fan_max_rpm|default('--') }} RPM
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <!-- 区间趋势图表 -->
+                            {% if chart_data is defined and chart_data|length > 0 %}
+                            <div style="margin-bottom: 25px;">
+                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">区间趋势概览</div>
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
+                                    <tr>
+                                        <td style="padding: 15px;">
+                                            <!-- 趋势图: CPU占用 -->
+                                            <div style="margin-bottom: 12px;">
+                                                <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
+                                                    CPU 占用 <span style="color: #58a6ff;">{{ chart_data.cpu_load_max }}% 峰值</span>
+                                                </div>
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
+                                                    <defs>
+                                                        <linearGradient id="grad_cpu" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                            <stop offset="0%" style="stop-color:#58a6ff;stop-opacity:0.3" />
+                                                            <stop offset="100%" style="stop-color:#58a6ff;stop-opacity:0" />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <path d="M0,40 {{ chart_data.cpu_path }} L400,40 Z" fill="url(#grad_cpu)" />
+                                                    <path d="M0,40 {{ chart_data.cpu_path }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
+                                                </svg>
+                                            </div>
+                                            <!-- 趋势图: GPU占用 (如果有GPU数据) -->
+                                            {% if chart_data.gpu_path is defined %}
+                                            <div style="margin-bottom: 12px;">
+                                                <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
+                                                    GPU 占用 <span style="color: #76e3ea;">{{ chart_data.gpu_load_max }}% 峰值</span>
+                                                </div>
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
+                                                    <defs>
+                                                        <linearGradient id="grad_gpu" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                            <stop offset="0%" style="stop-color:#76e3ea;stop-opacity:0.3" />
+                                                            <stop offset="100%" style="stop-color:#76e3ea;stop-opacity:0" />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <path d="M0,40 {{ chart_data.gpu_path }} L400,40 Z" fill="url(#grad_gpu)" />
+                                                    <path d="M0,40 {{ chart_data.gpu_path }}" fill="none" stroke="#76e3ea" stroke-width="1.5" />
+                                                </svg>
+                                            </div>
+                                            {% endif %}
+                                            <!-- 趋势图: 内存使用 -->
+                                            <div style="margin-bottom: 12px;">
+                                                <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
+                                                    内存使用 <span style="color: #a371f7;">{{ chart_data.mem_max }}% 峰值</span>
+                                                </div>
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
+                                                    <defs>
+                                                        <linearGradient id="grad_mem" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                            <stop offset="0%" style="stop-color:#a371f7;stop-opacity:0.3" />
+                                                            <stop offset="100%" style="stop-color:#a371f7;stop-opacity:0" />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <path d="M0,40 {{ chart_data.mem_path }} L400,40 Z" fill="url(#grad_mem)" />
+                                                    <path d="M0,40 {{ chart_data.mem_path }}" fill="none" stroke="#a371f7" stroke-width="1.5" />
+                                                </svg>
+                                            </div>
+                                            <!-- 趋势图: 系统功耗 -->
+                                            <div>
+                                                <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
+                                                    系统功耗 <span style="color: #f0883e;">{{ chart_data.power_max }}W 峰值</span>
+                                                </div>
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
+                                                    <defs>
+                                                        <linearGradient id="grad_power" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                            <stop offset="0%" style="stop-color:#f0883e;stop-opacity:0.3" />
+                                                            <stop offset="100%" style="stop-color:#f0883e;stop-opacity:0" />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <path d="M0,40 {{ chart_data.power_path }} L400,40 Z" fill="url(#grad_power)" />
+                                                    <path d="M0,40 {{ chart_data.power_path }}" fill="none" stroke="#f0883e" stroke-width="1.5" />
+                                                </svg>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            {% endif %}
+
+                            <!-- 资源消耗快照 (移除磁盘使用) -->
+                            <div style="margin-bottom: 25px;">
+                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">资源消耗快照</div>
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
+                                    <tr>
+                                        <td style="padding: 15px;">
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <!-- CPU 占用 -->
+                                                    <td class="data-cell" width="50%" style="padding: 10px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">CPU 占用率</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
+                                                            当前: {{ cpu_current_load|default('--') }}%<br>
+                                                            平均: {{ cpu_avg_load|default('--') }}%<br>
+                                                            峰值: {{ cpu_max_load|default('--') }}%
+                                                        </div>
+                                                    </td>
+                                                    <!-- 内存使用 -->
+                                                    <td class="data-cell" width="50%" style="padding: 10px;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">内存使用</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
+                                                            当前: {{ mem_current|default('--') }}%<br>
+                                                            平均: {{ mem_avg|default('--') }}%<br>
+                                                            峰值: {{ mem_max|default('--') }}%
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- 网络流量汇总 -->
+                            <div style="margin-bottom: 25px;">
+                                <div style="color: #f0883e; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">网络流量统计</div>
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
+                                    <tr>
+                                        <td style="padding: 15px;">
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td class="data-cell" width="50%" style="padding: 10px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">接收流量 (RX)</div>
+                                                        <div style="font-size: 18px; font-weight: bold; color: #3fb950;">{{ net_rx_total|default('--') }}</div>
+                                                        <div style="margin-top: 5px; font-size: 12px; color: #8b949e;">
+                                                            平均带宽: {{ net_rx_avg|default('--') }}
+                                                        </div>
+                                                    </td>
+                                                    <td class="data-cell" width="50%" style="padding: 10px;">
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">发送流量 (TX)</div>
+                                                        <div style="font-size: 18px; font-weight: bold; color: #58a6ff;">{{ net_tx_total|default('--') }}</div>
+                                                        <div style="margin-top: 5px; font-size: 12px; color: #8b949e;">
+                                                            平均带宽: {{ net_tx_avg|default('--') }}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <!-- GPU 详细事实 - 使用 length 检查而非直接判断 -->
+                            {% if gpu_data is defined and gpu_data|length > 0 %}
+                            <div style="margin-bottom: 25px;">
+                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">GPU 状态详情</div>
+                                {% for gpu in gpu_data %}
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px;">
+                                    <tr>
+                                        <td style="padding: 15px;">
+                                            <div style="font-size: 13px; color: #e6edf3; font-weight: bold; margin-bottom: 10px;">
+                                                {{ gpu.name|default('GPU ' ~ loop.index) }}
+                                            </div>
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td class="data-cell" width="25%" style="padding: 5px;">
+                                                        <div style="font-size: 10px; color: #8b949e;">温度</div>
+                                                        <div style="font-size: 13px; color: {{ gpu.temp_color|default('#e6edf3') }}; font-weight: bold;">{{ gpu.temp|default('--') }}°C</div>
+                                                    </td>
+                                                    <td class="data-cell" width="25%" style="padding: 5px;">
+                                                        <div style="font-size: 10px; color: #8b949e;">利用率</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;">{{ gpu.utilization|default('--') }}%</div>
+                                                    </td>
+                                                    <td class="data-cell" width="25%" style="padding: 5px;">
+                                                        <div style="font-size: 10px; color: #8b949e;">显存使用</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;">{{ gpu.mem_used|default('--') }} GB</div>
+                                                    </td>
+                                                    <td class="data-cell" width="25%" style="padding: 5px;">
+                                                        <div style="font-size: 10px; color: #8b949e;">功耗</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;">{{ gpu.power|default('--') }}W</div>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <!-- 终端风格滚动日志区 -->
+                            <div style="margin-top: 30px;">
+                                <div style="color: #8b949e; font-size: 12px; margin-bottom: 10px; font-weight: bold; text-transform: uppercase;">系统事件日志</div>
+                                <div style="background-color: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; max-height: 200px; overflow-y: auto;">
+                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; line-height: 1.6;">
+                                        {% if logs %}
+                                            {% for log in logs %}
+                                            <tr>
+                                                <td style="color: #484f58; white-space: nowrap; padding-right: 10px; vertical-align: top;">[{{ log.time }}]</td>
+                                                <td style="color: {{ log.color|default('#8b949e') }}; vertical-align: top;">{{ log.msg }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr><td style="padding: 20px 0; color: #30363d; text-align: center; font-style: italic;">NO EVENTS RECORDED IN THIS PERIOD.</td></tr>
+                                        {% endif %}
+                                    </table>
+                                </div>
+                                <div style="text-align: right; margin-top: 5px;">
+                                    <span style="font-size: 10px; color: #484f58;">* 显示前 20 条记录</span>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 40px; text-align: center;">
+                                <a href="{{ panel_url }}" class="button-full" style="display: inline-block; padding: 14px 40px; background-color: #1f6feb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 15px rgba(31, 111, 235, 0.4);">
+                                    进入控制面板
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 25px 20px; background-color: #161b22; text-align: center; border-top: 1px solid #30363d;">
+                            <p style="margin: 0; font-size: 12px; color: #8b949e;">
+                                Generated by <strong style="color: #58a6ff;">IPMI_WEB v{{ version }}</strong>
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 11px; color: #484f58;">
+                                发送频率: 每 {{ report_frequency }} | 数据区间: {{ report_range }}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

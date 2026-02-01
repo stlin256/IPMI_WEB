@@ -233,17 +233,76 @@ n        /* 标签样式 */
             .cli-history-time { min-width: 80px; }
             
             /* 系统设置 Modal 移动端优化 */
-            #settingsModal .modal-body { flex-direction: column !important; }
-            #settingsModal .border-end { border-end-width: 0 !important; border-bottom: 1px solid var(--border-color) !important; width: 100% !important; flex-shrink: 0; }
-            #settingsModal .nav { flex-direction: row !important; overflow-x: auto; overflow-y: hidden; }
-            #settingsModal .nav-link { flex-shrink: 0; padding: 12px 16px !important; }
-            #settingsModal .tab-content { max-height: 60vh; }
+            #settingsModal .modal-body { 
+                flex-direction: column !important; 
+                min-height: auto !important;
+            }
+            #settingsModal .border-end { 
+                border-end-width: 0 !important; 
+                border-bottom: 1px solid var(--border-color) !important; 
+                width: 100% !important; 
+                flex-shrink: 0; 
+            }
+            #settingsModal .nav { 
+                flex-direction: row !important; 
+                overflow-x: auto; 
+                overflow-y: hidden; 
+                flex-wrap: nowrap !important;
+                padding-bottom: 5px !important;
+            }
+            #settingsModal .nav-link { 
+                flex-shrink: 0; 
+                padding: 10px 12px !important; 
+                font-size: 12px !important;
+                white-space: nowrap;
+            }
+            #settingsModal .nav-link i { margin-right: 4px !important; }
+            #settingsModal .tab-content { 
+                max-height: 50vh; 
+                overflow-y: auto;
+                padding: 15px !important;
+            }
+            #settingsModal .modal-dialog {
+                margin: 10px !important;
+                max-width: calc(100% - 20px) !important;
+            }
+            #settingsModal .modal-content {
+                max-height: 90vh !important;
+            }
             
             /* 页面标题栏按钮移动端优化 */
             .d-flex.flex-wrap.justify-content-between { gap: 10px !important; }
             .d-flex.align-items-center.gap-3 { gap: 10px !important; flex-wrap: wrap; }
             .d-flex.align-items-center.gap-2 { gap: 8px !important; flex-wrap: wrap; justify-content: flex-end; }
             .btn-sm { padding: 6px 12px !important; font-size: 12px !important; }
+            
+            /* 设置表单控件优化 */
+            #settingsModal .form-label { font-size: 12px !important; margin-bottom: 4px !important; }
+            #settingsModal .form-control, #settingsModal .form-select {
+                font-size: 13px !important;
+                padding: 8px 10px !important;
+            }
+            #settingsModal .input-group-text { padding: 8px 10px !important; font-size: 12px !important; }
+            
+            /* 告警规则卡片优化 */
+            #settingsModal .rule-card .card-body { padding: 10px !important; }
+            #settingsModal .rule-card .d-flex { flex-wrap: wrap !important; gap: 8px !important; }
+            #settingsModal .rule-card input[type="text"] { min-width: 100px !important; }
+            
+            /* 报告设置卡片优化 */
+            #settingsModal .p-3.bg-black.bg-opacity-25 { padding: 12px !important; }
+            #settingsModal .p-3.bg-black.bg-opacity-25 .row { margin: 0 !important; }
+            #settingsModal .p-3.bg-black.bg-opacity-25 .col-12, 
+            #settingsModal .p-3.bg-black.bg-opacity-25 .col-md-6 { 
+                padding: 0 5px !important; 
+            }
+        }
+        
+        /* 极小屏优化 (小于 400px) */
+        @media (max-width: 400px) {
+            #settingsModal .nav-link { padding: 8px 10px !important; font-size: 11px !important; }
+            #settingsModal .nav-link i { display: none !important; }
+            #settingsModal .tab-content { padding: 10px !important; }
         }
         
         /* 滚动条美化 */
@@ -470,6 +529,9 @@ n        /* 标签样式 */
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-alerts" type="button">
                                 <i class="fas fa-bell me-2"></i> 告警规则
                             </button>
+                            <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-summary" type="button">
+                                <i class="fas fa-file-alt me-2"></i> 概览报告
+                            </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-email" type="button">
                                 <i class="fas fa-envelope me-2"></i> 邮件通知
                             </button>
@@ -551,77 +613,168 @@ n        /* 标签样式 */
                             </div>
                         </div>
 
-                        <!-- 邮件通知 Tab -->
-                        <div class="tab-pane fade" id="tab-email">
-                            <h6 class="text-primary mb-4 fw-bold">邮件通知配置</h6>
+                        <!-- 概览报告 Tab -->
+                        <div class="tab-pane fade" id="tab-summary">
+                            <h6 class="text-primary mb-4 fw-bold">定期概览报告</h6>
                             
                             <div class="mb-4">
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="email-enabled" onchange="markChanged()">
-                                    <label class="form-check-label fw-bold text-light" for="email-enabled">开启邮件通知服务</label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="summary-enabled" onchange="handleSummaryEnableChange(this.checked)">
+                                    <label class="form-check-label fw-bold text-light" for="summary-enabled">开启定期报告计划</label>
                                 </div>
+                                <div class="form-text text-muted small">开启后将按设定的时间点发送系统运行事实报告。</div>
                             </div>
 
-                            <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">发信模式</label>
-                                <div class="d-flex gap-2">
-                                    <input type="radio" class="btn-check" name="email_mode" id="email-mode-mta" value="mta" onchange="toggleEmailMode('mta'); markChanged()">
-                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-mta">系统 MTA (Sendmail)</label>
-                                    
-                                    <input type="radio" class="btn-check" name="email_mode" id="email-mode-smtp" value="smtp" onchange="toggleEmailMode('smtp'); markChanged()">
-                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-smtp">外部 SMTP 服务器</label>
-                                </div>
-                            </div>
+                            <hr class="border-secondary opacity-25 mb-4">
 
-                            <div id="mta-settings" class="mb-4">
-                                <div class="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-25 py-2 mb-0">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    <span class="small text-warning">MTA 模式仅在 Linux 环境下可用。</span>
-                                </div>
-                            </div>
-
-                            <div id="smtp-settings" class="d-none">
-                                <div class="row g-2 mb-3">
-                                    <div class="col-md-8">
-                                        <label class="form-label text-muted small fw-bold">SMTP 服务器</label>
-                                        <input type="text" id="smtp-server" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="smtp.example.com" oninput="markChanged()">
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label text-muted small fw-bold">端口</label>
-                                        <input type="number" id="smtp-port" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="465" oninput="markChanged()">
+                            <!-- 日报设置 -->
+                            <div class="mb-4 p-3 bg-black bg-opacity-25 rounded border border-secondary border-opacity-25">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div class="fw-bold text-light"><i class="fas fa-calendar-day me-2 text-info"></i>日报设置</div>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <button class="btn btn-link btn-sm text-info p-0 text-decoration-none fw-bold" onclick="sendManualSummary('daily')"><i class="fas fa-paper-plane me-1"></i>立刻发送</button>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" id="summary-daily-enabled" onchange="markChanged()">
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label text-muted small fw-bold">SMTP 账号 (通常为邮箱)</label>
-                                    <input type="text" id="smtp-user" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label text-muted small fw-bold">SMTP 密码 / 授权码</label>
-                                    <input type="password" id="smtp-pass" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
-                                </div>
-                                <div class="mb-3">
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="smtp-encryption" onchange="markChanged()">
-                                        <label class="form-check-label small text-muted" for="smtp-encryption">启用 SSL/TLS 加密 (465端口必选)</label>
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label text-muted small">每日发送时间</label>
+                                        <input type="time" id="summary-daily-time" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="mb-3">
-                                <label class="form-label text-muted small fw-bold">显示发件人名称</label>
-                                <input type="text" id="email-sender" class="form-control bg-dark border-secondary text-light" placeholder="例如: Server@ipmi.web" oninput="markChanged()">
-                                <div class="form-text text-muted small">自定义收件箱里显示的“发件人”名称</div>
+                            <!-- 周报设置 -->
+                            <div class="mb-4 p-3 bg-black bg-opacity-25 rounded border border-secondary border-opacity-25">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div class="fw-bold text-light"><i class="fas fa-calendar-week me-2 text-warning"></i>周报设置</div>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <button class="btn btn-link btn-sm text-warning p-0 text-decoration-none fw-bold" onclick="sendManualSummary('weekly')"><i class="fas fa-paper-plane me-1"></i>立刻发送</button>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" id="summary-weekly-enabled" onchange="markChanged()">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label text-muted small">每周发送日</label>
+                                        <select id="summary-weekly-day" class="form-select form-select-sm bg-dark border-secondary text-light" onchange="markChanged()">
+                                            <option value="1">周一</option>
+                                            <option value="2">周二</option>
+                                            <option value="3">周三</option>
+                                            <option value="4">周四</option>
+                                            <option value="5">周五</option>
+                                            <option value="6">周六</option>
+                                            <option value="0">周日</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label text-muted small">发送时间</label>
+                                        <input type="time" id="summary-weekly-time" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
+                                    </div>
+                                </div>
                             </div>
+
+                            <!-- 自定义报告 -->
+                            <div class="mb-4 p-3 bg-black bg-opacity-25 rounded border border-secondary border-opacity-25">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div class="fw-bold text-light"><i class="fas fa-clock me-2 text-success"></i>自定义间隔报告</div>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <button class="btn btn-link btn-sm text-success p-0 text-decoration-none fw-bold" onclick="sendManualSummary('custom')"><i class="fas fa-paper-plane me-1"></i>立刻发送</button>
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" id="summary-custom-enabled" onchange="markChanged()">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label text-muted small">发送间隔 (小时)</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" id="summary-custom-hours" class="form-control bg-dark border-secondary text-light" min="1" max="720" oninput="markChanged()">
+                                            <span class="input-group-text bg-dark border-secondary text-muted">小时</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 邮件通知 Tab -->
+                        <div class="tab-pane fade" id="tab-email">
+                            <h6 class="text-primary mb-4 fw-bold">邮件发信配置</h6>
 
                             <div class="mb-4">
                                 <label class="form-label text-muted small fw-bold">收件人邮箱</label>
                                 <input type="text" id="email-receiver" class="form-control bg-dark border-secondary text-light" placeholder="a@ex.com, b@ex.com" oninput="markChanged()">
-                                <div class="form-text text-muted small">支持多个邮箱，请使用英文逗号或分号分隔</div>
+                                <div class="form-text text-muted small">支持多个邮箱，使用逗号或分号分隔</div>
                             </div>
 
-                            <hr class="border-secondary opacity-25 my-4">
+                            <!-- 展开式详细配置 (二级菜单效果) -->
+                            <div class="accordion accordion-flush" id="emailDetailAccordion">
+                                <div class="accordion-item bg-transparent border-bottom border-secondary border-opacity-25">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed bg-transparent text-primary px-0 py-3 shadow-none fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#email-advanced-config">
+                                            <i class="fas fa-tools me-2"></i> 发信服务器配置 (SMTP/MTA)
+                                        </button>
+                                    </h2>
+                                    <div id="email-advanced-config" class="accordion-collapse collapse" data-bs-parent="#emailDetailAccordion">
+                                        <div class="accordion-body px-0 py-3">
+                                            <div class="mb-4">
+                                                <label class="form-label text-muted small fw-bold">发信模式</label>
+                                                <div class="d-flex gap-2">
+                                                    <input type="radio" class="btn-check" name="email_mode" id="email-mode-mta" value="mta" onchange="toggleEmailMode('mta'); markChanged()">
+                                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-mta">系统 MTA</label>
+                                                    
+                                                    <input type="radio" class="btn-check" name="email_mode" id="email-mode-smtp" value="smtp" onchange="toggleEmailMode('smtp'); markChanged()">
+                                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-smtp">外部 SMTP</label>
+                                                </div>
+                                            </div>
 
-                            <div class="d-grid gap-2">
+                                            <div id="mta-settings" class="mb-4">
+                                                <div class="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-25 py-2 mb-0">
+                                                    <i class="fas fa-info-circle me-2"></i>
+                                                    <span class="small text-warning">MTA 仅在 Linux 下可用。</span>
+                                                </div>
+                                            </div>
+
+                                            <div id="smtp-settings" class="d-none">
+                                                <div class="row g-2 mb-3">
+                                                    <div class="col-md-8">
+                                                        <label class="form-label text-muted small fw-bold">SMTP 服务器</label>
+                                                        <input type="text" id="smtp-server" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="smtp.example.com" oninput="markChanged()">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="form-label text-muted small fw-bold">端口</label>
+                                                        <input type="number" id="smtp-port" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="465" oninput="markChanged()">
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label text-muted small fw-bold">SMTP 账号</label>
+                                                    <input type="text" id="smtp-user" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label text-muted small fw-bold">SMTP 密码 / 授权码</label>
+                                                    <input type="password" id="smtp-pass" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="smtp-encryption" onchange="markChanged()">
+                                                        <label class="form-check-label small text-muted" for="smtp-encryption">启用 SSL/TLS 加密</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label text-muted small fw-bold">发件人展示名</label>
+                                                <input type="text" id="email-sender" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="例如: Server@ipmi.web" oninput="markChanged()">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2 mt-4">
                                 <button class="btn btn-outline-primary fw-bold" id="btn-test-email" onclick="sendTestEmail()">
                                     <span id="test-email-text">发送测试邮件</span>
                                     <i id="test-email-spinner" class="fas fa-spinner fa-spin d-none"></i>
@@ -1330,6 +1483,85 @@ n        /* 标签样式 */
         }
     }
 
+    // 手动发送概览报告
+    async function sendManualSummary(type) {
+        if (!checkEmailConfigComplete()) {
+            showConfigIncompleteModal();
+            return;
+        }
+        
+        try {
+            const res = await fetch('/api/summary_email/manual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: type })
+            });
+            const data = await res.json();
+            if (data.status === 'success') showToast('报告发送请求已提交');
+            else showToast(data.message, true);
+        } catch (e) {
+            showToast('请求失败', true);
+        }
+    }
+
+    // 检查邮件配置是否完整
+    function checkEmailConfigComplete() {
+        const smtpServer = document.getElementById('smtp-server').value;
+        const smtpUser = document.getElementById('smtp-user').value;
+        const smtpPass = document.getElementById('smtp-pass').value;
+        const receiver = document.getElementById('email-receiver').value;
+        const mode = document.querySelector('input[name="email_mode"]:checked')?.value || 'mta';
+        
+        if (!receiver) return false;
+        if (mode === 'smtp') {
+            if (!smtpServer || !smtpUser || !smtpPass) return false;
+        }
+        return true;
+    }
+
+    // 显示配置不完整弹窗
+    function showConfigIncompleteModal() {
+        if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
+        const modalEl = document.getElementById('discardModal');
+        const title = modalEl.querySelector('h5');
+        const msg = modalEl.querySelector('p');
+        const btn = document.getElementById('discard-confirm-btn');
+        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+        
+        const oldTitle = title.innerText;
+        const oldMsg = msg.innerText;
+        const oldBtnText = btn.innerText;
+
+        title.innerText = "发信配置不完整";
+        title.className = "fw-bold text-danger";
+        msg.innerHTML = `检测到收件人或发信服务器配置不完整。请先在「邮件通知」标签页中完成设置并保存。`;
+        btn.innerText = "去配置";
+        btn.className = "btn btn-primary fw-bold";
+        
+        btn.onclick = () => {
+            // 切换到邮件 Tab
+            const emailTab = document.querySelector('[data-bs-target="#tab-email"]');
+            if (emailTab) emailTab.click();
+            // 还原 Modal
+            title.innerText = oldTitle;
+            title.className = "fw-bold";
+            msg.innerText = oldMsg;
+            btn.innerText = oldBtnText;
+            discardModal.hide();
+        };
+        discardModal.show();
+    }
+
+    // 处理报告开关变动
+    function handleSummaryEnableChange(checked) {
+        if (checked && !checkEmailConfigComplete()) {
+            document.getElementById('summary-enabled').checked = false;
+            showConfigIncompleteModal();
+            return;
+        }
+        markChanged();
+    }
+
     // --- 综合设置中心逻辑 ---
     let settingsModal;
     let confirmModal;
@@ -1363,7 +1595,7 @@ n        /* 标签样式 */
         syncAllRulesFromUI();
 
         // 采集邮件设置
-        const emailEnabled = document.getElementById('email-enabled').checked ? 'true' : 'false';
+        const emailEnabled = 'true'; // 默认开启（逻辑已合并）
         const emailMode = document.querySelector('input[name="email_mode"]:checked')?.value || 'mta';
         const smtpServer = document.getElementById('smtp-server').value;
         const smtpPort = document.getElementById('smtp-port').value;
@@ -1380,7 +1612,7 @@ n        /* 标签样式 */
             dashboard_hours_hw: JSON.stringify(getChecked('check-hw-hours').sort()),
             dashboard_hours_hist: JSON.stringify(getChecked('check-hist-hours').sort()),
             alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => rest)),
-            email_enabled: emailEnabled,
+            email_enabled: 'true',
             email_mode: emailMode,
             smtp_server: smtpServer,
             smtp_port: smtpPort,
@@ -1388,7 +1620,15 @@ n        /* 标签样式 */
             smtp_pass: smtpPass,
             smtp_encryption: smtpEncryption,
             email_sender_name: emailSender,
-            email_receiver: emailReceiver
+            email_receiver: emailReceiver,
+            summary_enabled: document.getElementById('summary-enabled').checked ? 'true' : 'false',
+            summary_daily_enabled: document.getElementById('summary-daily-enabled').checked ? 'true' : 'false',
+            summary_daily_time: document.getElementById('summary-daily-time').value,
+            summary_weekly_enabled: document.getElementById('summary-weekly-enabled').checked ? 'true' : 'false',
+            summary_weekly_day: parseInt(document.getElementById('summary-weekly-day').value),
+            summary_weekly_time: document.getElementById('summary-weekly-time').value,
+            summary_custom_enabled: document.getElementById('summary-custom-enabled').checked ? 'true' : 'false',
+            summary_custom_hours: parseInt(document.getElementById('summary-custom-hours').value)
         };
 
         const initialSnapshotComp = {
@@ -1398,7 +1638,7 @@ n        /* 标签样式 */
             dashboard_hours_hw: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hw.sort()),
             dashboard_hours_hist: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hist.sort()),
             alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => rest)),
-            email_enabled: initialSettingsSnapshot.email_enabled,
+            email_enabled: 'true',
             email_mode: initialSettingsSnapshot.email_mode,
             smtp_server: initialSettingsSnapshot.smtp_server,
             smtp_port: initialSettingsSnapshot.smtp_port,
@@ -1406,7 +1646,15 @@ n        /* 标签样式 */
             smtp_pass: initialSettingsSnapshot.smtp_pass,
             smtp_encryption: initialSettingsSnapshot.smtp_encryption,
             email_sender_name: initialSettingsSnapshot.email_sender_name,
-            email_receiver: initialSettingsSnapshot.email_receiver
+            email_receiver: initialSettingsSnapshot.email_receiver,
+            summary_enabled: initialSettingsSnapshot.summary_enabled,
+            summary_daily_enabled: initialSettingsSnapshot.summary_daily_enabled,
+            summary_daily_time: initialSettingsSnapshot.summary_daily_time,
+            summary_weekly_enabled: initialSettingsSnapshot.summary_weekly_enabled,
+            summary_weekly_day: initialSettingsSnapshot.summary_weekly_day,
+            summary_weekly_time: initialSettingsSnapshot.summary_weekly_time,
+            summary_custom_enabled: initialSettingsSnapshot.summary_custom_enabled,
+            summary_custom_hours: initialSettingsSnapshot.summary_custom_hours
         };
 
         hasPendingChanges = JSON.stringify(currentSnapshot) !== JSON.stringify(initialSnapshotComp);
@@ -1480,7 +1728,15 @@ n        /* 标签样式 */
                 smtp_pass: globalSettings.smtp_pass || '',
                 smtp_encryption: globalSettings.smtp_encryption || 'true',
                 email_sender_name: globalSettings.email_sender_name || '',
-                email_receiver: globalSettings.email_receiver || ''
+                email_receiver: globalSettings.email_receiver || '',
+                summary_enabled: globalSettings.summary_enabled || 'false',
+                summary_daily_enabled: globalSettings.summary_daily_enabled || 'false',
+                summary_daily_time: globalSettings.summary_daily_time || '08:00',
+                summary_weekly_enabled: globalSettings.summary_weekly_enabled || 'false',
+                summary_weekly_day: parseInt(globalSettings.summary_weekly_day || '1'),
+                summary_weekly_time: globalSettings.summary_weekly_time || '09:00',
+                summary_custom_enabled: globalSettings.summary_custom_enabled || 'false',
+                summary_custom_hours: parseInt(globalSettings.summary_custom_hours || '24')
             };
             
             hasPendingChanges = false;
@@ -1490,8 +1746,17 @@ n        /* 标签样式 */
             document.getElementById('set-danger').value = globalSettings.log_delay_danger;
             document.getElementById('set-retention').value = globalSettings.data_retention_days;
 
-            // 填充邮件设置
-            document.getElementById('email-enabled').checked = globalSettings.email_enabled === 'true';
+            // 填充报告设置
+            document.getElementById('summary-enabled').checked = globalSettings.summary_enabled === 'true';
+            document.getElementById('summary-daily-enabled').checked = globalSettings.summary_daily_enabled === 'true';
+            document.getElementById('summary-daily-time').value = globalSettings.summary_daily_time || '08:00';
+            document.getElementById('summary-weekly-enabled').checked = globalSettings.summary_weekly_enabled === 'true';
+            document.getElementById('summary-weekly-day').value = globalSettings.summary_weekly_day || '1';
+            document.getElementById('summary-weekly-time').value = globalSettings.summary_weekly_time || '09:00';
+            document.getElementById('summary-custom-enabled').checked = globalSettings.summary_custom_enabled === 'true';
+            document.getElementById('summary-custom-hours').value = globalSettings.summary_custom_hours || '24';
+
+            // 填充邮件设置（逻辑已合并，移除 UI 勾选同步）
             const mode = globalSettings.email_mode || 'mta';
             document.getElementById(`email-mode-${mode}`).checked = true;
             toggleEmailMode(mode);
@@ -1734,7 +1999,6 @@ n        /* 标签样式 */
         
         const payload = {
             email_mode: document.querySelector('input[name="email_mode"]:checked')?.value || 'mta',
-            email_enabled: document.getElementById('email-enabled').checked,
             email_sender_name: document.getElementById('email-sender').value,
             email_receiver: document.getElementById('email-receiver').value,
             smtp_server: document.getElementById('smtp-server').value,
@@ -1801,7 +2065,7 @@ n        /* 标签样式 */
             dashboard_hours_hw: getChecked('check-hw-hours'),
             dashboard_hours_hist: getChecked('check-hist-hours'),
             alert_rules: rulesToSave, // 只发送未被标记删除的规则
-            email_enabled: document.getElementById('email-enabled').checked ? 'true' : 'false',
+            email_enabled: 'true',
             email_mode: document.querySelector('input[name="email_mode"]:checked')?.value || 'mta',
             smtp_server: document.getElementById('smtp-server').value,
             smtp_port: document.getElementById('smtp-port').value,
@@ -1809,7 +2073,15 @@ n        /* 标签样式 */
             smtp_pass: document.getElementById('smtp-pass').value,
             smtp_encryption: document.getElementById('smtp-encryption').checked ? 'true' : 'false',
             email_sender_name: document.getElementById('email-sender').value,
-            email_receiver: document.getElementById('email-receiver').value
+            email_receiver: document.getElementById('email-receiver').value,
+            summary_enabled: document.getElementById('summary-enabled').checked ? 'true' : 'false',
+            summary_daily_enabled: document.getElementById('summary-daily-enabled').checked ? 'true' : 'false',
+            summary_daily_time: document.getElementById('summary-daily-time').value,
+            summary_weekly_enabled: document.getElementById('summary-weekly-enabled').checked ? 'true' : 'false',
+            summary_weekly_day: parseInt(document.getElementById('summary-weekly-day').value),
+            summary_weekly_time: document.getElementById('summary-weekly-time').value,
+            summary_custom_enabled: document.getElementById('summary-custom-enabled').checked ? 'true' : 'false',
+            summary_custom_hours: parseInt(document.getElementById('summary-custom-hours').value)
         };
 
         try {
@@ -1835,7 +2107,7 @@ n        /* 标签样式 */
                     dashboard_hours_hw: [...payload.dashboard_hours_hw],
                     dashboard_hours_hist: [...payload.dashboard_hours_hist],
                     alert_rules: JSON.parse(JSON.stringify(rulesToSave)),
-                    email_enabled: payload.email_enabled,
+                    email_enabled: 'true',
                     email_mode: payload.email_mode,
                     smtp_server: payload.smtp_server,
                     smtp_port: payload.smtp_port,
@@ -1843,7 +2115,15 @@ n        /* 标签样式 */
                     smtp_pass: payload.smtp_pass,
                     smtp_encryption: payload.smtp_encryption,
                     email_sender_name: payload.email_sender_name,
-                    email_receiver: payload.email_receiver
+                    email_receiver: payload.email_receiver,
+                    summary_enabled: payload.summary_enabled,
+                    summary_daily_enabled: payload.summary_daily_enabled,
+                    summary_daily_time: payload.summary_daily_time,
+                    summary_weekly_enabled: payload.summary_weekly_enabled,
+                    summary_weekly_day: payload.summary_weekly_day,
+                    summary_weekly_time: payload.summary_weekly_time,
+                    summary_custom_enabled: payload.summary_custom_enabled,
+                    summary_custom_hours: payload.summary_custom_hours
                 };
                 hasPendingChanges = false;
                 

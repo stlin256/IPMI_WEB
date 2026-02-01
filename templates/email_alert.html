@@ -4,70 +4,94 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IPMI_WEB 系统通知</title>
+    <style>
+        @media only screen and (max-width: 480px) {
+            .mobile-padding { padding: 20px 15px !important; }
+            .ascii-art { font-size: 8px !important; }
+            .header-padding { padding: 20px 10px !important; }
+            .button-full { width: 100% !important; display: block !important; padding: 15px 0 !important; }
+            .info-table td { font-size: 13px !important; }
+        }
+    </style>
 </head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f9; color: #333;">
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-        <!-- Header -->
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #010409; color: #e6edf3; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    <!-- 隐藏的预览文本 (Preheader) -->
+    <div style="display: none; max-height: 0px; overflow: hidden; mso-hide: all;">
+        {{ subject }} - 来自 {{ server_name }} 的系统通知。
+    </div>
+    
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
         <tr>
-            <td style="padding: 30px; background-color: #1f6feb; text-align: center;">
-                <h1 style="margin: 0; color: #ffffff; font-size: 24px; letter-spacing: 1px;">IPMI_WEB</h1>
-                <p style="margin: 5px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">系统自动通知服务</p>
-            </td>
-        </tr>
-        
-        <!-- Content -->
-        <tr>
-            <td style="padding: 40px 30px;">
-                <h2 style="margin: 0 0 20px; color: {{ theme_color|default('#1f6feb') }}; font-size: 20px; border-left: 4px solid {{ theme_color|default('#1f6feb') }}; padding-left: 15px;">{{ subject }}</h2>
-                
-                <p style="line-height: 1.6; font-size: 15px; color: #555;">
-                    您好，这是一封来自 <strong>{{ server_name }}</strong> 的自动化测试/告警邮件。
-                </p>
+            <td align="center" style="padding: 20px 10px;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #0d1117; border-radius: 12px; overflow: hidden; border: 1px solid #30363d; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+                    <!-- Header -->
+                    <tr>
+                        <td class="header-padding" style="padding: 35px 20px; background-color: #161b22; text-align: center; border-bottom: 2px solid #1f6feb;">
+                            <div style="width: 100%; overflow: hidden;">
+                                <pre class="ascii-art" style="margin: 0; color: #58a6ff; font-family: 'Courier New', Courier, monospace; font-weight: bold; font-size: 13px; line-height: 1.1; display: inline-block; text-align: left; white-space: pre;">   ____ ___   __  ___ ____  _      __ ____ ___ 
+  /  _// _ \ /  |/  //  _/ | | /| / // __// _ )
+ _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
+/___//_/   /_/  /_//___/   |__/|__//___//____/ </pre>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td class="mobile-padding" style="padding: 40px 40px;">
+                            <h2 style="margin: 0 0 25px; color: {{ theme_color|default('#58a6ff') }}; font-size: 22px; border-left: 4px solid {{ theme_color|default('#58a6ff') }}; padding-left: 15px; font-weight: 600;">{{ subject }}</h2>
+                            
+                            <p style="line-height: 1.6; font-size: 16px; color: #c9d1d9; margin-bottom: 30px;">
+                                您好，这是一封来自 <strong style="color: #58a6ff;">{{ server_name }}</strong> 的通知邮件。
+                            </p>
 
-                <div style="margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
-                    <table border="0" cellpadding="0" cellspacing="0" width="100%">
-                        {% if metric %}
-                        <tr>
-                            <td width="100" style="padding: 8px 0; color: #888; font-size: 14px;">监控指标:</td>
-                            <td style="padding: 8px 0; font-weight: bold; font-size: 14px;">{{ metric }}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0; color: #888; font-size: 14px;">当前数值:</td>
-                            <td style="padding: 8px 0; font-weight: bold; font-size: 14px; color: #f85149;">{{ value }}</td>
-                        </tr>
-                        {% endif %}
-                        <tr>
-                            <td style="padding: 8px 0; color: #888; font-size: 14px;">发送时间:</td>
-                            <td style="padding: 8px 0; font-size: 14px;">{{ time }}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0; color: #888; font-size: 14px;">软件版本:</td>
-                            <td style="padding: 8px 0; font-size: 14px; font-family: monospace;">V{{ version }}</td>
-                        </tr>
-                    </table>
-                </div>
+                            <div style="margin: 30px 0; padding: 25px; background-color: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid #30363d;">
+                                <table class="info-table" border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    {% if metric %}
+                                    <tr>
+                                        <td width="90" style="padding: 10px 0; color: #8b949e; font-size: 14px; vertical-align: top;">监控指标:</td>
+                                        <td style="padding: 10px 0; font-weight: bold; font-size: 14px; color: #e6edf3; vertical-align: top;">{{ metric }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px 0; color: #8b949e; font-size: 14px; vertical-align: top;">当前数值:</td>
+                                        <td style="padding: 10px 0; font-weight: bold; font-size: 16px; color: #f85149; vertical-align: top;">{{ value }}</td>
+                                    </tr>
+                                    {% endif %}
+                                    <tr>
+                                        <td style="padding: 10px 0; color: #8b949e; font-size: 14px; vertical-align: top;">发送时间:</td>
+                                        <td style="padding: 10px 0; font-size: 14px; color: #e6edf3; vertical-align: top;">{{ time }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 10px 0; color: #8b949e; font-size: 14px; vertical-align: top;">软件版本:</td>
+                                        <td style="padding: 10px 0; font-size: 14px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; color: #58a6ff; vertical-align: top;">V{{ version }}</td>
+                                    </tr>
+                                </table>
+                            </div>
 
-                <p style="line-height: 1.6; font-size: 14px; color: #666;">
-                    {{ message }}
-                </p>
+                            <p style="line-height: 1.6; font-size: 15px; color: #8b949e; margin: 30px 0;">
+                                {{ message }}
+                            </p>
 
-                <div style="margin-top: 40px; text-align: center;">
-                    <a href="{{ panel_url }}" style="display: inline-block; padding: 12px 25px; background-color: #1f6feb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
-                        访问控制面板
-                    </a>
-                </div>
-            </td>
-        </tr>
+                            <div style="margin-top: 40px; text-align: center;">
+                                <a href="{{ panel_url }}" class="button-full" style="display: inline-block; padding: 14px 35px; background-color: #1f6feb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 15px rgba(31, 111, 235, 0.4);">
+                                    访问控制面板
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
 
-        <!-- Footer -->
-        <tr>
-            <td style="padding: 20px 30px; background-color: #f8f9fa; text-align: center; border-top: 1px solid #eeeeee;">
-                <p style="margin: 0; font-size: 12px; color: #999;">
-                    本项目由 <a href="https://github.com/stlin256/IPMI_WEB" style="color: #1f6feb; text-decoration: none;">stlin256 @ GitHub</a> 维护
-                </p>
-                <p style="margin: 5px 0 0; font-size: 11px; color: #bbb;">
-                    这是系统自动发送的邮件，请勿直接回复。
-                </p>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 25px 20px; background-color: #161b22; text-align: center; border-top: 1px solid #30363d;">
+                            <p style="margin: 0; font-size: 13px; color: #8b949e;">
+                                项目仓库由 <a href="https://github.com/stlin256/IPMI_WEB" style="color: #58a6ff; text-decoration: none; font-weight: 500;">stlin256 @ GitHub</a> 维护
+                            </p>
+                            <p style="margin: 10px 0 0; font-size: 11px; color: #484f58; letter-spacing: 0.5px;">
+                                此邮件为系统自动发出，请勿回复
+                            </p>
+                        </td>
+                    </tr>
+                </table>
             </td>
         </tr>
     </table>
