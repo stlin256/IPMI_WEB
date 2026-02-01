@@ -732,20 +732,62 @@ n        /* 标签样式 */
                 const config = JSON.parse(e.target.result);
                 pendingImportConfig = config;
 
-                const res = await fetch('/api/config/precheck', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
+                // 1. 获取系统版本并进行兼容性检查
+                const versionRes = await fetch('/api/version');
+                const versionData = await versionRes.json();
+                const currentSWVersion = versionData.version;
+                const configVersion = config.metadata?.version || "1.0.0";
+                
+                // 版本号比对函数 (Semantic Versioning)
+                const compareVersions = (v1, v2) => {
+                    const parts1 = String(v1).split('.').map(Number);
+                    const parts2 = String(v2).split('.').map(Number);
+                    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+                        const p1 = parts1[i] || 0;
+                        const p2 = parts2[i] || 0;
+                        if (p1 > p2) return 1;
+                        if (p1 < p2) return -1;
+                    }
+                    return 0;
+                };
 
-                // 显示元数据
-                document.getElementById('import-version-val').innerText = data.version || '1';
-                document.getElementById('import-time-val').innerText = data.export_time || '未知';
-                document.getElementById('import-sw-val').innerText = data.software_version || '未知';
+                // 如果配置版本高于当前软件版本，强制弹出提示
+                if (compareVersions(configVersion, currentSWVersion) > 0) {
+                    // 使用临时创建的 Modal 提示
+                    if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
+                    const modalEl = document.getElementById('discardModal');
+                    const title = modalEl.querySelector('h5');
+                    const msg = modalEl.querySelector('p');
+                    const btn = document.getElementById('discard-confirm-btn');
+                    const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+                    
+                    const oldTitle = title.innerText;
+                    const oldMsg = msg.innerText;
+                    const oldBtnText = btn.innerText;
 
-                renderImportDiff(data);
+                    title.innerText = "版本兼容性提示";
+                    title.className = "fw-bold text-warning";
+                    msg.innerHTML = `检测到配置版本 (<span class="text-warning fw-bold">${configVersion}</span>) 高于当前软件版本 (<span class="text-success fw-bold">${currentSWVersion}</span>)。`;
+                    btn.innerText = "确认";
+                    btn.className = "btn btn-warning fw-bold";
+                    if (cancelBtn) cancelBtn.style.display = 'none'; // 隐藏取消按钮，强制点击确认
+
+                    btn.onclick = async () => {
+                        // 还原 Modal 样式供下次使用
+                        title.innerText = oldTitle;
+                        title.className = "fw-bold";
+                        msg.innerText = oldMsg;
+                        btn.innerText = oldBtnText;
+                        btn.className = "btn btn-warning fw-bold";
+                        if (cancelBtn) cancelBtn.style.display = 'block';
+                        discardModal.hide();
+                        await proceedPrecheck(config, currentSWVersion);
+                    };
+                    discardModal.show();
+                    return;
+                }
+
+                await proceedPrecheck(config, currentSWVersion);
             } catch (err) {
                 errorEl.innerText = '解析失败: ' + err.message;
                 errorEl.classList.remove('d-none');
@@ -754,10 +796,53 @@ n        /* 标签样式 */
         reader.readAsText(file);
     }
 
+    // 执行实际的预检网络请求
+    async function proceedPrecheck(config, currentSWVersion) {
+        const errorEl = document.getElementById('import-error-msg');
+        try {
+            const res = await fetch('/api/config/precheck', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            // 精准标黄版本号 (如果不匹配)
+            const backupVerEl = document.getElementById('import-version-val');
+            const systemVerEl = document.getElementById('import-sw-val');
+            if (data.version !== currentSWVersion) {
+                backupVerEl.classList.add('text-warning', 'fw-bold');
+                systemVerEl.classList.add('text-warning', 'fw-bold');
+            } else {
+                backupVerEl.classList.remove('text-warning', 'fw-bold');
+                systemVerEl.classList.remove('text-warning', 'fw-bold');
+            }
+
+            // 显示元数据
+            document.getElementById('import-version-val').innerText = data.version || '1';
+            document.getElementById('import-time-val').innerText = data.export_time || '未知';
+            document.getElementById('import-sw-val').innerText = data.software_version || '未知';
+
+            renderImportDiff(data);
+        } catch (err) {
+            errorEl.innerText = '解析失败: ' + err.message;
+            errorEl.classList.remove('d-none');
+        }
+    }
+
     function renderImportDiff(data) {
         document.getElementById('import-precheck-view').classList.add('d-none');
         document.getElementById('import-diff-view').classList.remove('d-none');
         document.getElementById('import-modal-footer').classList.remove('d-none');
+
+        // 动态显示反悔期文案
+        const retentionDiff = data.diffs.find(d => d.key === 'data_retention_days');
+        const showRetentionWarning = retentionDiff && retentionDiff.changed && parseInt(retentionDiff.new) < parseInt(retentionDiff.old);
+        const warningEl = document.querySelector('#import-diff-view .alert-warning.small');
+        if (warningEl) {
+            warningEl.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>请勾选您希望导入的项目。${showRetentionWarning ? '若缩短保留期，将自动触发 3 天反悔期。' : ''}`;
+        }
 
         const tbody = document.getElementById('import-diff-table');
         let html = '';

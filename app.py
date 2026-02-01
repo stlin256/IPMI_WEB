@@ -37,6 +37,8 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
+VERSION = '1.2.1'
+
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
 
@@ -1205,6 +1207,11 @@ def logs_page():
     conn.close()
     return render_template('logs.html', server_name=SERVER_NAME)
 
+@app.route('/api/version')
+@login_required
+def api_version():
+    return jsonify({'version': VERSION})
+
 @app.route('/api/log_status')
 @login_required
 def api_log_status():
@@ -1810,12 +1817,12 @@ def api_config_export():
     now_ts = int(time.time())
     export_data = {
         "metadata": {
-            "version": 4, # 提升至版本 4
+            "version": VERSION,
             "timestamp": now_ts,
             "export_time": datetime.fromtimestamp(now_ts).strftime('%Y-%m-%d %H:%M:%S'),
             "export_by": get_client_ip(),
             "server_name": SERVER_NAME,
-            "software_version": "1.2.0" # 建议此处记录当前软件版本号
+            "software_version": VERSION
         },
         "settings": settings,
         "alert_rules": alert_rules
