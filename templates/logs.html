@@ -983,10 +983,12 @@ n        /* 标签样式 */
                           data-fingerprint="${fingerprintId}"
                           onclick="highlightFingerprint('${fingerprintId}', event)"
                           title="点击高亮相同指纹">${log.operator}</span>
+                    ${log.operator !== 'SYSTEM' ? `
                     <span class="cli-tag cli-tag-ua" 
                           data-fingerprint="${fingerprintId}"
                           onclick="highlightFingerprint('${fingerprintId}', event)"
                           title="点击高亮相同指纹">${uaTag}</span>
+                    ` : ''}
                     <span class="fw-bold">${log.module}</span>
                     <span class="text-muted">${mainMsg}</span>
                     ${detailsContent ? `

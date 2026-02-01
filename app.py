@@ -156,12 +156,13 @@ def write_audit(level, module, action, message, details=None, operator=None, for
             except:
                 operator = 'SYSTEM'
         
-        # 尝试自动获取 UA
-        ua = 'Unknown'
-        try:
-            ua = request.headers.get('User-Agent', 'Unknown')
-        except: 
-            pass
+        # 尝试自动获取 UA (仅对非系统操作获取)
+        ua = ''
+        if operator != 'SYSTEM':
+            try:
+                ua = request.headers.get('User-Agent', '')
+            except: 
+                pass
 
         now = int(time.time())
         details_json = json.dumps(details) if details else '{}'
