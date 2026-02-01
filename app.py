@@ -15,6 +15,7 @@ import csv
 import logging
 import queue
 import platform
+import concurrent.futures
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
@@ -1907,62 +1908,44 @@ def api_status_gpu():
 @app.route('/api/export_data')
 @login_required
 def api_export_data():
-    conn = get_db_connection()
-    c = conn.cursor()
-    
-    # 导出 metrics_v2
-    c.execute("SELECT * FROM metrics_v2 ORDER BY timestamp ASC")
-    metrics_rows = c.fetchall()
-    metrics_cols = [description[0] for description in c.description]
-    
-    # 导出 energy_hourly
-    c.execute("SELECT * FROM energy_hourly ORDER BY timestamp ASC")
-    energy_rows = c.fetchall()
-    energy_cols = [description[0] for description in c.description]
-    
-    # 导出 recording_intervals
-    c.execute("SELECT * FROM recording_intervals ORDER BY timestamp ASC")
-    interval_rows = c.fetchall()
-    interval_cols = [description[0] for description in c.description]
-    
-    # 导出 gpu_metrics
-    c.execute("SELECT * FROM gpu_metrics ORDER BY timestamp ASC")
-    gpu_rows = c.fetchall()
-    gpu_cols = [description[0] for description in c.description]
-    
-    conn.close()
+    """
+    极速多线程并行数据导出
+    利用 ThreadPoolExecutor 对不同表并发执行 SQL 查询和 CSV 生成，提升 CPU 利用率。
+    """
+    def export_table_task(sql, filename):
+        """导出单个表的线程任务"""
+        local_conn = get_db_connection()
+        try:
+            cur = local_conn.cursor()
+            cur.execute(sql)
+            rows = cur.fetchall()
+            if not rows: return None, None
+            
+            cols = [desc[0] for desc in cur.description]
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(cols)
+            writer.writerows(rows)
+            return filename, output.getvalue()
+        finally:
+            local_conn.close()
 
-    # 创建内存 ZIP 文件
+    tasks = [
+        ("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage FROM metrics_v2 ORDER BY timestamp ASC", "metrics_history.csv"),
+        ("SELECT * FROM energy_hourly ORDER BY timestamp ASC", "energy_persistence.csv"),
+        ("SELECT * FROM recording_intervals ORDER BY timestamp ASC", "recording_intervals.csv"),
+        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv")
+    ]
+
     memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 写入 metrics_history.csv
-        metrics_csv = io.StringIO()
-        writer = csv.writer(metrics_csv)
-        writer.writerow(metrics_cols)
-        writer.writerows(metrics_rows)
-        zf.writestr('metrics_history.csv', metrics_csv.getvalue())
-        
-        # 写入 energy_persistence.csv
-        energy_csv = io.StringIO()
-        writer = csv.writer(energy_csv)
-        writer.writerow(energy_cols)
-        writer.writerows(energy_rows)
-        zf.writestr('energy_persistence.csv', energy_csv.getvalue())
-        
-        # 写入 recording_intervals.csv
-        interval_csv = io.StringIO()
-        writer = csv.writer(interval_csv)
-        writer.writerow(interval_cols)
-        writer.writerows(interval_rows)
-        zf.writestr('recording_intervals.csv', interval_csv.getvalue())
-
-        # 写入 gpu_history.csv
-        if gpu_rows:
-            gpu_csv = io.StringIO()
-            writer = csv.writer(gpu_csv)
-            writer.writerow(gpu_cols)
-            writer.writerows(gpu_rows)
-            zf.writestr('gpu_history.csv', gpu_csv.getvalue())
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_STORED) as zf:
+        # 并行执行查询和格式化
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_file = {executor.submit(export_table_task, sql, fname): fname for sql, fname in tasks}
+            for future in concurrent.futures.as_completed(future_to_file):
+                filename, csv_data = future.result()
+                if filename and csv_data:
+                    zf.writestr(filename, csv_data)
 
     memory_file.seek(0)
     filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"

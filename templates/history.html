@@ -937,18 +937,34 @@
         });
     }
 
-    function exportData() {
-        const btn = event.currentTarget;
+    async function exportData() {
+        const btn = document.querySelector('button[onclick="exportData()"]');
         const originalHtml = btn.innerHTML;
+        
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Exporting...';
         
-        window.location.href = '/api/export_data';
-        
-        setTimeout(() => {
+        try {
+            const response = await fetch('/api/export_data');
+            if (!response.ok) throw new Error('Export failed');
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            a.href = url;
+            a.download = `ipmi_data_export_${timestamp}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error(e);
+            alert('Export failed: ' + e.message);
+        } finally {
             btn.disabled = false;
             btn.innerHTML = originalHtml;
-        }, 2000);
+        }
     }
 
 </script>
