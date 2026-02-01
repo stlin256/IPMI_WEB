@@ -717,9 +717,18 @@ n        /* 标签样式 */
 
     <!-- 日志容器 -->
     <div class="terminal-body" id="logs-container" style="border-radius: 8px;">
-        <div class="text-center py-5 text-muted">
-            <i class="fas fa-spinner fa-spin fa-lg mb-3"></i>
-            <p>正在加载日志...</p>
+        <div id="logs-content">
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-spinner fa-spin fa-lg mb-3"></i>
+                <p>正在加载日志...</p>
+            </div>
+        </div>
+        <!-- 底部加载状态 -->
+        <div id="load-more-indicator" class="text-center py-3 text-muted d-none">
+            <i class="fas fa-spinner fa-spin me-2"></i>正在加载更早的记录...
+        </div>
+        <div id="all-loaded-msg" class="text-center py-3 text-muted small d-none">
+            已经显示全部记录
         </div>
     </div>
 </div>
@@ -1060,6 +1069,10 @@ n        /* 标签样式 */
 
     let lastTimestamp = 0;
     let isFirstLoad = true;
+    let currentOffset = 0;
+    let isLoadingMore = false;
+    let allLoaded = false;
+    const PAGE_SIZE = 100;
 
     function renderLogLine(log, idx) {
         const fingerprintId = getFingerprintId(log.operator, log.ua);
@@ -1144,52 +1157,92 @@ n        /* 标签样式 */
     }
 
     async function loadLogs() {
-        const container = document.getElementById('logs-container');
+        const content = document.getElementById('logs-content');
 
         try {
-            const response = await fetch('/api/audit_logs?limit=500');
+            // 定时刷新始终请求最新的 100 条 (足够覆盖间隔)
+            const response = await fetch(`/api/audit_logs?limit=${PAGE_SIZE}&offset=0`);
             const data = await response.json();
             
             if (!data.logs || data.logs.length === 0) {
                 if (isFirstLoad) {
-                    container.innerHTML = '<div class="text-center py-5 text-muted">暂无日志记录</div>';
+                    content.innerHTML = '<div class="text-center py-5 text-muted">暂无日志记录</div>';
                     isFirstLoad = false;
                 }
                 return;
             }
 
-            // 按时间倒序
             const sortedLogs = data.logs.sort((a, b) => b.timestamp - a.timestamp);
             
-            // 首次加载
             if (isFirstLoad) {
                 let html = '';
                 sortedLogs.forEach((log, idx) => {
                     html += renderLogLine(log, idx);
                 });
-                container.innerHTML = html;
+                content.innerHTML = html;
                 lastTimestamp = sortedLogs[0]?.timestamp || 0;
+                currentOffset = sortedLogs.length;
                 isFirstLoad = false;
                 return;
             }
 
-            // 增量更新：只添加新日志
+            // 增量更新 (不改变 offset)
             const newLogs = sortedLogs.filter(log => log.timestamp > lastTimestamp);
             if (newLogs.length > 0) {
                 let html = '';
                 newLogs.sort((a, b) => b.timestamp - a.timestamp).forEach((log, idx) => {
                     html += renderLogLine(log, idx);
                 });
-                // 插入到容器开头
-                container.insertAdjacentHTML('afterbegin', html);
+                content.insertAdjacentHTML('afterbegin', html);
                 lastTimestamp = sortedLogs[0].timestamp;
+                currentOffset += newLogs.length; // 新记录入栈，后续分页需要递增 offset
             }
             
         } catch (e) {
             if (isFirstLoad) {
-                container.innerHTML = `<div class="alert alert-danger">加载失败: ${e.message}</div>`;
+                content.innerHTML = `<div class="alert alert-danger">加载失败: ${e.message}</div>`;
                 isFirstLoad = false;
             }
+        }
+    }
+
+    // 分页加载更早的历史记录
+    async function loadMoreLogs() {
+        if (isLoadingMore || allLoaded) return;
+        isLoadingMore = true;
+        
+        const indicator = document.getElementById('load-more-indicator');
+        const content = document.getElementById('logs-content');
+        indicator.classList.remove('d-none');
+
+        try {
+            const response = await fetch(`/api/audit_logs?limit=${PAGE_SIZE}&offset=${currentOffset}`);
+            const data = await response.json();
+
+            if (!data.logs || data.logs.length === 0) {
+                allLoaded = true;
+                document.getElementById('all-loaded-msg').classList.remove('d-none');
+            } else {
+                let html = '';
+                const sortedLogs = data.logs.sort((a, b) => b.timestamp - a.timestamp);
+                sortedLogs.forEach((log, idx) => {
+                    // 使用分页专用的索引偏移，防止 ID 重复
+                    html += renderLogLine(log, currentOffset + idx);
+                });
+                content.insertAdjacentHTML('beforeend', html);
+                currentOffset += data.logs.length;
+                
+                // 如果返回数量少于分页大小，说明见底了
+                if (data.logs.length < PAGE_SIZE) {
+                    allLoaded = true;
+                    document.getElementById('all-loaded-msg').classList.remove('d-none');
+                }
+            }
+        } catch (e) {
+            console.error('Load more failed:', e);
+        } finally {
+            isLoadingMore = false;
+            indicator.classList.add('d-none');
         }
     }
 
@@ -1813,6 +1866,15 @@ n        /* 标签样式 */
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+        // 监听滚动实现无限加载
+        const container = document.getElementById('logs-container');
+        container.addEventListener('scroll', () => {
+            // 当滚动到距离底部 100px 时，加载更多
+            if (container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
+                loadMoreLogs();
+            }
+        });
+
         // 监听设置 Modal 事件
         const settingsModalEl = document.getElementById('settingsModal');
         let bypassModalCheck = false;
