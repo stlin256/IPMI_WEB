@@ -1617,34 +1617,39 @@ def api_settings():
         try:
             data = request.json
             now = int(time.time())
+            changes = [] # 记录所有变更详情
             
-            # 获取当前所有配置用于对比，避免刷写未修改的项
+            # 获取当前所有配置用于对比
             c.execute("SELECT key, value FROM config")
             current_configs = {row['key']: row['value'] for row in c.fetchall()}
+
+            # 辅助函数：统一值格式化，便于日志输出和对比
+            def format_val(v):
+                if v is None: return "None"
+                if v is True or v == "true": return "true"
+                if v is False or v == "false": return "false"
+                if isinstance(v, (int, float)):
+                    return str(int(v)) if v == int(v) else str(round(v, 2))
+                if isinstance(v, (list, dict)):
+                    return json.dumps(v, separators=(',', ':'))
+                return str(v)
             
-            # 辅助函数：判断是否真正改变（改进版：处理数值精度和数组顺序问题）
             def is_changed(key, new_val):
                 if key not in current_configs: return True
                 old_val = current_configs[key]
                 
-                # 统一归一化函数
                 def normalize(v):
                     if v is None: return None
-                    # 布尔值
                     if v is True or v == "true": return "true"
                     if v is False or v == "false": return "false"
-                    # 数值类型：处理 7.0 == 7 问题
                     if isinstance(v, (int, float)):
-                        # 转字符串时去掉无意义的小数点
                         if v == int(v): return str(int(v))
                         return str(float(v))
-                    # 数组/字典：排序后转 JSON
                     if isinstance(v, str):
                         try:
                             parsed = json.loads(v)
                             return normalize(parsed)
-                        except:
-                            return v.strip()
+                        except: return v.strip()
                     if isinstance(v, (list, dict)):
                         return json.dumps(v, sort_keys=True)
                     return str(v)
@@ -1652,98 +1657,88 @@ def api_settings():
                 old_norm = normalize(old_val)
                 new_norm = normalize(new_val)
                 
-                # 数组排序后比较顺序
                 if old_norm != new_norm:
-                    # 额外处理：对于 JSON 数组，比较排序后的结果
                     if old_norm.startswith('[') and new_norm.startswith('['):
                         try:
                             old_arr = json.loads(old_norm)
                             new_arr = json.loads(new_norm)
-                            if sorted(old_arr) == sorted(new_arr):
-                                return False
-                        except:
-                            pass
+                            if sorted(old_arr) == sorted(new_arr): return False
+                        except: pass
                     return True
                 return False
 
-            # 处理保留期变更 (带反悔期逻辑)
+            # 处理保留期变更
             if 'data_retention_days' in data:
                 new_val = int(data['data_retention_days'])
-                c.execute("SELECT value FROM config WHERE key='data_retention_days'")
-                curr_val_res = c.fetchone()
-                curr_val = int(curr_val_res[0]) if curr_val_res else 7
-                
-                # 仅在值确实发生变化时才执行后续逻辑
+                curr_val = int(current_configs.get('data_retention_days', 7))
                 if new_val != curr_val:
                     if new_val < curr_val:
-                        # 缩短，进入反悔期
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', ?)", (str(new_val),))
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', ?)", (str(now),))
-                        write_audit('WARN', 'SYSTEM', 'RETENTION_PENDING', f'计划缩短数据保留期至 {new_val} 天 (3天内可撤销)', operator=get_client_ip())
+                        write_audit('WARN', 'SYSTEM', 'RETENTION_PENDING', f'计划缩短数据保留期: {curr_val}天 -> {new_val}天 (3天内可撤销)', operator=get_client_ip())
                     else:
-                        # 延长，立即生效并取消 pending
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (str(new_val),))
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
-                        write_audit('INFO', 'SYSTEM', 'RETENTION_UPDATE', f'更新数据保留期为 {new_val} 天', operator=get_client_ip())
+                        write_audit('INFO', 'SYSTEM', 'RETENTION_UPDATE', f'更新数据保留期: {curr_val}天 -> {new_val}天', operator=get_client_ip())
+                    changes.append(f"数据保留期: {curr_val}D -> {new_val}D")
 
-            # 处理其它简单设置 (仅在变化时更新)
-            if 'log_delay_warn' in data:
-                val = str(float(data['log_delay_warn']))
-                if is_changed('log_delay_warn', val):
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_warn', ?)", (val,))
-            if 'log_delay_danger' in data:
-                val = str(float(data['log_delay_danger']))
-                if is_changed('log_delay_danger', val):
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_danger', ?)", (val,))
-            if 'dashboard_hours_hw' in data:
-                val = json.dumps(data['dashboard_hours_hw'])
-                if is_changed('dashboard_hours_hw', val):
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('dashboard_hours_hw', ?)", (val,))
-            if 'dashboard_hours_hist' in data:
-                val = json.dumps(data['dashboard_hours_hist'])
-                if is_changed('dashboard_hours_hist', val):
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('dashboard_hours_hist', ?)", (val,))
+            # 其它设置项
+            mapping = {
+                'log_delay_warn': '采集延迟(警告)',
+                'log_delay_danger': '采集延迟(危险)',
+                'dashboard_hours_hw': '看板时效(硬件)',
+                'dashboard_hours_hist': '看板时效(历史)'
+            }
+            for key, label in mapping.items():
+                if key in data:
+                    new_v = data[key]
+                    if is_changed(key, new_v):
+                        old_v = current_configs.get(key)
+                        db_v = json.dumps(new_v) if isinstance(new_v, list) else str(new_v)
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, db_v))
+                        changes.append(f"{label}: {format_val(old_v)} -> {format_val(new_v)}")
 
-            # 批量处理告警规则：完整处理新增、更新、删除
+            # 告警规则变更检测
             if 'alert_rules' in data and isinstance(data['alert_rules'], list):
-                # 1. 获取前端发来的所有规则 ID
-                frontend_ids = set()
-                for rule in data['alert_rules']:
-                    if 'id' in rule:
-                        frontend_ids.add(int(rule['id']))
-                
-                # 2. 获取数据库中当前的所有规则 ID
                 c.execute("SELECT id FROM alert_rules")
                 db_ids = {row['id'] for row in c.fetchall()}
+                frontend_ids = {int(r['id']) for r in data['alert_rules'] if 'id' in r}
                 
-                # 3. 计算需要删除的 ID（数据库有但前端没有的）
-                ids_to_delete = db_ids - frontend_ids
+                added = len([r for r in data['alert_rules'] if 'id' not in r])
+                deleted = len(db_ids - frontend_ids)
+                updated = 0
                 
-                # 4. 执行更新和新增
-                sqls = []
-                all_params = []
+                sqls = []; all_params = []
                 for rule in data['alert_rules']:
                     if 'id' in rule:
-                        # 更新现有规则
-                        sqls.append('''UPDATE alert_rules SET name=?, metric=?, operator=?, threshold=?, duration=?, notify_interval=?, enabled=?, level=?
-                                     WHERE id=?''')
-                        all_params.append((rule['name'], rule['metric'], rule['operator'], rule['threshold'], rule['duration'], rule['notify_interval'], rule['enabled'], rule.get('level', 'WARN'), rule['id']))
+                        # 简单判断规则内容是否变动
+                        c.execute("SELECT * FROM alert_rules WHERE id=?", (rule['id'],))
+                        old_rule = dict(c.fetchone())
+                        is_rule_changed = False
+                        for f in ['name', 'metric', 'operator', 'threshold', 'duration', 'notify_interval', 'enabled', 'level']:
+                            if format_val(rule.get(f)) != format_val(old_rule.get(f)):
+                                is_rule_changed = True; break
+                        
+                        if is_rule_changed:
+                            updated += 1
+                            sqls.append('''UPDATE alert_rules SET name=?, metric=?, operator=?, threshold=?, duration=?, notify_interval=?, enabled=?, level=? WHERE id=?''')
+                            all_params.append((rule['name'], rule['metric'], rule['operator'], rule['threshold'], rule['duration'], rule['notify_interval'], rule['enabled'], rule.get('level', 'WARN'), rule['id']))
                     else:
-                        # 新增规则（没有 id）
-                        sqls.append('''INSERT INTO alert_rules (name, metric, operator, threshold, duration, notify_interval, enabled, level)
-                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''')
+                        sqls.append('''INSERT INTO alert_rules (name, metric, operator, threshold, duration, notify_interval, enabled, level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''')
                         all_params.append((rule['name'], rule['metric'], rule['operator'], rule['threshold'], rule['duration'], rule['notify_interval'], rule['enabled'], rule.get('level', 'WARN')))
                 
-                # 5. 执行删除（使用 DELETE FROM alert_status）
-                for del_id in ids_to_delete:
-                    sqls.append("DELETE FROM alert_rules WHERE id=?")
-                    all_params.append((del_id,))
-                    sqls.append("DELETE FROM alert_status WHERE rule_id=?")
-                    all_params.append((del_id,))
-                
-                if sqls:
-                    execute_db_async(sqls, all_params, wait=True) # 等待完成以确保后续读操作正确
+                for del_id in (db_ids - frontend_ids):
+                    sqls.append("DELETE FROM alert_rules WHERE id=?"); all_params.append((del_id,))
+                    sqls.append("DELETE FROM alert_status WHERE rule_id=?"); all_params.append((del_id,))
+
+                if added > 0 or deleted > 0 or updated > 0:
+                    rule_msg = f"告警规则变更: 新增{added}, 删除{deleted}, 修改{updated}"
+                    changes.append(rule_msg)
+                    if sqls: execute_db_async(sqls, all_params, wait=True)
+
+            if changes:
+                write_audit('INFO', 'CONFIG', 'UPDATE_SETTINGS', f"修改系统设置 (共 {len(changes)} 项变更)", details={'changes': changes}, operator=get_client_ip())
             
             conn.commit()
             return jsonify({'status': 'success'})

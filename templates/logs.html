@@ -960,10 +960,15 @@ n        /* 标签样式 */
             mainMsg = `登录失败 (次数: ${count}，罚时: ${wait}s)`;
         }
         
-        // 详情内容
+        // 详情内容结构化渲染
         let detailsContent = '';
         if (log.details && Object.keys(log.details).length > 0) {
-            detailsContent = JSON.stringify(log.details, null, 2);
+            if (log.module === 'CONFIG' && log.action === 'UPDATE_SETTINGS' && log.details.changes) {
+                // 针对设置更新进行美化输出
+                detailsContent = "变更详情:\n" + log.details.changes.map(c => "  • " + c).join("\n");
+            } else {
+                detailsContent = JSON.stringify(log.details, null, 2);
+            }
         }
         if (log.ua) {
             detailsContent += (detailsContent ? '\n' : '') + `User-Agent: ${log.ua}`;
