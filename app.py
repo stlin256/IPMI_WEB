@@ -14,6 +14,7 @@ import zipfile
 import csv
 import logging
 import queue
+import platform
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
@@ -2565,6 +2566,25 @@ class SilentHandler(WSGIRequestHandler):
 if __name__ == '__main__':
     check_environment()
     init_db()
+
+    # 记录系统启动日志
+    try:
+        mem = psutil.virtual_memory()
+        system_info = {
+            'version': VERSION,
+            'os': f"{platform.system()} {platform.release()}",
+            'kernel': platform.version(),
+            'arch': platform.machine(),
+            'python': platform.python_version(),
+            'cpu_cores': psutil.cpu_count(logical=True),
+            'memory_total': f"{round(mem.total / 1024**3, 1)} GB",
+            'ipmitool': shutil.which('ipmitool') is not None,
+            'sensors': shutil.which('sensors') is not None
+        }
+        write_audit('INFO', 'SYSTEM', 'STARTUP', f'软件已启动 (版本: {VERSION})', details=system_info, operator='SYSTEM')
+    except Exception as e:
+        print(f"Failed to log startup: {e}")
+
     # 启动后台工作线程
     threading.Thread(target=background_worker, daemon=True).start()
     threading.Thread(target=gpu_worker, daemon=True).start()
