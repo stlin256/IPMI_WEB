@@ -3215,87 +3215,89 @@ def summary_scheduler_task():
     """
     定时检查并发送概览报告
     支持三种模式：日报(每日一次)、周报(每周一次)、自定义(每N小时一次)
+    采用更加鲁棒的判断逻辑：只要超过预定时间点且本周期内未发送，即触发发送。
     """
     while True:
         try:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("SELECT value FROM config WHERE key LIKE 'summary_%'")
+            c.execute("SELECT key, value FROM config WHERE key LIKE 'summary_%' OR key LIKE 'last_summary_%'")
             configs = {row['key']: row['value'] for row in c.fetchall()}
             conn.close()
             
             enabled = configs.get('summary_enabled') == 'true'
             if not enabled:
-                time.sleep(60)  # 总开关未开启，每分钟检查一次
+                time.sleep(60)
                 continue
             
             now = datetime.now()
             current_ts = int(time.time())
             
-            # 检查日报
+            # --- 检查日报 ---
             daily_enabled = configs.get('summary_daily_enabled') == 'true'
-            daily_time = configs.get('summary_daily_time', '08:00')
             if daily_enabled:
+                daily_time = configs.get('summary_daily_time', '08:00')
                 daily_hour, daily_min = map(int, daily_time.split(':'))
-                # 判断条件：当前时间等于设定时间，且这分钟内还没发送过
-                if now.hour == daily_hour and now.minute == daily_min:
-                    # 简单防重：检查上次发送时间
-                    conn = get_db_connection()
-                    c = conn.cursor()
-                    c.execute("SELECT value FROM config WHERE key='last_summary_daily_ts'")
-                    last_ts = int(c.fetchone()[0]) if c.fetchone() else 0
-                    conn.close()
-                    
-                    if current_ts - last_ts > 3600:  # 1小时内没有发送过
-                        logging.info("[SCHEDULER] Triggering daily summary report...")
-                        send_summary_email('daily', 24)
-                        # 记录发送时间
-                        conn = get_db_connection()
-                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_daily_ts', ?)", (str(current_ts),))
-                        conn.commit()
-                        conn.close()
-            
-            # 检查周报
-            weekly_enabled = configs.get('summary_weekly_enabled') == 'true'
-            weekly_day = int(configs.get('summary_weekly_day', 1))  # 0=周日, 1=周一...
-            weekly_time = configs.get('summary_weekly_time', '09:00')
-            if weekly_enabled:
-                weekly_hour, weekly_min = map(int, weekly_time.split(':'))
-                if now.weekday() == weekly_day and now.hour == weekly_hour and now.minute == weekly_min:
-                    conn = get_db_connection()
-                    c = conn.cursor()
-                    c.execute("SELECT value FROM config WHERE key='last_summary_weekly_ts'")
-                    last_ts = int(c.fetchone()[0]) if c.fetchone() else 0
-                    conn.close()
-                    
-                    if current_ts - last_ts > 86400:  # 24小时内没有发送过
-                        logging.info("[SCHEDULER] Triggering weekly summary report...")
-                        send_summary_email('weekly', 168)  # 7天
-                        conn = get_db_connection()
-                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_weekly_ts', ?)", (str(current_ts),))
-                        conn.commit()
-                        conn.close()
-            
-            # 检查自定义报告
-            custom_enabled = configs.get('summary_custom_enabled') == 'true'
-            custom_hours = int(configs.get('summary_custom_hours', 24))
-            if custom_enabled:
-                conn = get_db_connection()
-                c = conn.cursor()
-                c.execute("SELECT value FROM config WHERE key='last_summary_custom_ts'")
-                last_ts = int(c.fetchone()[0]) if c.fetchone() else 0
-                conn.close()
                 
-                if current_ts - last_ts > (custom_hours * 3600):
-                    logging.info(f"[SCHEDULER] Triggering custom summary report ({custom_hours}h)...")
-                    send_summary_email('custom', custom_hours)
-                    conn = get_db_connection()
-                    conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_ts', ?)", (str(current_ts),))
-                    conn.commit()
-                    conn.close()
+                # 判定条件：今天已过预定时间点
+                if now.hour > daily_hour or (now.hour == daily_hour and now.minute >= daily_min):
+                    # 检查今天是否已发送 (使用日期字符串判断)
+                    today_str = now.strftime('%Y-%m-%d')
+                    last_date = configs.get('last_summary_daily_date', '')
+                    
+                    if last_date != today_str:
+                        logging.info(f"[SCHEDULER] Triggering daily summary report (Target: {daily_time})")
+                        success, msg = send_summary_email('daily', 24)
+                        if success:
+                            conn = get_db_connection()
+                            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_daily_date', ?)", (today_str,))
+                            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_daily_ts', ?)", (str(current_ts),))
+                            conn.commit()
+                            conn.close()
+            
+            # --- 检查周报 ---
+            weekly_enabled = configs.get('summary_weekly_enabled') == 'true'
+            if weekly_enabled:
+                weekly_day = int(configs.get('summary_weekly_day', 1))  # 0=周日, 1=周一...
+                weekly_time = configs.get('summary_weekly_time', '09:00')
+                weekly_hour, weekly_min = map(int, weekly_time.split(':'))
+                
+                # 判定条件：今天是预定的周几，且已过预定时间点
+                if now.weekday() == weekly_day and (now.hour > weekly_hour or (now.hour == weekly_hour and now.minute >= weekly_min)):
+                    # 检查本周是否已发送 (使用 年份-周数 判断)
+                    this_week_str = now.strftime('%Y-%U')
+                    last_week = configs.get('last_summary_weekly_week', '')
+                    
+                    if last_week != this_week_str:
+                        logging.info(f"[SCHEDULER] Triggering weekly summary report (Day: {weekly_day}, Time: {weekly_time})")
+                        success, msg = send_summary_email('weekly', 168)
+                        if success:
+                            conn = get_db_connection()
+                            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_weekly_week', ?)", (this_week_str,))
+                            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_weekly_ts', ?)", (str(current_ts),))
+                            conn.commit()
+                            conn.close()
+            
+            # --- 检查自定义报告 ---
+            custom_enabled = configs.get('summary_custom_enabled') == 'true'
+            if custom_enabled:
+                custom_hours = int(configs.get('summary_custom_hours', 24))
+                last_ts = int(configs.get('last_summary_custom_ts', 0))
+                
+                # 判定条件：距离上次发送已过 N 小时 (增加 1 分钟容错偏移，防止临界点抖动)
+                if current_ts - last_ts >= (custom_hours * 3600 - 60):
+                    logging.info(f"[SCHEDULER] Triggering custom summary report (Interval: {custom_hours}h)")
+                    success, msg = send_summary_email('custom', custom_hours)
+                    if success:
+                        conn = get_db_connection()
+                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_ts', ?)", (str(current_ts),))
+                        conn.commit()
+                        conn.close()
                     
         except Exception as e:
             logging.error(f"[SCHEDULER] Error: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
         
         # 每 30 秒检查一次
         time.sleep(30)

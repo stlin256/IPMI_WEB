@@ -13,7 +13,10 @@
             .grid-item { width: 100% !important; display: block !important; margin-bottom: 20px !important; padding: 0 !important; }
             .grid-container { padding: 0 !important; }
             .chart-img { width: 100% !important; height: auto !important; }
-            .data-cell { width: 50% !important; display: inline-block !important; box-sizing: border-box !important; }
+            .data-cell { width: 100% !important; display: block !important; box-sizing: border-box !important; border-right: none !important; border-bottom: 1px solid #30363d !important; }
+            .data-cell:last-child { border-bottom: none !important; }
+            .uptime-container { text-align: left !important; margin-top: 15px !important; }
+            .nowrap { white-space: nowrap !important; }
         }
     </style>
 </head>
@@ -59,8 +62,8 @@
                                             数据采集点: {{ data_points|default('--') }} 个
                                         </p>
                                     </td>
-                                    <td align="right" style="vertical-align: middle;">
-                                        <div style="display: inline-block; padding: 10px 15px; background-color: rgba(35,197,94,0.1); border: 1px solid #23c55e; border-radius: 50px;">
+                                    <td align="right" class="uptime-container" style="vertical-align: middle;">
+                                        <div style="display: inline-block; padding: 8px 12px; background-color: rgba(35,197,94,0.1); border: 1px solid #23c55e; border-radius: 50px; white-space: nowrap;">
                                             <span style="color: #3fb950; font-size: 12px; font-weight: bold;">在线率: {{ uptime_percent|default('100') }}%</span>
                                         </div>
                                     </td>
@@ -79,20 +82,20 @@
                                                     <td class="data-cell" width="33%" style="padding: 10px; border-right: 1px solid #30363d;">
                                                         <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">CPU 温度</div>
                                                         <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            当前: <span style="color: {{ temp_color|default('#e6edf3') }}; font-weight: bold;">{{ cpu_current_temp|default('--') }}°C</span><br>
-                                                            平均: {{ cpu_avg_temp|default('--') }}°C<br>
-                                                            峰值: {{ cpu_max_temp|default('--') }}°C
+                                                            <span class="nowrap">当前: <span style="color: {{ temp_color|default('#e6edf3') }}; font-weight: bold;">{{ cpu_current_temp|default('--') }}°C</span></span><br>
+                                                            <span class="nowrap">平均: {{ cpu_avg_temp|default('--') }}°C</span><br>
+                                                            <span class="nowrap">峰值: {{ cpu_max_temp|default('--') }}°C</span>
                                                         </div>
                                                     </td>
                                                     <!-- 系统功耗 -->
                                                     <td class="data-cell" width="33%" style="padding: 10px; border-right: 1px solid #30363d;">
                                                         <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">系统功耗</div>
                                                         <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            当前: {{ power_current|default('--') }}W<br>
-                                                            平均: {{ power_avg|default('--') }}W<br>
-                                                            峰值: {{ power_max|default('--') }}W
+                                                            <span class="nowrap">当前: {{ power_current|default('--') }}W</span><br>
+                                                            <span class="nowrap">平均: {{ power_avg|default('--') }}W</span><br>
+                                                            <span class="nowrap">峰值: {{ power_max|default('--') }}W</span>
                                                         </div>
-                                                        <div style="margin-top: 5px; font-size: 11px; color: #58a6ff;">
+                                                        <div style="margin-top: 5px; font-size: 11px; color: #58a6ff;" class="nowrap">
                                                             估算耗电: {{ power_total_kwh|default('--') }} kWh
                                                         </div>
                                                     </td>
@@ -100,9 +103,9 @@
                                                     <td class="data-cell" width="33%" style="padding: 10px;">
                                                         <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">风扇转速</div>
                                                         <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            当前: {{ fan_current_rpm|default('--') }} RPM<br>
-                                                            平均: {{ fan_avg_rpm|default('--') }} RPM<br>
-                                                            峰值: {{ fan_max_rpm|default('--') }} RPM
+                                                            <span class="nowrap">当前: {{ fan_current_rpm|default('--') }} RPM</span><br>
+                                                            <span class="nowrap">平均: {{ fan_avg_rpm|default('--') }} RPM</span><br>
+                                                            <span class="nowrap">峰值: {{ fan_max_rpm|default('--') }} RPM</span>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -268,19 +271,19 @@
                                                 <tr>
                                                     <td class="data-cell" width="25%" style="padding: 5px;">
                                                         <div style="font-size: 10px; color: #8b949e;">温度</div>
-                                                        <div style="font-size: 13px; color: {{ gpu.temp_color|default('#e6edf3') }}; font-weight: bold;">{{ gpu.temp|default('--') }}°C</div>
+                                                        <div style="font-size: 13px; color: {{ gpu.temp_color|default('#e6edf3') }}; font-weight: bold;" class="nowrap">{{ gpu.temp|default('--') }}°C</div>
                                                     </td>
                                                     <td class="data-cell" width="25%" style="padding: 5px;">
                                                         <div style="font-size: 10px; color: #8b949e;">利用率</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;">{{ gpu.utilization|default('--') }}%</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;" class="nowrap">{{ gpu.utilization|default('--') }}%</div>
                                                     </td>
                                                     <td class="data-cell" width="25%" style="padding: 5px;">
                                                         <div style="font-size: 10px; color: #8b949e;">显存使用</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;">{{ gpu.mem_used|default('--') }} GB</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;" class="nowrap">{{ gpu.mem_used|default('--') }} GB</div>
                                                     </td>
                                                     <td class="data-cell" width="25%" style="padding: 5px;">
                                                         <div style="font-size: 10px; color: #8b949e;">功耗</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;">{{ gpu.power|default('--') }}W</div>
+                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;" class="nowrap">{{ gpu.power|default('--') }}W</div>
                                                     </td>
                                                 </tr>
                                             </table>
