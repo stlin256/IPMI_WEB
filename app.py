@@ -44,7 +44,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.3'
+VERSION = '1.3.4'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -351,7 +351,10 @@ def init_db():
         ('summary_email_frequency', 'daily'),
         ('summary_email_time', '08:00'),
         ('summary_email_range', '24h'),
-        ('last_summary_email_ts', '0')
+        ('last_summary_email_ts', '0'),
+        ('summary_sent_count_daily', '0'),
+        ('summary_sent_count_weekly', '0'),
+        ('summary_sent_count_custom', '0')
     ]
     for key, default in smtp_configs:
         c.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (key, default))
@@ -613,12 +616,13 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
         return False, f"发信失败: {str(e)}"
 
 
-def send_summary_email(report_type, hours=None, force_ts=None):
+def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     """
     发送概览报告邮件
     :param report_type: 'daily', 'weekly', 'custom'
     :param hours: 报告时间范围（小时），如果为 None 则根据 report_type 动态获取
     :param force_ts: 强制使用指定的时间戳（用于补发机制），None 表示使用当前时间
+    :param is_manual: 是否为手动触发
     """
     # 如果 hours 未指定，根据 report_type 动态获取
     if hours is None:
@@ -627,7 +631,10 @@ def send_summary_email(report_type, hours=None, force_ts=None):
         c.execute("SELECT value FROM config WHERE key='summary_custom_hours'")
         custom_hours_row = c.fetchone()
         conn.close()
-        custom_hours = int(custom_hours_row[0]) if custom_hours_row else 24
+        try:
+            custom_hours = float(custom_hours_row[0]) if custom_hours_row else 24.0
+        except:
+            custom_hours = 24.0
         
         hours_map = {
             'daily': 24,
@@ -686,9 +693,18 @@ def send_summary_email(report_type, hours=None, force_ts=None):
     res_stats = dict(c.fetchone()) or {}
     
     # 获取最近系统日志 (用于报告中的日志区域)
-    c.execute("""SELECT timestamp, level, module, action, message 
-                 FROM audit_logs WHERE timestamp >= ? AND timestamp <= ?
-                 ORDER BY timestamp DESC LIMIT 30""", (start_ts, now))
+    if report_type == 'weekly':
+        # 周报：只取登录(AUTH)、启动(SYSTEM/STARTUP)、及所有 警告/错误
+        c.execute("""SELECT timestamp, level, module, action, message 
+                     FROM audit_logs 
+                     WHERE timestamp >= ? AND timestamp <= ?
+                     AND (module = 'AUTH' OR action IN ('STARTUP', 'SCHEDULER_START') OR level IN ('WARN', 'ERROR', 'SECURITY'))
+                     ORDER BY timestamp DESC LIMIT 50""", (start_ts, now))
+    else:
+        # 日报及自定义：获取区间内的所有重要事件
+        c.execute("""SELECT timestamp, level, module, action, message 
+                     FROM audit_logs WHERE timestamp >= ? AND timestamp <= ?
+                     ORDER BY timestamp DESC LIMIT 30""", (start_ts, now))
     logs = c.fetchall()
     
     # 获取 GPU 数据
@@ -731,8 +747,8 @@ def send_summary_email(report_type, hours=None, force_ts=None):
     type_labels = {
         'daily': ('日报', f'过去 {hours} 小时', f'每日 {configs.get("summary_daily_time", "08:00")} 发送'),
         'weekly': ('周报', f'过去 {hours} 小时', f'每周 {(["周一","周二","周三","周四","周五","周六","周日"][int(configs.get("summary_weekly_day", 1))])} {configs.get("summary_weekly_time", "09:00")} 发送'),
-        'custom': ('自定义报告', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
-        'manual': ('手动报告', f'过去 {hours} 小时', '手动触发发送')
+        'custom': ('自定义', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
+        'manual': ('手动', f'过去 {hours} 小时', '手动触发发送')
     }
     report_type_label, report_range, report_frequency = type_labels.get(report_type, ('概览报告', f'过去 {hours} 小时', '手动触发'))
     
@@ -838,8 +854,9 @@ def send_summary_email(report_type, hours=None, force_ts=None):
     template_data = {
         'subject': f'{SERVER_NAME} {report_type_label} - {datetime.now().strftime("%Y-%m-%d")}',
         'server_name': SERVER_NAME,
+        'report_type': report_type,
         'report_type_label': report_type_label,
-        'send_mode_label': report_frequency,
+        'send_mode_label': '手动发送的邮件' if is_manual else report_frequency,
         'report_time_start': time_start_str,
         'report_time_end': time_end_str,
         'report_duration': f'{hours}小时',
@@ -885,6 +902,12 @@ def send_summary_email(report_type, hours=None, force_ts=None):
     html_content = render_template('email_summary.html', **template_data)
     
     # 发送邮件
+    email_details = {
+        'mode': mode,
+        'receivers': receivers,
+        'sender': sender_name
+    }
+    
     try:
         if mode == 'smtp':
             server = configs.get('smtp_server')
@@ -942,7 +965,7 @@ def send_summary_email(report_type, hours=None, force_ts=None):
                     smtp.send_message(msg)
             
             logging.info(f" [SUMMARY_EMAIL] Sent {report_type} report via SMTP")
-            return True, f"{report_type_label}已发送"
+            return True, email_details
 
         else:  # MTA 模式
             if platform.system() != 'Linux':
@@ -965,7 +988,7 @@ def send_summary_email(report_type, hours=None, force_ts=None):
             
             if process.returncode == 0:
                 logging.info(f" [SUMMARY_EMAIL] Sent {report_type} report via MTA")
-                return True, f"{report_type_label}已发送"
+                return True, email_details
             else:
                 return False, f"MTA 发送失败: {stderr or stdout}"
             
@@ -2126,10 +2149,20 @@ def api_settings():
         conn.close()
         
         # 格式化处理
-        for k in ('log_delay_warn', 'log_delay_danger'):
-            res[k] = float(res.get(k, 1.5 if 'warn' in k else 5.0))
-        for k in ('data_retention_days', 'pending_retention_days', 'retention_change_ts', 'summary_weekly_day', 'summary_custom_hours'):
-            res[k] = int(res.get(k, 0))
+        for k in ('log_delay_warn', 'log_delay_danger', 'summary_custom_hours'):
+            try:
+                raw_v = res.get(k)
+                if raw_v is None or raw_v == "":
+                    res[k] = 1.5 if 'warn' in k else 5.0 if 'danger' in k else 24.0
+                else:
+                    res[k] = float(raw_v)
+            except:
+                res[k] = 24.0 if k == 'summary_custom_hours' else 1.5
+        for k in ('data_retention_days', 'pending_retention_days', 'retention_change_ts', 'summary_weekly_day'):
+            try:
+                res[k] = int(res.get(k, 0))
+            except:
+                res[k] = 0
             if k == 'data_retention_days' and res[k] == 0: res[k] = 7
         for k in ('dashboard_hours_hw', 'dashboard_hours_hist'):
             try: res[k] = json.loads(res.get(k, '[]'))
@@ -2200,7 +2233,7 @@ def api_settings():
 
             # 处理保留期变更
             if 'data_retention_days' in data:
-                new_val = int(data['data_retention_days'])
+                new_val = int(float(data['data_retention_days']))
                 curr_val = int(current_configs.get('data_retention_days', 7))
                 if new_val != curr_val:
                     if new_val < curr_val:
@@ -2243,7 +2276,11 @@ def api_settings():
                     new_v = data[key]
                     if is_changed(key, new_v):
                         old_v = current_configs.get(key)
-                        db_v = json.dumps(new_v) if isinstance(new_v, list) else str(new_v)
+                        # 核心修正：如果是自定义小时数，确保保存为带小数的字符串，而不是 int
+                        if key == 'summary_custom_hours':
+                            db_v = str(float(new_v))
+                        else:
+                            db_v = json.dumps(new_v) if isinstance(new_v, list) else str(new_v)
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, db_v))
                         changes.append(f"{label}: {format_val(old_v)} -> {format_val(new_v)}")
 
@@ -2310,7 +2347,10 @@ def api_summary_email_manual():
         c.execute("SELECT value FROM config WHERE key='summary_custom_hours'")
         custom_hours_row = c.fetchone()
         conn.close()
-        custom_hours = int(custom_hours_row[0]) if custom_hours_row else 24
+        try:
+            custom_hours = float(custom_hours_row[0]) if custom_hours_row else 24.0
+        except:
+            custom_hours = 24.0
         
         # 根据类型确定时间范围
         hours_map = {
@@ -2321,8 +2361,8 @@ def api_summary_email_manual():
         }
         hours = hours_map.get(report_type, 24)
         
-        # 发送报告
-        success, msg = send_summary_email(report_type, hours)
+        # 发送报告 (明确传递 is_manual=True)
+        success, msg = send_summary_email(report_type, hours, is_manual=True)
         
         if success:
             write_audit('INFO', 'SYSTEM', 'SUMMARY_MANUAL', f"手动触发{msg}", operator=get_client_ip())
@@ -3217,8 +3257,19 @@ def summary_scheduler_task():
     支持三种模式：日报(每日一次)、周报(每周一次)、自定义(每N小时一次)
     采用更加鲁棒的判断逻辑：只要超过预定时间点且本周期内未发送，即触发发送。
     """
+    logging.info("[SCHEDULER] Summary scheduler task started.")
+    write_audit('INFO', 'SYSTEM', 'SCHEDULER_START', '定时报告调度器已启动', operator='SYSTEM')
+    last_heartbeat = 0
     while True:
         try:
+            now_ts = int(time.time())
+            # 每 6 小时在审计日志中记录一次心跳，控制台每小时一次
+            if now_ts - last_heartbeat >= 3600:
+                logging.info("[SCHEDULER] Summary scheduler is alive.")
+                if now_ts - last_heartbeat >= 21600: # 6小时记录一次审计日志，避免刷屏
+                    write_audit('INFO', 'SYSTEM', 'SCHEDULER_ALIVE', '定时报告调度器运行中', operator='SYSTEM')
+                last_heartbeat = now_ts
+
             conn = get_db_connection()
             c = conn.cursor()
             c.execute("SELECT key, value FROM config WHERE key LIKE 'summary_%' OR key LIKE 'last_summary_%'")
@@ -3247,13 +3298,18 @@ def summary_scheduler_task():
                     
                     if last_date != today_str:
                         logging.info(f"[SCHEDULER] Triggering daily summary report (Target: {daily_time})")
-                        success, msg = send_summary_email('daily', 24)
+                        with app.app_context():
+                            success, msg = send_summary_email('daily', 24)
                         if success:
                             conn = get_db_connection()
                             conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_daily_date', ?)", (today_str,))
                             conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_daily_ts', ?)", (str(current_ts),))
+                            # 增加计数
+                            conn.execute("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key='summary_sent_count_daily'")
                             conn.commit()
                             conn.close()
+                            write_audit('INFO', 'SYSTEM', 'SUMMARY_SENT', '日报自动概览报告已发送', 
+                                       details={'report_type': 'daily', 'status': msg, 'date': today_str}, operator='SYSTEM')
             
             # --- 检查周报 ---
             weekly_enabled = configs.get('summary_weekly_enabled') == 'true'
@@ -3270,29 +3326,67 @@ def summary_scheduler_task():
                     
                     if last_week != this_week_str:
                         logging.info(f"[SCHEDULER] Triggering weekly summary report (Day: {weekly_day}, Time: {weekly_time})")
-                        success, msg = send_summary_email('weekly', 168)
+                        with app.app_context():
+                            success, msg = send_summary_email('weekly', 168)
                         if success:
                             conn = get_db_connection()
                             conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_weekly_week', ?)", (this_week_str,))
                             conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_weekly_ts', ?)", (str(current_ts),))
+                            # 增加计数
+                            conn.execute("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key='summary_sent_count_weekly'")
                             conn.commit()
                             conn.close()
+                            write_audit('INFO', 'SYSTEM', 'SUMMARY_SENT', '周报自动概览报告已发送', 
+                                       details={'report_type': 'weekly', 'status': msg, 'week': this_week_str}, operator='SYSTEM')
             
-            # --- 检查自定义报告 ---
+            # --- 检查自定义报告 (从 00:00 开始的固定时间点逻辑) ---
             custom_enabled = configs.get('summary_custom_enabled') == 'true'
             if custom_enabled:
-                custom_hours = int(configs.get('summary_custom_hours', 24))
-                last_ts = int(configs.get('last_summary_custom_ts', 0))
-                
-                # 判定条件：距离上次发送已过 N 小时 (增加 1 分钟容错偏移，防止临界点抖动)
-                if current_ts - last_ts >= (custom_hours * 3600 - 60):
-                    logging.info(f"[SCHEDULER] Triggering custom summary report (Interval: {custom_hours}h)")
-                    success, msg = send_summary_email('custom', custom_hours)
-                    if success:
-                        conn = get_db_connection()
-                        conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_ts', ?)", (str(current_ts),))
-                        conn.commit()
-                        conn.close()
+                try:
+                    custom_hours = float(configs.get('summary_custom_hours', 24.0))
+                except: custom_hours = 24.0
+
+                if custom_hours > 0:
+                    # 计算今天 00:00 的时间戳
+                    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                    today_start_ts = int(today_start.timestamp())
+                    
+                    # 计算从 00:00 到现在的总秒数
+                    seconds_since_midnight = current_ts - today_start_ts
+                    interval_seconds = custom_hours * 3600
+                    
+                    # 计算当前处于第几个区间 (0-based)
+                    current_interval_idx = int(seconds_since_midnight // interval_seconds)
+                    
+                    # 检查此区间是否已发送 (使用 关键标识: 日期_区间序号)
+                    interval_tag = f"{now.strftime('%Y%m%d')}_{current_interval_idx}"
+                    last_tag = configs.get('last_summary_custom_tag', '')
+                    
+                    if interval_tag != last_tag:
+                        # 判定条件：当前已进入新区间
+                        # 额外安全校验：如果是初次运行且 last_tag 为空，只记录不发送，防止追溯补发
+                        if not last_tag:
+                            logging.info(f"[SCHEDULER] Initializing custom interval tag: {interval_tag}")
+                            conn = get_db_connection()
+                            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_tag', ?)", (interval_tag,))
+                            conn.commit()
+                            conn.close()
+                        else:
+                            logging.info(f"[SCHEDULER] Fixed Point Trigger: {interval_tag} (Step: {custom_hours}h)")
+                            with app.app_context():
+                                success, msg = send_summary_email('custom', custom_hours)
+                            if success:
+                                conn = get_db_connection()
+                                conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_tag', ?)", (interval_tag,))
+                                conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_summary_custom_ts', ?)", (str(current_ts),))
+                                # 增加计数
+                                conn.execute("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key='summary_sent_count_custom'")
+                                conn.commit()
+                                conn.close()
+                                write_audit('INFO', 'SYSTEM', 'SUMMARY_SENT', '自定义自动概览报告已发送', 
+                                           details={'report_type': 'custom', 'status': msg, 'interval_idx': current_interval_idx, 'tag': interval_tag}, operator='SYSTEM')
+                            else:
+                                logging.error(f"[SCHEDULER] Custom email failed: {msg}")
                     
         except Exception as e:
             logging.error(f"[SCHEDULER] Error: {e}")
@@ -3307,9 +3401,14 @@ from werkzeug.serving import WSGIRequestHandler
 class SilentHandler(WSGIRequestHandler):
     """静默处理常见的网络中断报错"""
     def log_error(self, format, *args):
-        # 忽略 BrokenPipe 和 SSL 相关的非致命错误
+        # 忽略 BrokenPipe 和 SSL 相关的非致命错误 (不污染 journalctl)
         err_msg = str(args[0]) if args else ""
-        if "BrokenPipeError" in err_msg or "Errno 32" in err_msg or "SSLError" in err_msg or "EOF" in err_msg:
+        ignore_patterns = [
+            "BrokenPipeError", "Errno 32", "SSLError", "EOF", 
+            "UNEXPECTED_EOF_WHILE_READING", "Unexpected EOF",
+            "connection closed by peer", "Software caused connection abort"
+        ]
+        if any(p in err_msg for p in ignore_patterns):
             return
         super().log_error(format, *args)
 
@@ -3335,11 +3434,28 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"Failed to log startup: {e}")
 
-    # 启动后台工作线程
-    threading.Thread(target=background_worker, daemon=True).start()
-    threading.Thread(target=gpu_worker, daemon=True).start()
-    threading.Thread(target=energy_maintenance_task, daemon=True).start()
-    threading.Thread(target=summary_scheduler_task, daemon=True).start()
+    # 启动后台工作线程 (使用锁确保仅启动一次)
+    _thread_init_lock = threading.Lock()
+    _threads_started = False
+
+    def start_background_threads():
+        global _threads_started
+        with _thread_init_lock:
+            if _threads_started:
+                return
+            logging.info("[SYSTEM] Initializing background threads...")
+            threading.Thread(target=background_worker, daemon=True, name="BackgroundWorker").start()
+            threading.Thread(target=gpu_worker, daemon=True, name="GPUWorker").start()
+            threading.Thread(target=energy_maintenance_task, daemon=True, name="EnergyTask").start()
+            threading.Thread(target=summary_scheduler_task, daemon=True, name="SummaryScheduler").start()
+            _threads_started = True
+            logging.info("[SYSTEM] All background threads launched.")
+
+    @app.before_request
+    def ensure_threads_running():
+        start_background_threads()
+
+    start_background_threads()
     
     if HAS_CERT:
         print(f" * SSL Certificate found, starting HTTPS on port {PORT}")

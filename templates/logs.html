@@ -632,7 +632,11 @@ n        /* 标签样式 */
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <div class="fw-bold text-light"><i class="fas fa-calendar-day me-2 text-info"></i>日报设置</div>
                                     <div class="d-flex align-items-center gap-3">
-                                        <button class="btn btn-link btn-sm text-info p-0 text-decoration-none fw-bold" onclick="sendManualSummary('daily')"><i class="fas fa-paper-plane me-1"></i>立刻发送</button>
+                                        <button class="btn btn-link btn-sm text-info p-0 text-decoration-none fw-bold d-flex align-items-center" onclick="sendManualSummary('daily', this)">
+                                            <i class="fas fa-paper-plane me-1 btn-icon"></i>
+                                            <i class="fas fa-spinner fa-spin me-1 d-none btn-spinner"></i>
+                                            <span class="btn-text">立刻发送</span>
+                                        </button>
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" id="summary-daily-enabled" onchange="markChanged()">
                                         </div>
@@ -651,7 +655,11 @@ n        /* 标签样式 */
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <div class="fw-bold text-light"><i class="fas fa-calendar-week me-2 text-warning"></i>周报设置</div>
                                     <div class="d-flex align-items-center gap-3">
-                                        <button class="btn btn-link btn-sm text-warning p-0 text-decoration-none fw-bold" onclick="sendManualSummary('weekly')"><i class="fas fa-paper-plane me-1"></i>立刻发送</button>
+                                        <button class="btn btn-link btn-sm text-warning p-0 text-decoration-none fw-bold d-flex align-items-center" onclick="sendManualSummary('weekly', this)">
+                                            <i class="fas fa-paper-plane me-1 btn-icon"></i>
+                                            <i class="fas fa-spinner fa-spin me-1 d-none btn-spinner"></i>
+                                            <span class="btn-text">立刻发送</span>
+                                        </button>
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" id="summary-weekly-enabled" onchange="markChanged()">
                                         </div>
@@ -682,7 +690,11 @@ n        /* 标签样式 */
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <div class="fw-bold text-light"><i class="fas fa-clock me-2 text-success"></i>自定义间隔报告</div>
                                     <div class="d-flex align-items-center gap-3">
-                                        <button class="btn btn-link btn-sm text-success p-0 text-decoration-none fw-bold" onclick="sendManualSummary('custom')"><i class="fas fa-paper-plane me-1"></i>立刻发送</button>
+                                        <button class="btn btn-link btn-sm text-success p-0 text-decoration-none fw-bold d-flex align-items-center" onclick="sendManualSummary('custom', this)">
+                                            <i class="fas fa-paper-plane me-1 btn-icon"></i>
+                                            <i class="fas fa-spinner fa-spin me-1 d-none btn-spinner"></i>
+                                            <span class="btn-text">立刻发送</span>
+                                        </button>
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" id="summary-custom-enabled" onchange="markChanged()">
                                         </div>
@@ -692,7 +704,7 @@ n        /* 标签样式 */
                                     <div class="col-12">
                                         <label class="form-label text-muted small">发送间隔 (小时)</label>
                                         <div class="input-group input-group-sm">
-                                            <input type="number" id="summary-custom-hours" class="form-control bg-dark border-secondary text-light" min="1" max="720" oninput="markChanged()">
+                                            <input type="number" id="summary-custom-hours" class="form-control bg-dark border-secondary text-light" min="0.1" step="0.1" max="720" oninput="markChanged()">
                                             <span class="input-group-text bg-dark border-secondary text-muted">小时</span>
                                         </div>
                                     </div>
@@ -1484,23 +1496,40 @@ n        /* 标签样式 */
     }
 
     // 手动发送概览报告
-    async function sendManualSummary(type) {
+    async function sendManualSummary(type, btn) {
         if (!checkEmailConfigComplete()) {
             showConfigIncompleteModal();
             return;
         }
         
+        const icon = btn.querySelector('.btn-icon');
+        const spinner = btn.querySelector('.btn-spinner');
+        const text = btn.querySelector('.btn-text');
+        const oldText = text.innerText;
+
         try {
+            btn.classList.add('disabled');
+            btn.style.pointerEvents = 'none';
+            icon.classList.add('d-none');
+            spinner.classList.remove('d-none');
+            text.innerText = '发送中...';
+
             const res = await fetch('/api/summary_email/manual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type: type })
             });
             const data = await res.json();
-            if (data.status === 'success') showToast('报告发送请求已提交');
+            if (data.status === 'success') showToast('报告发送成功');
             else showToast(data.message, true);
         } catch (e) {
             showToast('请求失败', true);
+        } finally {
+            btn.classList.remove('disabled');
+            btn.style.pointerEvents = 'auto';
+            icon.classList.remove('d-none');
+            spinner.classList.add('d-none');
+            text.innerText = oldText;
         }
     }
 
@@ -1605,59 +1634,82 @@ n        /* 标签样式 */
         const emailSender = document.getElementById('email-sender').value;
         const emailReceiver = document.getElementById('email-receiver').value;
 
+        // 辅助函数：格式化数值，消除浮点数微差和表示差异 (如 24 vs 24.0)
+        const fmtVal = (v) => {
+            if (v === null || v === undefined || v === "") return "0.00";
+            const num = parseFloat(v);
+            return isNaN(num) ? String(v).trim() : num.toFixed(2);
+        }
+
         const currentSnapshot = {
-            log_delay_warn: parseFloat(document.getElementById('set-warn').value),
-            log_delay_danger: parseFloat(document.getElementById('set-danger').value),
-            data_retention_days: parseInt(document.getElementById('set-retention').value),
+            log_delay_warn: fmtVal(document.getElementById('set-warn').value),
+            log_delay_danger: fmtVal(document.getElementById('set-danger').value),
+            data_retention_days: fmtVal(document.getElementById('set-retention').value),
             dashboard_hours_hw: JSON.stringify(getChecked('check-hw-hours').sort()),
             dashboard_hours_hist: JSON.stringify(getChecked('check-hist-hours').sort()),
-            alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => rest)),
-            email_enabled: 'true',
+            alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => {
+                const { threshold, ...other } = rest;
+                return { ...other, threshold: fmtVal(threshold) };
+            }).sort((a,b) => a.name.localeCompare(b.name))),
             email_mode: emailMode,
-            smtp_server: smtpServer,
-            smtp_port: smtpPort,
-            smtp_user: smtpUser,
-            smtp_pass: smtpPass,
+            smtp_server: fmtVal(smtpServer),
+            smtp_port: fmtVal(smtpPort),
+            smtp_user: fmtVal(smtpUser),
+            smtp_pass: fmtVal(smtpPass),
             smtp_encryption: smtpEncryption,
-            email_sender_name: emailSender,
-            email_receiver: emailReceiver,
+            email_sender_name: fmtVal(emailSender),
+            email_receiver: fmtVal(emailReceiver),
             summary_enabled: document.getElementById('summary-enabled').checked ? 'true' : 'false',
             summary_daily_enabled: document.getElementById('summary-daily-enabled').checked ? 'true' : 'false',
             summary_daily_time: document.getElementById('summary-daily-time').value,
             summary_weekly_enabled: document.getElementById('summary-weekly-enabled').checked ? 'true' : 'false',
-            summary_weekly_day: parseInt(document.getElementById('summary-weekly-day').value),
+            summary_weekly_day: fmtVal(document.getElementById('summary-weekly-day').value),
             summary_weekly_time: document.getElementById('summary-weekly-time').value,
             summary_custom_enabled: document.getElementById('summary-custom-enabled').checked ? 'true' : 'false',
-            summary_custom_hours: parseInt(document.getElementById('summary-custom-hours').value)
+            summary_custom_hours: fmtVal(document.getElementById('summary-custom-hours').value)
         };
 
+        // 强力加固：对 initialSnapshot 里的 summary_custom_hours 也应用 fmtVal
+        initialSettingsSnapshot.summary_custom_hours = parseFloat(initialSettingsSnapshot.summary_custom_hours || '24');
+
         const initialSnapshotComp = {
-            log_delay_warn: initialSettingsSnapshot.log_delay_warn,
-            log_delay_danger: initialSettingsSnapshot.log_delay_danger,
-            data_retention_days: initialSettingsSnapshot.data_retention_days,
+            log_delay_warn: fmtVal(initialSettingsSnapshot.log_delay_warn),
+            log_delay_danger: fmtVal(initialSettingsSnapshot.log_delay_danger),
+            data_retention_days: fmtVal(initialSettingsSnapshot.data_retention_days),
             dashboard_hours_hw: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hw.sort()),
             dashboard_hours_hist: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hist.sort()),
-            alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => rest)),
-            email_enabled: 'true',
+            alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => {
+                const { threshold, ...other } = rest;
+                return { ...other, threshold: fmtVal(threshold) };
+            }).sort((a,b) => a.name.localeCompare(b.name))),
             email_mode: initialSettingsSnapshot.email_mode,
-            smtp_server: initialSettingsSnapshot.smtp_server,
-            smtp_port: initialSettingsSnapshot.smtp_port,
-            smtp_user: initialSettingsSnapshot.smtp_user,
-            smtp_pass: initialSettingsSnapshot.smtp_pass,
+            smtp_server: fmtVal(initialSettingsSnapshot.smtp_server),
+            smtp_port: fmtVal(initialSettingsSnapshot.smtp_port),
+            smtp_user: fmtVal(initialSettingsSnapshot.smtp_user),
+            smtp_pass: fmtVal(initialSettingsSnapshot.smtp_pass),
             smtp_encryption: initialSettingsSnapshot.smtp_encryption,
-            email_sender_name: initialSettingsSnapshot.email_sender_name,
+            email_sender_name: fmtVal(initialSettingsSnapshot.email_sender_name),
             email_receiver: initialSettingsSnapshot.email_receiver,
             summary_enabled: initialSettingsSnapshot.summary_enabled,
             summary_daily_enabled: initialSettingsSnapshot.summary_daily_enabled,
             summary_daily_time: initialSettingsSnapshot.summary_daily_time,
             summary_weekly_enabled: initialSettingsSnapshot.summary_weekly_enabled,
-            summary_weekly_day: initialSettingsSnapshot.summary_weekly_day,
+            summary_weekly_day: fmtVal(initialSettingsSnapshot.summary_weekly_day),
             summary_weekly_time: initialSettingsSnapshot.summary_weekly_time,
             summary_custom_enabled: initialSettingsSnapshot.summary_custom_enabled,
-            summary_custom_hours: initialSettingsSnapshot.summary_custom_hours
+            summary_custom_hours: fmtVal(initialSettingsSnapshot.summary_custom_hours)
         };
 
-        hasPendingChanges = JSON.stringify(currentSnapshot) !== JSON.stringify(initialSnapshotComp);
+        hasPendingChanges = false;
+        for (let key in currentSnapshot) {
+            if (currentSnapshot[key] !== initialSnapshotComp[key]) {
+                console.log(`[DIRTY_CHECK] Key "${key}" changed:`, { 
+                    old: initialSnapshotComp[key], 
+                    new: currentSnapshot[key] 
+                });
+                hasPendingChanges = true;
+            }
+        }
         return hasPendingChanges;
     }
 
@@ -1736,7 +1788,7 @@ n        /* 标签样式 */
                 summary_weekly_day: parseInt(globalSettings.summary_weekly_day || '1'),
                 summary_weekly_time: globalSettings.summary_weekly_time || '09:00',
                 summary_custom_enabled: globalSettings.summary_custom_enabled || 'false',
-                summary_custom_hours: parseInt(globalSettings.summary_custom_hours || '24')
+                summary_custom_hours: parseFloat(globalSettings.summary_custom_hours || '24')
             };
             
             hasPendingChanges = false;
@@ -2081,7 +2133,7 @@ n        /* 标签样式 */
             summary_weekly_day: parseInt(document.getElementById('summary-weekly-day').value),
             summary_weekly_time: document.getElementById('summary-weekly-time').value,
             summary_custom_enabled: document.getElementById('summary-custom-enabled').checked ? 'true' : 'false',
-            summary_custom_hours: parseInt(document.getElementById('summary-custom-hours').value)
+            summary_custom_hours: parseFloat(document.getElementById('summary-custom-hours').value)
         };
 
         try {

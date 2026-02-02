@@ -70,9 +70,9 @@
                                 </tr>
                             </table>
                             
-                            <!-- 多维硬件事实 -->
+                            <!-- 硬件状态 -->
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #58a6ff; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">硬件状态事实</div>
+                                <div style="color: #58a6ff; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">硬件状态</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
@@ -115,10 +115,10 @@
                                 </table>
                             </div>
 
-                            <!-- 区间趋势图表 -->
+                            <!-- 区间趋势 -->
                             {% if chart_data is defined and chart_data|length > 0 %}
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">区间趋势概览</div>
+                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">区间趋势</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
@@ -194,9 +194,9 @@
                             </div>
                             {% endif %}
 
-                            <!-- 资源消耗快照 (移除磁盘使用) -->
+                            <!-- 资源消耗 -->
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">资源消耗快照</div>
+                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">资源消耗</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
@@ -227,9 +227,9 @@
                                 </table>
                             </div>
                             
-                            <!-- 网络流量汇总 -->
+                            <!-- 网络流量 -->
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #f0883e; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">网络流量统计</div>
+                                <div style="color: #f0883e; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">网络流量</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
@@ -256,10 +256,10 @@
                                 </table>
                             </div>
 
-                            <!-- GPU 详细事实 - 使用 length 检查而非直接判断 -->
+                            <!-- GPU 状态 -->
                             {% if gpu_data is defined and gpu_data|length > 0 %}
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">GPU 状态详情</div>
+                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">GPU 状态</div>
                                 {% for gpu in gpu_data %}
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px;">
                                     <tr>
@@ -312,7 +312,13 @@
                                     </table>
                                 </div>
                                 <div style="text-align: right; margin-top: 5px;">
-                                    <span style="font-size: 10px; color: #484f58;">* 显示前 20 条记录</span>
+                                    <span style="font-size: 10px; color: #484f58;">
+                                        {% if report_type == 'weekly' %}
+                                            * 仅展示区间内重要安全与系统记录
+                                        {% else %}
+                                            * 区间内完整事件记录 (最多 30 条)
+                                        {% endif %}
+                                    </span>
                                 </div>
                             </div>
 
@@ -328,7 +334,8 @@
                     <tr>
                         <td style="padding: 25px 20px; background-color: #161b22; text-align: center; border-top: 1px solid #30363d;">
                             <p style="margin: 0; font-size: 12px; color: #8b949e;">
-                                Generated by <strong style="color: #58a6ff;">IPMI_WEB v{{ version }}</strong>
+                                <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" style="color: #58a6ff; text-decoration: none; font-weight: bold;">IPMI_WEB</a> 
+                                <span style="display: inline-block; padding: 2px 10px; background-color: #30363d; color: #8b949e; border-radius: 20px; font-size: 10px; margin-left: 5px;">v{{ version }}</span>
                             </p>
                             <p style="margin: 10px 0 0; font-size: 11px; color: #484f58;">
                                 发送频率: 每 {{ report_frequency }} | 数据区间: {{ report_range }}
