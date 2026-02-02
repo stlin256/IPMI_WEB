@@ -694,17 +694,17 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     
     # 获取最近系统日志 (用于报告中的日志区域)
     if report_type == 'weekly':
-        # 周报：只取登录(AUTH)、启动(SYSTEM/STARTUP)、及所有 警告/错误
+        # 周报：只取登录(AUTH)、启动(SYSTEM/STARTUP)、及所有 警告/错误 (全量获取)
         c.execute("""SELECT timestamp, level, module, action, message 
                      FROM audit_logs 
                      WHERE timestamp >= ? AND timestamp <= ?
                      AND (module = 'AUTH' OR action IN ('STARTUP', 'SCHEDULER_START') OR level IN ('WARN', 'ERROR', 'SECURITY'))
-                     ORDER BY timestamp DESC LIMIT 50""", (start_ts, now))
+                     ORDER BY timestamp DESC""", (start_ts, now))
     else:
-        # 日报及自定义：获取区间内的所有重要事件
+        # 日报及自定义：获取区间内的所有事件 (全量获取)
         c.execute("""SELECT timestamp, level, module, action, message 
                      FROM audit_logs WHERE timestamp >= ? AND timestamp <= ?
-                     ORDER BY timestamp DESC LIMIT 30""", (start_ts, now))
+                     ORDER BY timestamp DESC""", (start_ts, now))
     logs = c.fetchall()
     
     # 获取 GPU 数据
@@ -2340,6 +2340,7 @@ def api_summary_email_manual():
     try:
         data = request.json
         report_type = data.get('type', 'manual') # daily, weekly, custom
+        type_cn = {'daily': '日报', 'weekly': '周报', 'custom': '自定义', 'manual': '手动'}.get(report_type, report_type)
         
         # 从数据库读取 custom_hours 配置
         conn = get_db_connection()
@@ -2365,8 +2366,10 @@ def api_summary_email_manual():
         success, msg = send_summary_email(report_type, hours, is_manual=True)
         
         if success:
-            write_audit('INFO', 'SYSTEM', 'SUMMARY_MANUAL', f"手动触发{msg}", operator=get_client_ip())
-            return jsonify({'status': 'success', 'message': msg})
+            # 如果发送成功，msg 包含的是发信详情字典
+            write_audit('INFO', 'SYSTEM', 'SUMMARY_MANUAL', f"手动触发{type_cn}概览报告已发送", 
+                       details=msg, operator=get_client_ip())
+            return jsonify({'status': 'success', 'message': '概览报告已发送'})
         else:
             return jsonify({'status': 'error', 'message': msg})
     except Exception as e:
@@ -3258,16 +3261,13 @@ def summary_scheduler_task():
     采用更加鲁棒的判断逻辑：只要超过预定时间点且本周期内未发送，即触发发送。
     """
     logging.info("[SCHEDULER] Summary scheduler task started.")
-    write_audit('INFO', 'SYSTEM', 'SCHEDULER_START', '定时报告调度器已启动', operator='SYSTEM')
     last_heartbeat = 0
     while True:
         try:
             now_ts = int(time.time())
-            # 每 6 小时在审计日志中记录一次心跳，控制台每小时一次
+            # 控制台保留心跳日志，移除审计日志
             if now_ts - last_heartbeat >= 3600:
                 logging.info("[SCHEDULER] Summary scheduler is alive.")
-                if now_ts - last_heartbeat >= 21600: # 6小时记录一次审计日志，避免刷屏
-                    write_audit('INFO', 'SYSTEM', 'SCHEDULER_ALIVE', '定时报告调度器运行中', operator='SYSTEM')
                 last_heartbeat = now_ts
 
             conn = get_db_connection()
@@ -3308,8 +3308,11 @@ def summary_scheduler_task():
                             conn.execute("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key='summary_sent_count_daily'")
                             conn.commit()
                             conn.close()
+                            
+                            audit_details = {'report_type': 'daily', 'date': today_str}
+                            if isinstance(msg, dict): audit_details.update(msg)
                             write_audit('INFO', 'SYSTEM', 'SUMMARY_SENT', '日报自动概览报告已发送', 
-                                       details={'report_type': 'daily', 'status': msg, 'date': today_str}, operator='SYSTEM')
+                                       details=audit_details, operator='SYSTEM')
             
             # --- 检查周报 ---
             weekly_enabled = configs.get('summary_weekly_enabled') == 'true'
@@ -3336,8 +3339,11 @@ def summary_scheduler_task():
                             conn.execute("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key='summary_sent_count_weekly'")
                             conn.commit()
                             conn.close()
+                            
+                            audit_details = {'report_type': 'weekly', 'week': this_week_str}
+                            if isinstance(msg, dict): audit_details.update(msg)
                             write_audit('INFO', 'SYSTEM', 'SUMMARY_SENT', '周报自动概览报告已发送', 
-                                       details={'report_type': 'weekly', 'status': msg, 'week': this_week_str}, operator='SYSTEM')
+                                       details=audit_details, operator='SYSTEM')
             
             # --- 检查自定义报告 (从 00:00 开始的固定时间点逻辑) ---
             custom_enabled = configs.get('summary_custom_enabled') == 'true'
@@ -3383,8 +3389,11 @@ def summary_scheduler_task():
                                 conn.execute("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key='summary_sent_count_custom'")
                                 conn.commit()
                                 conn.close()
+                                
+                                audit_details = {'report_type': 'custom', 'interval_idx': current_interval_idx, 'tag': interval_tag}
+                                if isinstance(msg, dict): audit_details.update(msg)
                                 write_audit('INFO', 'SYSTEM', 'SUMMARY_SENT', '自定义自动概览报告已发送', 
-                                           details={'report_type': 'custom', 'status': msg, 'interval_idx': current_interval_idx, 'tag': interval_tag}, operator='SYSTEM')
+                                           details=audit_details, operator='SYSTEM')
                             else:
                                 logging.error(f"[SCHEDULER] Custom email failed: {msg}")
                     
