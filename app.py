@@ -44,7 +44,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.4'
+VERSION = '1.3.5'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -901,11 +901,14 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     # 渲染 HTML
     html_content = render_template('email_summary.html', **template_data)
     
-    # 发送邮件
+    # 构造发信详情
     email_details = {
         'mode': mode,
+        'smtp_user': configs.get('smtp_user', ''),
         'receivers': receivers,
-        'sender': sender_name
+        'sender_name': sender_name,
+        'duration_hours': hours,
+        'report_type_cn': type_labels.get(report_type, ('未知',))[0]
     }
     
     try:
@@ -2381,12 +2384,9 @@ def api_test_email():
     """手动发送测试邮件"""
     try:
         data = request.json
-        # 临时更新配置用于测试（不写入数据库）
-        # 这里直接调用重构后的 send_system_mail，但由于它从数据库读取，
-        # 我们需要在测试前临时注入配置或者让用户先保存。
-        # 为了更好的用户体验，这里我们从 request 获取配置并直接构造发送逻辑。
-        
+        # 临时更新配置用于测试
         mode = data.get('email_mode', 'mta')
+        smtp_user = data.get('smtp_user', '')
         receiver_raw = data.get('email_receiver', '')
         receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
         
@@ -2394,6 +2394,14 @@ def api_test_email():
             return jsonify({'status': 'error', 'message': '请先填写收件人邮箱'})
         
         sender_name = data.get('email_sender_name', f'System@{SERVER_NAME}.local')
+
+        # 构造审计详情
+        audit_details = {
+            'mode': mode,
+            'smtp_user': smtp_user,
+            'receivers': receivers,
+            'sender_name': sender_name
+        }
 
         subject = "IPMI_WEB 连通性测试"
         message = "这是一封由系统设置发起的连通性测试邮件。如果您收到此信，说明您的邮件通知配置已生效。"
@@ -2470,7 +2478,7 @@ def api_test_email():
                 return jsonify({'status': 'error', 'message': f'MTA 投递失败: {stderr or stdout}'})
 
         write_audit('INFO', 'SYSTEM', 'EMAIL_TEST', f"发送测试邮件至 {', '.join(receivers)}", 
-                   details={'receivers': receivers, 'mode': mode}, operator=get_client_ip())
+                   details=audit_details, operator=get_client_ip())
         return jsonify({'status': 'success', 'message': '测试邮件已发送，请检查收件箱'})
 
     except Exception as e:

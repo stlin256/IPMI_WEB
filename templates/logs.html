@@ -1900,27 +1900,38 @@ n        /* 标签样式 */
             return `
             <div class="card rule-card fade-in-up ${isDeleted ? 'opacity-50' : ''}" style="${isDeleted ? 'border-style: dashed;' : ''}">
                 <div class="card-body p-2 px-3">
-                    <div class="d-flex align-items-center gap-2">
+                    <!-- 第一行：名称、开关、删除 -->
+                    <div class="d-flex align-items-center mb-2 gap-2">
+                        <input type="text" class="form-control form-control-sm bg-transparent border-0 ${isDeleted ? 'text-muted text-decoration-line-through' : 'text-primary'} fw-bold p-0 flex-grow-1" 
+                               value="${rule.name}" onchange="updateRuleLocalByIndex(${idx}, 'name', this.value)" style="font-size: 13px;" ${isDeleted ? 'readonly' : ''}>
+                        
                         ${!isDeleted ? `
-                        <div class="form-check form-switch me-1">
+                        <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" ${rule.enabled ? 'checked' : ''} 
                                    onchange="updateRuleLocalByIndex(${idx}, 'enabled', this.checked ? 1 : 0)">
                         </div>
-                        ` : '<div class="me-1"></div>'}
-                        
-                        <input type="text" class="form-control form-control-sm bg-transparent border-0 ${isDeleted ? 'text-muted text-decoration-line-through' : 'text-primary'} fw-bold p-0 flex-grow-1" 
-                               value="${rule.name}" onchange="updateRuleLocalByIndex(${idx}, 'name', this.value)" style="min-width:80px;" ${isDeleted ? 'readonly' : ''}>
-                        
-                        <div class="d-flex align-items-center gap-1 small text-muted-plus">
-                            ${!isDeleted ? `
-                            <!-- 等级选择 -->
-                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:65px; height:24px; font-size:10px;"
+                        <button class="btn btn-link btn-sm text-danger p-0 ms-1" onclick="markDeleteRuleByIndex(${idx})" title="标记删除">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        ` : `
+                        <span class="badge bg-danger ms-2" style="font-size: 9px;">待删除</span>
+                        <button class="btn btn-link btn-sm text-success p-0 ms-1" onclick="undoDeleteRuleByIndex(${idx})" title="撤销删除">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        `}
+                    </div>
+
+                    ${!isDeleted ? `
+                    <!-- 第二行：配置区，支持多行排列 -->
+                    <div class="d-flex flex-wrap align-items-center gap-x-3 gap-y-2 pt-1 border-top border-secondary border-opacity-10">
+                        <!-- 条件配置组 -->
+                        <div class="d-flex align-items-center gap-1">
+                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:62px; height:24px; font-size:10px;"
                                        onchange="updateRuleLocalByIndex(${idx}, 'level', this.value)">
                                 <option value="WARN" ${rule.level==='WARN'?'selected':''}>WARN</option>
                                 <option value="INFO" ${rule.level==='INFO'?'selected':''}>INFO</option>
                             </select>
-
-                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:90px; height:24px; font-size:11px;"
+                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:85px; height:24px; font-size:10px;"
                                        onchange="updateRuleLocalByIndex(${idx}, 'metric', this.value)">
                                 <option value="cpu_temp" ${rule.metric==='cpu_temp'?'selected':''}>CPU温度</option>
                                 <option value="fan_rpm" ${rule.metric==='fan_rpm'?'selected':''}>风扇转速</option>
@@ -1931,40 +1942,28 @@ n        /* 标签样式 */
                                 <option value="gpu_util" ${rule.metric==='gpu_util'?'selected':''}>GPU负载</option>
                                 <option value="gpu_mem" ${rule.metric==='gpu_mem'?'selected':''}>显存占用</option>
                             </select>
-                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
+                            <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:45px; height:24px; font-size:11px;"
                                        onchange="updateRuleLocalByIndex(${idx}, 'operator', this.value)">
                                 <option value=">" ${rule.operator==='>'?'selected':''}>></option>
                                 <option value="<" ${rule.operator==='<'?'selected':''}><</option>
                                 <option value=">=" ${rule.operator==='>='?'selected':''}>&ge;</option>
                             </select>
-                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
+                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:48px; height:24px; font-size:11px;"
                                        value="${rule.threshold}" onchange="updateRuleLocalByIndex(${idx}, 'threshold', parseFloat(this.value))">
-                            ` : ''}
                         </div>
 
-                        <div class="vr mx-1" style="height:15px; opacity:0.2;"></div>
-
-                        ${!isDeleted ? `
-                        <div class="d-flex align-items-center gap-1 small text-muted" title="持续时间 / 通知频率">
-                            <i class="fas fa-clock" style="font-size:10px;"></i>
-                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:40px; height:24px; font-size:11px;"
-                                                     value="${rule.duration}" onchange="updateRuleLocalByIndex(${idx}, 'duration', parseInt(this.value))">
-                            <span>/</span>
-                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:50px; height:24px; font-size:11px;"
-                                                       value="${rule.notify_interval}" onchange="updateRuleLocalByIndex(${idx}, 'notify_interval', parseInt(this.value))">
+                        <!-- 时间/频率配置组 -->
+                        <div class="d-flex align-items-center gap-1 text-muted small" style="background: rgba(255,255,255,0.03); padding: 2px 6px; border-radius: 4px;">
+                            <i class="fas fa-clock opacity-50" style="font-size:10px;"></i>
+                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:38px; height:24px; font-size:11px;"
+                                                     value="${rule.duration}" onchange="updateRuleLocalByIndex(${idx}, 'duration', parseInt(this.value))" title="持续时间(秒)">
+                            <span class="mx-0 opacity-25">/</span>
+                            <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:48px; height:24px; font-size:11px;"
+                                                       value="${rule.notify_interval}" onchange="updateRuleLocalByIndex(${idx}, 'notify_interval', parseInt(this.value))" title="通知频率(秒)">
+                            <span style="font-size: 9px; opacity: 0.5;">秒</span>
                         </div>
-                        ` : '<span class="badge bg-danger ms-2">待删除</span>'}
-
-                        ${!isDeleted ? `
-                        <button class="btn btn-link btn-sm text-danger p-0 ms-2" onclick="markDeleteRuleByIndex(${idx})" title="标记删除 (保存后生效)">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                        ` : `
-                        <button class="btn btn-link btn-sm text-success p-0 ms-2" onclick="undoDeleteRuleByIndex(${idx})" title="撤销删除">
-                            <i class="fas fa-undo"></i>
-                        </button>
-                        `}
                     </div>
+                    ` : ''}
                 </div>
             </div>
         `}).join('');
