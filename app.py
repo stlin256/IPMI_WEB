@@ -44,7 +44,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.5'
+VERSION = '1.3.6'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -219,7 +219,25 @@ def init_db():
     c = conn.cursor()
     # [关键优化] 开启 Write-Ahead Logging，允许并发读写，解决卡顿的核心！
     c.execute('PRAGMA journal_mode=WAL;')
-  
+
+    # 1.3.6 迁移逻辑：将 server_name 迁移至数据库
+    c.execute("SELECT value FROM config WHERE key='software_version'")
+    db_ver_row = c.fetchone()
+    db_ver = db_ver_row[0] if db_ver_row else '0.0.0'
+    
+    # 第一次初始化或版本升级检测
+    if db_ver_row is None:
+        # 全新安装或旧版本
+        c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('software_version', ?)", (VERSION,))
+        c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', ?)", (config['SERVER'].get('server_name', 'MY_SERVER'),))
+    elif db_ver < '1.3.6':
+        # 版本升级迁移
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('software_version', ?)", (VERSION,))
+        # 强制将当前 config.json 的值迁移进去（若存在）
+        current_name = config['SERVER'].get('server_name', 'MY_SERVER')
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('server_name', ?)", (current_name,))
+        print(f"Migration: server_name '{current_name}' migrated to database.")
+
     c.execute('''CREATE TABLE IF NOT EXISTS metrics_v2 
                  (timestamp INTEGER, cpu_temp REAL, fan_rpm INTEGER, power_watts INTEGER,
                   cpu_usage REAL, mem_usage REAL, net_recv_speed REAL, net_sent_speed REAL,
@@ -338,6 +356,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_weekly_time', '09:00')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_enabled', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_hours', '24')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', 'MY_SERVER')")
 
     # 兼容性升级与初始化：确保所有邮件相关配置项存在
     smtp_configs = [
@@ -743,14 +762,23 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     time_start_str = datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d %H:%M')
     time_end_str = datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M')
     
+    # 获取服务器名称
+    conn_s = get_db_connection()
+    cur_s = conn_s.cursor()
+    cur_s.execute("SELECT value FROM config WHERE key='server_name'")
+    s_row = cur_s.fetchone()
+    current_server_name = s_row[0] if s_row else configs.get('server_name', SERVER_NAME)
+    conn_s.close()
+
     # 格式化报告类型标签
     type_labels = {
         'daily': ('日报', f'过去 {hours} 小时', f'每日 {configs.get("summary_daily_time", "08:00")} 发送'),
         'weekly': ('周报', f'过去 {hours} 小时', f'每周 {(["周一","周二","周三","周四","周五","周六","周日"][int(configs.get("summary_weekly_day", 1))])} {configs.get("summary_weekly_time", "09:00")} 发送'),
-        'custom': ('自定义', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
-        'manual': ('手动', f'过去 {hours} 小时', '手动触发发送')
+        'custom': ('自定义报告', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
+        'manual': ('手动报告', f'过去 {hours} 小时', '手动触发发送')
     }
-    report_type_label, report_range, report_frequency = type_labels.get(report_type, ('概览报告', f'过去 {hours} 小时', '手动触发'))
+    raw_label, report_range, report_frequency = type_labels.get(report_type, ('概览报告', f'过去 {hours} 小时', '手动触发'))
+    report_type_label = f"{current_server_name}{raw_label}"
     
     # 格式化日志
     log_entries = []
@@ -850,10 +878,21 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         chart_data['gpu_path'] = generate_svg_path(gpu_util_values, gpu_load_max)
         chart_data['gpu_load_max'] = gpu_load_max
     
+    # 自动识别面板地址逻辑
+    # 优先从数据库读取 last_access_domain
+    conn_d = get_db_connection()
+    c_d = conn_d.cursor()
+    c_d.execute("SELECT value FROM config WHERE key='last_access_domain'")
+    domain_row = c_d.fetchone()
+    conn_d.close()
+    
+    # 优先级：数据库记录 > 当前请求头 (如果是手动) > localhost 兜底
+    base_domain = domain_row[0] if domain_row else (request.url_root.rstrip('/') if request else 'http://localhost:5000')
+
     # 准备模板数据 (添加 gpu_data)
     template_data = {
-        'subject': f'{SERVER_NAME} {report_type_label} - {datetime.now().strftime("%Y-%m-%d")}',
-        'server_name': SERVER_NAME,
+        'subject': f'{report_type_label} - {datetime.now().strftime("%Y-%m-%d")}',
+        'server_name': current_server_name,
         'report_type': report_type,
         'report_type_label': report_type_label,
         'send_mode_label': '手动发送的邮件' if is_manual else report_frequency,
@@ -895,22 +934,62 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'version': VERSION,
         'report_range': report_range,
         'report_frequency': f"{hours}小时",
-        'panel_url': f"http://{'localhost:5000' if not request else request.url_root.rstrip('/')}"
+        'panel_url': base_domain
     }
+    
+    # 增加累计发送次数统计
+    try:
+        count_key = f'summary_sent_count_{report_type}'
+        conn_c = get_db_connection()
+        c_c = conn_c.cursor()
+        c_c.execute("SELECT value FROM config WHERE key=?", (count_key,))
+        count_row = c_c.fetchone()
+        conn_c.close()
+        if count_row:
+            email_details['total_sent_count'] = int(count_row[0]) + 1
+    except: pass
     
     # 渲染 HTML
     html_content = render_template('email_summary.html', **template_data)
     
+    # 获取当前配置用于获取 smtp_user 等
+    conn_cfg = get_db_connection()
+    c_cfg = conn_cfg.cursor()
+    c_cfg.execute("SELECT key, value FROM config WHERE key IN ('smtp_user', 'last_access_domain')")
+    cfg_data = {row['key']: row['value'] for row in c_cfg.fetchall()}
+    conn_cfg.close()
+
+    # 获取当前配置用于获取 smtp_user 等
+    conn_cfg = get_db_connection()
+    c_cfg = conn_cfg.cursor()
+    c_cfg.execute("SELECT key, value FROM config WHERE key IN ('smtp_user', 'last_access_domain')")
+    cfg_data = {row['key']: row['value'] for row in c_cfg.fetchall()}
+    conn_cfg.close()
+
     # 构造发信详情
     email_details = {
         'mode': mode,
-        'smtp_user': configs.get('smtp_user', ''),
+        'smtp_user': cfg_data.get('smtp_user', ''),
         'receivers': receivers,
         'sender_name': sender_name,
         'duration_hours': hours,
-        'report_type_cn': type_labels.get(report_type, ('未知',))[0]
+        'report_type_cn': type_labels.get(report_type, ('未知',))[0],
+        'scheduled_time': configs.get(f'summary_{report_type}_time', 'N/A') if report_type in ('daily', 'weekly') else 'Cron-like Fixed Point',
+        'server_name': current_server_name
     }
     
+    # 增加累计发送次数统计
+    try:
+        count_key = f'summary_sent_count_{report_type}'
+        conn_c = get_db_connection()
+        c_c = conn_c.cursor()
+        c_c.execute("SELECT value FROM config WHERE key=?", (count_key,))
+        count_row = c_c.fetchone()
+        conn_c.close()
+        if count_row:
+            email_details['total_sent_count'] = int(count_row[0]) + 1
+    except: pass
+
     try:
         if mode == 'smtp':
             server = configs.get('smtp_server')
@@ -1682,6 +1761,10 @@ def login():
         is_correct = (request.form['password'] == LOGIN_PASSWORD)
         
         if is_correct:
+            # 记录最后访问域名
+            domain = request.url_root.rstrip('/')
+            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('last_access_domain', ?)", (domain,))
+            
             # 密码正确：如果有失败记录，执行 3s 宽恕延迟后进入
             if not is_whitelisted and fail_count > 0:
                 time.sleep(3)
@@ -1691,7 +1774,7 @@ def login():
             session['logged_in'] = True
             session.permanent = True
             
-            write_audit('INFO', 'AUTH', 'LOGIN_SUCCESS', '用户登录成功', operator=ip)
+            write_audit('INFO', 'AUTH', 'LOGIN_SUCCESS', '用户登录成功', details={'domain': domain}, operator=ip)
             return redirect(url_for('hardware_page'))
         else:
             # 密码错误：执行正常的阶梯式惩罚
@@ -2146,7 +2229,7 @@ def api_settings():
                 'email_sender_name', 'email_receiver',
                 'summary_enabled', 'summary_daily_enabled', 'summary_daily_time',
                 'summary_weekly_enabled', 'summary_weekly_day', 'summary_weekly_time',
-                'summary_custom_enabled', 'summary_custom_hours')
+                'summary_custom_enabled', 'summary_custom_hours', 'server_name')
         c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
         res = {row['key']: row['value'] for row in c.fetchall()}
         conn.close()
@@ -2272,7 +2355,8 @@ def api_settings():
                 'summary_weekly_day': '周报发送日',
                 'summary_weekly_time': '周报时间',
                 'summary_custom_enabled': '自定义报告开关',
-                'summary_custom_hours': '自定义报告间隔'
+                'summary_custom_hours': '自定义报告间隔',
+                'server_name': '服务器名称'
             }
             for key, label in mapping.items():
                 if key in data:

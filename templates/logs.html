@@ -544,6 +544,12 @@ n        /* 标签样式 */
                     <div class="tab-content p-4 flex-grow-1 overflow-auto" style="max-height: 550px;">
                         <!-- 图表设置 Tab -->
                         <div class="tab-pane fade show active" id="tab-display">
+                            <h6 class="text-primary mb-4 fw-bold">基础设置</h6>
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">服务器名称</label>
+                                <input type="text" id="set-server-name" class="form-control bg-dark border-secondary text-light" placeholder="例如: MY_SERVER" oninput="markChanged()">
+                            </div>
+
                             <h6 class="text-primary mb-4 fw-bold">采集延迟色彩阈值</h6>
                             <div class="row g-3 mb-5">
                                 <div class="col-md-6">
@@ -1642,6 +1648,7 @@ n        /* 标签样式 */
         }
 
         const currentSnapshot = {
+            server_name: document.getElementById('set-server-name').value,
             log_delay_warn: fmtVal(document.getElementById('set-warn').value),
             log_delay_danger: fmtVal(document.getElementById('set-danger').value),
             data_retention_days: fmtVal(document.getElementById('set-retention').value),
@@ -1673,6 +1680,7 @@ n        /* 标签样式 */
         initialSettingsSnapshot.summary_custom_hours = parseFloat(initialSettingsSnapshot.summary_custom_hours || '24');
 
         const initialSnapshotComp = {
+            server_name: initialSettingsSnapshot.server_name,
             log_delay_warn: fmtVal(initialSettingsSnapshot.log_delay_warn),
             log_delay_danger: fmtVal(initialSettingsSnapshot.log_delay_danger),
             data_retention_days: fmtVal(initialSettingsSnapshot.data_retention_days),
@@ -1766,6 +1774,7 @@ n        /* 标签样式 */
             
             // 创建原始数据快照
             initialSettingsSnapshot = {
+                server_name: globalSettings.server_name || 'MY_SERVER',
                 log_delay_warn: parseFloat(globalSettings.log_delay_warn),
                 log_delay_danger: parseFloat(globalSettings.log_delay_danger),
                 data_retention_days: parseInt(globalSettings.data_retention_days),
@@ -1794,6 +1803,7 @@ n        /* 标签样式 */
             hasPendingChanges = false;
             
             // 填充 UI
+            document.getElementById('set-server-name').value = globalSettings.server_name || 'MY_SERVER';
             document.getElementById('set-warn').value = globalSettings.log_delay_warn;
             document.getElementById('set-danger').value = globalSettings.log_delay_danger;
             document.getElementById('set-retention').value = globalSettings.data_retention_days;
@@ -2110,6 +2120,7 @@ n        /* 标签样式 */
 
         // 封装统一 payload，减少请求次数和数据库锁定时间
         const payload = {
+            server_name: document.getElementById('set-server-name').value,
             log_delay_warn: parseFloat(document.getElementById('set-warn').value),
             log_delay_danger: parseFloat(document.getElementById('set-danger').value),
             data_retention_days: parseInt(document.getElementById('set-retention').value),
@@ -2152,6 +2163,7 @@ n        /* 标签样式 */
                 
                 // 保存成功后，更新快照，使脏检查回归一致状态，从而静默关闭
                 initialSettingsSnapshot = {
+                    server_name: payload.server_name,
                     log_delay_warn: payload.log_delay_warn,
                     log_delay_danger: payload.log_delay_danger,
                     data_retention_days: payload.data_retention_days,
