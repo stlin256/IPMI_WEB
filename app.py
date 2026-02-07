@@ -774,8 +774,8 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     type_labels = {
         'daily': ('日报', f'过去 {hours} 小时', f'每日 {configs.get("summary_daily_time", "08:00")} 发送'),
         'weekly': ('周报', f'过去 {hours} 小时', f'每周 {(["周一","周二","周三","周四","周五","周六","周日"][int(configs.get("summary_weekly_day", 1))])} {configs.get("summary_weekly_time", "09:00")} 发送'),
-        'custom': ('自定义报告', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
-        'manual': ('手动报告', f'过去 {hours} 小时', '手动触发发送')
+        'custom': ('自定义', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
+        'manual': ('手动', f'过去 {hours} 小时', '手动触发发送')
     }
     raw_label, report_range, report_frequency = type_labels.get(report_type, ('概览报告', f'过去 {hours} 小时', '手动触发'))
     report_type_label = f"{current_server_name}{raw_label}"
@@ -916,7 +916,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
 
     # 准备模板数据 (添加 gpu_data)
     template_data = {
-        'subject': f'{report_type_label} - {datetime.now().strftime("%Y-%m-%d")}',
+        'subject': f'{report_type_label}报告 - {datetime.now().strftime("%Y-%m-%d")}',
         'server_name': current_server_name,
         'report_type': report_type,
         'report_type_label': report_type_label,
