@@ -789,18 +789,6 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         msg = f"[{row['module']}] {row['action']}: {row['message']}"
         log_entries.append({'time': log_time, 'color': color, 'msg': msg[:100]})
     
-    # 格式化 GPU 数据
-    gpu_data = []
-    for g in gpu_rows:
-        gpu_data.append({
-            'name': g['gpu_name'] or f"GPU-{gpu_data.index(g)}",
-            'temp': round(g['temp_avg'], 1) if g['temp_avg'] else '--',
-            'temp_max': round(g['temp_max'], 1) if g['temp_max'] else '--',
-            'utilization': round(g['util_avg'], 1) if g['util_avg'] else '--',
-            'mem_used': round(g['mem_avg']/1024, 1) if g['mem_avg'] else '--',  # MB to GB
-            'power': round(g['pwr_avg'], 1) if g['pwr_avg'] else '--'
-        })
-    
     # 计算耗电量 (简化计算)
     power_avg = hw_stats.get('pwr_avg', 0) or 0
     energy_wh = power_avg * hours
@@ -852,6 +840,40 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         
         return stroke_path, fill_path
     
+    # 生成多线图表路径（用于GPU三合一趋势图）
+    def generate_multi_line_path(values, max_val, y_offset, line_height, width=400):
+        """生成SVG路径用于多线图表的某一条线"""
+        if not values or len(values) == 0:
+            return ""
+        
+        # 降采样到最多200点
+        target_points = min(200, len(values))
+        step = max(1, len(values) // target_points)
+        sampled = values[::step]
+        
+        if len(sampled) == 0:
+            return ""
+        
+        # 归一化到指定高度范围
+        normalize_base = max(max_val, max(sampled)) if max_val > 0 else max(sampled)
+        normalize_base = max(normalize_base, 1)
+        
+        points = []
+        for i, val in enumerate(sampled):
+            x = (i / (len(sampled) - 1)) * width if len(sampled) > 1 else width / 2
+            # 归一化到 [y_offset, y_offset + line_height] 范围
+            y = y_offset + line_height - (val / normalize_base) * line_height
+            points.append((x, y))
+        
+        if len(points) == 0:
+            return ""
+        
+        # 生成路径
+        path = f"M{points[0][0]},{points[0][1]}"
+        for i in range(1, len(points)):
+            path += f" L{points[i][0]},{points[i][1]}"
+        return path
+    
     # 获取原始数据用于趋势图
     conn = get_db_connection()
     c = conn.cursor()
@@ -868,9 +890,11 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     c.execute("SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
     power_values = [row[0] or 0 for row in c.fetchall()]
     
-    # 获取 GPU 占用原始数据
-    c.execute("SELECT util_gpu FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
-    gpu_util_values = [row[0] or 0 for row in c.fetchall()]
+    # 获取 GPU 详细数据（用于区间统计和趋势图）
+    c.execute("""SELECT gpu_index, gpu_name, temp, util_gpu, mem_used, mem_total, timestamp 
+                 FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? 
+                 ORDER BY gpu_index, timestamp ASC""", (start_ts, now))
+    gpu_raw_data = c.fetchall()
     
     conn.close()
     
@@ -878,7 +902,6 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     cpu_load_max = round(max(cpu_load_values), 1) if cpu_load_values else 0
     mem_max = round(max(mem_values), 1) if mem_values else 0
     power_max = round(max(power_values), 0) if power_values else 0
-    gpu_load_max = round(max(gpu_util_values), 1) if gpu_util_values else 0
     
     # 生成SVG路径
     cpu_stroke, cpu_fill = generate_svg_path(cpu_load_values, cpu_load_max) if cpu_load_values else ("", "")
@@ -897,11 +920,63 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'power_max': power_max,
     }
     
-    if gpu_util_values:
-        gpu_stroke, gpu_fill = generate_svg_path(gpu_util_values, gpu_load_max)
-        chart_data['gpu_stroke'] = gpu_stroke
-        chart_data['gpu_fill'] = gpu_fill
-        chart_data['gpu_load_max'] = gpu_load_max
+    # 处理 GPU 区间数据 - 每块GPU的温度、占用、显存趋势
+    gpu_interval_data = []
+    if gpu_raw_data:
+        from collections import defaultdict
+        gpu_groups = defaultdict(list)
+        for row in gpu_raw_data:
+            gpu_index = row[0]
+            gpu_groups[gpu_index].append({
+                'name': row[1],
+                'temp': row[2] or 0,
+                'util': row[3] or 0,
+                'mem_used': row[4] or 0,
+                'mem_total': row[5] or 1,
+                'timestamp': row[6]
+            })
+        
+        for gpu_index, records in gpu_groups.items():
+            if not records:
+                continue
+            
+            gpu_name = records[0]['name'] or f"GPU-{gpu_index}"
+            
+            # 计算平均值
+            avg_temp = round(sum(r['temp'] for r in records) / len(records), 1)
+            avg_util = round(sum(r['util'] for r in records) / len(records), 1)
+            avg_mem_percent = round(sum((r['mem_used']/r['mem_total']*100) if r['mem_total'] > 0 else 0 for r in records) / len(records), 1)
+            
+            # 获取三条曲线的值
+            temp_values = [r['temp'] for r in records]
+            util_values = [r['util'] for r in records]
+            mem_values_gpu = [(r['mem_used']/r['mem_total']*100) if r['mem_total'] > 0 else 0 for r in records]
+            
+            # 生成三条曲线的路径（使用统一的归一化方式）
+            # 温度以85度作为100%基准，与占用率、显存(都是0-100%)在视觉上可比
+            temp_max = 85  # 固定85度为100%
+            util_max = 100  # 占用率固定0-100
+            mem_max_val = 100  # 显存占用率固定0-100
+            
+            # 为三条曲线生成路径，使用不同的高度范围来区分
+            # 温度: 顶部区域 (0-33%), 占用率: 中部区域 (33-66%), 显存: 底部区域 (66-100%)
+            temp_stroke = generate_multi_line_path(temp_values, temp_max, 0, 13, 400)  # 顶部13px
+            util_stroke = generate_multi_line_path(util_values, util_max, 13, 13, 400)   # 中部13px
+            mem_stroke = generate_multi_line_path(mem_values_gpu, mem_max_val, 26, 14, 400)  # 底部14px
+            
+            gpu_interval_data.append({
+                'name': gpu_name,
+                'avg_temp': avg_temp,
+                'avg_util': avg_util,
+                'avg_mem': avg_mem_percent,
+                'temp_max': round(max(temp_values), 1) if temp_values else 0,
+                'util_max': round(max(util_values), 1) if util_values else 0,
+                'mem_max': round(max(mem_values_gpu), 1) if mem_values_gpu else 0,
+                'data_points': len(records),
+                'temp_stroke': temp_stroke,
+                'util_stroke': util_stroke,
+                'mem_stroke': mem_stroke
+            })
     
     # 自动识别面板地址逻辑
     # 优先从数据库读取 last_access_domain
@@ -955,7 +1030,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         # 日志
         'logs': log_entries,
         'chart_data': chart_data,
-        'gpu_data': gpu_data,
+        'gpu_interval_data': gpu_interval_data,
         'version': VERSION,
         'report_range': report_range,
         'report_frequency': f"{hours}小时",

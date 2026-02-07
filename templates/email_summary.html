@@ -138,24 +138,6 @@
                                                     <path d="{{ chart_data.cpu_stroke }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
                                                 </svg>
                                             </div>
-                                            <!-- 趋势图: GPU占用 (如果有GPU数据) -->
-                                            {% if chart_data.gpu_stroke is defined %}
-                                            <div style="margin-bottom: 12px;">
-                                                <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    GPU 占用 <span style="color: #76e3ea;">{{ chart_data.gpu_load_max }}% 峰值</span>
-                                                </div>
-                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
-                                                    <defs>
-                                                        <linearGradient id="grad_gpu" x1="0%" y1="0%" x2="0%" y2="100%">
-                                                            <stop offset="0%" style="stop-color:#76e3ea;stop-opacity:0.3" />
-                                                            <stop offset="100%" style="stop-color:#76e3ea;stop-opacity:0" />
-                                                        </linearGradient>
-                                                    </defs>
-                                                    <path d="{{ chart_data.gpu_fill }}" fill="url(#grad_gpu)" />
-                                                    <path d="{{ chart_data.gpu_stroke }}" fill="none" stroke="#76e3ea" stroke-width="1.5" />
-                                                </svg>
-                                            </div>
-                                            {% endif %}
                                             <!-- 趋势图: 内存使用 -->
                                             <div style="margin-bottom: 12px;">
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
@@ -256,37 +238,54 @@
                                 </table>
                             </div>
 
-                            <!-- GPU 状态 -->
-                            {% if gpu_data is defined and gpu_data|length > 0 %}
+                            <!-- 区间 GPU 状态 -->
+                            {% if gpu_interval_data is defined and gpu_interval_data|length > 0 %}
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">GPU 状态</div>
-                                {% for gpu in gpu_data %}
+                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">区间 GPU 状态</div>
+                                {% for gpu in gpu_interval_data %}
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px;">
                                     <tr>
                                         <td style="padding: 15px;">
                                             <div style="font-size: 13px; color: #e6edf3; font-weight: bold; margin-bottom: 10px;">
                                                 {{ gpu.name|default('GPU ' ~ loop.index) }}
+                                                <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ gpu.data_points }} 个数据点</span>
                                             </div>
-                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                            <!-- 统计数据 -->
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 12px;">
                                                 <tr>
-                                                    <td class="data-cell" width="25%" style="padding: 5px;">
-                                                        <div style="font-size: 10px; color: #8b949e;">温度</div>
-                                                        <div style="font-size: 13px; color: {{ gpu.temp_color|default('#e6edf3') }}; font-weight: bold;" class="nowrap">{{ gpu.temp|default('--') }}°C</div>
+                                                    <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 10px; color: #8b949e;">平均温度</div>
+                                                        <div style="font-size: 13px; color: #f0883e; font-weight: bold;" class="nowrap">{{ gpu.avg_temp }}°C</div>
+                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ gpu.temp_max }}°C</div>
                                                     </td>
-                                                    <td class="data-cell" width="25%" style="padding: 5px;">
-                                                        <div style="font-size: 10px; color: #8b949e;">利用率</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;" class="nowrap">{{ gpu.utilization|default('--') }}%</div>
+                                                    <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 10px; color: #8b949e;">平均占用</div>
+                                                        <div style="font-size: 13px; color: #58a6ff; font-weight: bold;" class="nowrap">{{ gpu.avg_util }}%</div>
+                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ gpu.util_max }}%</div>
                                                     </td>
-                                                    <td class="data-cell" width="25%" style="padding: 5px;">
-                                                        <div style="font-size: 10px; color: #8b949e;">显存使用</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;" class="nowrap">{{ gpu.mem_used|default('--') }} GB</div>
-                                                    </td>
-                                                    <td class="data-cell" width="25%" style="padding: 5px;">
-                                                        <div style="font-size: 10px; color: #8b949e;">功耗</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; font-weight: bold;" class="nowrap">{{ gpu.power|default('--') }}W</div>
+                                                    <td class="data-cell" width="33%" style="padding: 5px;">
+                                                        <div style="font-size: 10px; color: #8b949e;">平均显存占用</div>
+                                                        <div style="font-size: 13px; color: #a371f7; font-weight: bold;" class="nowrap">{{ gpu.avg_mem }}%</div>
+                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ gpu.mem_max }}%</div>
                                                     </td>
                                                 </tr>
                                             </table>
+                                            <!-- 三合一趋势图 -->
+                                            <div style="margin-top: 10px;">
+                                                <div style="font-size: 10px; color: #8b949e; margin-bottom: 5px;">
+                                                    <span style="color: #f0883e;">● 温度</span>
+                                                    <span style="color: #58a6ff; margin-left: 8px;">● 占用</span>
+                                                    <span style="color: #a371f7; margin-left: 8px;">● 显存</span>
+                                                </div>
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block; background-color: rgba(13,17,23,0.5); border-radius: 4px;">
+                                                    <!-- 温度曲线 (顶部区域) -->
+                                                    <path d="{{ gpu.temp_stroke }}" fill="none" stroke="#f0883e" stroke-width="1.5" />
+                                                    <!-- 占用率曲线 (中部区域) -->
+                                                    <path d="{{ gpu.util_stroke }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
+                                                    <!-- 显存曲线 (底部区域) -->
+                                                    <path d="{{ gpu.mem_stroke }}" fill="none" stroke="#a371f7" stroke-width="1.5" />
+                                                </svg>
+                                            </div>
                                         </td>
                                     </tr>
                                 </table>
