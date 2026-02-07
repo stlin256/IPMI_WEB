@@ -125,8 +125,11 @@
                                             <!-- 趋势图: CPU占用 -->
                                             <div style="margin-bottom: 12px;">
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    CPU 占用 <span style="color: #58a6ff;">{{ chart_data.cpu_load_max }}% 峰值</span>
+                                                    CPU 占用 <span style="color: #58a6ff;">均值: {{ chart_data.cpu_load_avg }}%</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.cpu_load_max }}%</span>
                                                 </div>
+                                                {% if chart_data.cpu_cid %}
+                                                <img src="cid:{{ chart_data.cpu_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="CPU趋势" border="0" />
+                                                {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
                                                     <defs>
                                                         <linearGradient id="grad_cpu" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -137,12 +140,25 @@
                                                     <path d="{{ chart_data.cpu_fill }}" fill="url(#grad_cpu)" />
                                                     <path d="{{ chart_data.cpu_stroke }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
                                                 </svg>
+                                                {% endif %}
                                             </div>
+                                            <!-- 趋势图: GPU占用 (如果有GPU数据) -->
+                                            {% if chart_data.gpu_cid %}
+                                            <div style="margin-bottom: 12px;">
+                                                <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
+                                                    GPU 占用 <span style="color: #76e3ea;">均值: {{ chart_data.gpu_load_avg }}%</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.gpu_load_max }}%</span>
+                                                </div>
+                                                <img src="cid:{{ chart_data.gpu_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="GPU趋势" border="0" />
+                                            </div>
+                                            {% endif %}
                                             <!-- 趋势图: 内存使用 -->
                                             <div style="margin-bottom: 12px;">
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    内存使用 <span style="color: #a371f7;">{{ chart_data.mem_max }}% 峰值</span>
+                                                    内存使用 <span style="color: #a371f7;">均值: {{ chart_data.mem_avg }}%</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.mem_max }}%</span>
                                                 </div>
+                                                {% if chart_data.mem_cid %}
+                                                <img src="cid:{{ chart_data.mem_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="内存趋势" border="0" />
+                                                {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
                                                     <defs>
                                                         <linearGradient id="grad_mem" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -153,12 +169,16 @@
                                                     <path d="{{ chart_data.mem_fill }}" fill="url(#grad_mem)" />
                                                     <path d="{{ chart_data.mem_stroke }}" fill="none" stroke="#a371f7" stroke-width="1.5" />
                                                 </svg>
+                                                {% endif %}
                                             </div>
                                             <!-- 趋势图: 系统功耗 -->
                                             <div>
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    系统功耗 <span style="color: #f0883e;">{{ chart_data.power_max }}W 峰值</span>
+                                                    系统功耗 <span style="color: #f0883e;">均值: {{ chart_data.power_avg }}W</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.power_max }}W</span>
                                                 </div>
+                                                {% if chart_data.power_cid %}
+                                                <img src="cid:{{ chart_data.power_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="功耗趋势" border="0" />
+                                                {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
                                                     <defs>
                                                         <linearGradient id="grad_power" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -169,6 +189,7 @@
                                                     <path d="{{ chart_data.power_fill }}" fill="url(#grad_power)" />
                                                     <path d="{{ chart_data.power_stroke }}" fill="none" stroke="#f0883e" stroke-width="1.5" />
                                                 </svg>
+                                                {% endif %}
                                             </div>
                                         </td>
                                     </tr>
@@ -176,39 +197,6 @@
                             </div>
                             {% endif %}
 
-                            <!-- 资源消耗 -->
-                            <div style="margin-bottom: 25px;">
-                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">资源消耗</div>
-                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
-                                    <tr>
-                                        <td style="padding: 15px;">
-                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
-                                                <tr>
-                                                    <!-- CPU 占用 -->
-                                                    <td class="data-cell" width="50%" style="padding: 10px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">CPU 占用率</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            当前: {{ cpu_current_load|default('--') }}%<br>
-                                                            平均: {{ cpu_avg_load|default('--') }}%<br>
-                                                            峰值: {{ cpu_max_load|default('--') }}%
-                                                        </div>
-                                                    </td>
-                                                    <!-- 内存使用 -->
-                                                    <td class="data-cell" width="50%" style="padding: 10px;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">内存使用</div>
-                                                        <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            当前: {{ mem_current|default('--') }}%<br>
-                                                            平均: {{ mem_avg|default('--') }}%<br>
-                                                            峰值: {{ mem_max|default('--') }}%
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            </table>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </div>
-                            
                             <!-- 网络流量 -->
                             <div style="margin-bottom: 25px;">
                                 <div style="color: #f0883e; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">网络流量</div>
@@ -238,10 +226,10 @@
                                 </table>
                             </div>
 
-                            <!-- 区间 GPU 状态 -->
+                            <!-- GPU 状态 -->
                             {% if gpu_interval_data is defined and gpu_interval_data|length > 0 %}
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">区间 GPU 状态</div>
+                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">GPU 状态</div>
                                 {% for gpu in gpu_interval_data %}
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px;">
                                     <tr>
@@ -277,14 +265,16 @@
                                                     <span style="color: #58a6ff; margin-left: 8px;">● 占用</span>
                                                     <span style="color: #a371f7; margin-left: 8px;">● 显存</span>
                                                 </div>
-                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block; background-color: rgba(13,17,23,0.5); border-radius: 4px;">
-                                                    <!-- 温度曲线 (顶部区域) -->
-                                                    <path d="{{ gpu.temp_stroke }}" fill="none" stroke="#f0883e" stroke-width="1.5" />
-                                                    <!-- 占用率曲线 (中部区域) -->
-                                                    <path d="{{ gpu.util_stroke }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
-                                                    <!-- 显存曲线 (底部区域) -->
-                                                    <path d="{{ gpu.mem_stroke }}" fill="none" stroke="#a371f7" stroke-width="1.5" />
+                                                {% if gpu.cid_name %}
+                                                <img src="cid:{{ gpu.cid_name }}" width="100%" height="40" style="display: block; border-radius: 4px; background-color: #161b22; line-height: 40px; vertical-align: top; height: 40px;" alt="GPU趋势" border="0" />
+                                                {% else %}
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block; background-color: #161b22; border-radius: 4px;">
+                                                    <!-- 三条曲线共享整个高度 -->
+                                                    <path d="{{ gpu.temp_stroke }}" fill="none" stroke="#f0883e" stroke-width="0.8" />
+                                                    <path d="{{ gpu.util_stroke }}" fill="none" stroke="#58a6ff" stroke-width="0.8" />
+                                                    <path d="{{ gpu.mem_stroke }}" fill="none" stroke="#a371f7" stroke-width="0.8" />
                                                 </svg>
+                                                {% endif %}
                                             </div>
                                         </td>
                                     </tr>

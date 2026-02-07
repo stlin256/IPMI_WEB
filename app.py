@@ -16,11 +16,13 @@ import logging
 import queue
 import platform
 import smtplib
+import base64
 import concurrent.futures
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
@@ -44,7 +46,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.6'
+VERSION = '1.3.7'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -794,8 +796,12 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     energy_wh = power_avg * hours
     
     # 生成趋势图数据 (最多1000点，SVG路径格式)
-    def generate_svg_path(values, max_val, height=40, width=400):
-        """生成SVG路径数据，返回(stroke_path, fill_path)元组"""
+    def generate_svg_path(values, max_val, height=40, width=400, color='#58a6ff'):
+        """生成SVG路径数据，返回(stroke_path, fill_path, svg_content)元组
+        
+        Args:
+            color: 曲线颜色 (#58a6ff=蓝, #a371f7=紫, #f0883e=橙, #76e3ea=青)
+        """
         if not values or len(values) == 0:
             return "", ""
         
@@ -805,7 +811,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         sampled = values[::step]
         
         if len(sampled) == 0:
-            return "", ""
+            return "", "", ""
         
         # 归一化到SVG坐标系
         points = []
@@ -820,7 +826,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             points.append((x, y))
         
         if len(points) == 0:
-            return "", ""
+            return "", "", ""
         
         # 生成描边路径（stroke）: 从第一个数据点开始
         if len(points) == 1:
@@ -838,21 +844,76 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             fill_path += f" L{points[i][0]},{points[i][1]}"
         fill_path += f" L{width},{yn} L{width},{height} Z"
         
-        return stroke_path, fill_path
+        # 生成完整SVG字符串（用于转PNG）
+        stroke_points_str = ' '.join(f'L{p[0]},{p[1]}' for p in points[1:])
+        fill_points_str = ' '.join(f'L{p[0]},{p[1]}' for p in points[1:])
+        svg_content = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" preserveAspectRatio="none">
+            <rect width="{width}" height="{height}" fill="#161b22"/>
+            <defs>
+                <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:{color};stop-opacity:0.4" />
+                    <stop offset="100%" style="stop-color:{color};stop-opacity:0" />
+                </linearGradient>
+            </defs>
+            <path d="M0,{height} L{x0},{y0} {fill_points_str} L{width},{yn} L{width},{height} Z" fill="url(#grad)" />
+            <path d="M{x0},{y0} {stroke_points_str}" fill="none" stroke="{color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>'''
+        
+        return stroke_path, fill_path, svg_content
+    
+    # SVG转PNG并保存到临时文件（用于CID附件）
+    def svg_to_png_file(svg_content, cid_name, display_width=400, display_height=40, scale=8):
+        """将SVG转换为高分辨率PNG图片并保存到临时文件
+        
+        Args:
+            svg_content: SVG字符串
+            cid_name: CID标识名（如 'cpu_chart'）
+            display_width: 显示宽度（HTML中）
+            display_height: 显示高度（HTML中）
+            scale: 放大倍数（默认8倍 = 3200x320）
+        
+        Returns:
+            (cid_name, file_path) 元组，失败返回 None
+        """
+        if not svg_content:
+            return None
+        try:
+            import cairosvg
+            import tempfile
+            # 生成高分辨率PNG
+            output_width = display_width * scale
+            output_height = display_height * scale
+            
+            png_data = cairosvg.svg2png(bytestring=svg_content.encode('utf-8'),
+                                          output_width=output_width,
+                                          output_height=output_height,
+                                          background_color='#161b22',
+                                          scale=scale)
+            
+            # 保存到临时文件
+            temp_dir = tempfile.gettempdir()
+            file_path = os.path.join(temp_dir, f"ipmi_{cid_name}_{int(time.time())}.png")
+            with open(file_path, 'wb') as f:
+                f.write(png_data)
+            
+            return (cid_name, file_path)
+        except Exception as e:
+            print(f"SVG to PNG conversion failed: {e}")
+            return None
     
     # 生成多线图表路径（用于GPU三合一趋势图）
     def generate_multi_line_path(values, max_val, y_offset, line_height, width=400):
-        """生成SVG路径用于多线图表的某一条线"""
+        """生成SVG路径用于多线图表的某一条线，返回(path, svg_content)元组"""
         if not values or len(values) == 0:
-            return ""
+            return "", ""
         
-        # 降采样到最多200点
-        target_points = min(200, len(values))
+        # 降采样到最多3200点
+        target_points = min(3200, len(values))
         step = max(1, len(values) // target_points)
         sampled = values[::step]
         
         if len(sampled) == 0:
-            return ""
+            return "", ""
         
         # 归一化到指定高度范围
         normalize_base = max(max_val, max(sampled)) if max_val > 0 else max(sampled)
@@ -866,13 +927,26 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             points.append((x, y))
         
         if len(points) == 0:
-            return ""
+            return "", ""
         
         # 生成路径
         path = f"M{points[0][0]},{points[0][1]}"
         for i in range(1, len(points)):
             path += f" L{points[i][0]},{points[i][1]}"
-        return path
+        
+        # 获取颜色：温度=#f0883e, 占用=#58a6ff, 显存=#a371f7 (根据y_offset判断)
+        if y_offset < 5:  # 温度曲线 (顶部)
+            color = "#f0883e"
+        elif y_offset < 20:  # 占用率曲线 (中部)
+            color = "#58a6ff"
+        else:  # 显存曲线 (底部)
+            color = "#a371f7"
+        
+        # 只返回路径内容，不返回完整的SVG（因为我们会组合成一个SVG）
+        points_str = ' '.join(f'L{p[0]},{p[1]}' for p in points[1:])
+        svg_content = f'M{points[0][0]},{points[0][1]} {points_str}'
+        
+        return path, svg_content
     
     # 获取原始数据用于趋势图
     conn = get_db_connection()
@@ -896,17 +970,50 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                  ORDER BY gpu_index, timestamp ASC""", (start_ts, now))
     gpu_raw_data = c.fetchall()
     
+    # 获取 GPU 占用原始数据（用于顶部的GPU趋势图）
+    c.execute("SELECT util_gpu FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    gpu_util_values = [row[0] or 0 for row in c.fetchall()]
+    
     conn.close()
     
-    # 计算各指标最大值
+    # 计算各指标最大值和平均值
     cpu_load_max = round(max(cpu_load_values), 1) if cpu_load_values else 0
-    mem_max = round(max(mem_values), 1) if mem_values else 0
-    power_max = round(max(power_values), 0) if power_values else 0
+    cpu_load_avg = round(sum(cpu_load_values) / len(cpu_load_values), 1) if cpu_load_values else 0
     
-    # 生成SVG路径
-    cpu_stroke, cpu_fill = generate_svg_path(cpu_load_values, cpu_load_max) if cpu_load_values else ("", "")
-    mem_stroke, mem_fill = generate_svg_path(mem_values, mem_max) if mem_values else ("", "")
-    power_stroke, power_fill = generate_svg_path(power_values, power_max) if power_values else ("", "")
+    mem_max = round(max(mem_values), 1) if mem_values else 0
+    mem_avg = round(sum(mem_values) / len(mem_values), 1) if mem_values else 0
+    
+    power_max = round(max(power_values), 0) if power_values else 0
+    power_avg = round(sum(power_values) / len(power_values), 1) if power_values else 0
+    
+    gpu_load_max = round(max(gpu_util_values), 1) if gpu_util_values else 0
+    gpu_load_avg = round(sum(gpu_util_values) / len(gpu_util_values), 1) if gpu_util_values else 0
+    
+    # 生成SVG路径和完整SVG（传入对应的颜色）
+    # CPU=蓝(#58a6ff), 内存=紫(#a371f7), 功耗=橙(#f0883e), GPU=青(#76e3ea)
+    cpu_stroke, cpu_fill, cpu_svg = generate_svg_path(cpu_load_values, cpu_load_max, color='#58a6ff') if cpu_load_values else ("", "", "")
+    mem_stroke, mem_fill, mem_svg = generate_svg_path(mem_values, mem_max, color='#a371f7') if mem_values else ("", "", "")
+    power_stroke, power_fill, power_svg = generate_svg_path(power_values, power_max, color='#f0883e') if power_values else ("", "", "")
+    gpu_stroke, gpu_fill, gpu_svg = generate_svg_path(gpu_util_values, gpu_load_max, color='#76e3ea') if gpu_util_values else ("", "", "")
+    
+    # 转换SVG为PNG临时文件（CID附件方式）
+    chart_cids = []  # 存储 (cid_name, file_path) 列表
+    if cpu_svg:
+        result = svg_to_png_file(cpu_svg, 'cpu_chart', 400, 40, scale=4)
+        if result:
+            chart_cids.append(result)
+    if mem_svg:
+        result = svg_to_png_file(mem_svg, 'mem_chart', 400, 40, scale=4)
+        if result:
+            chart_cids.append(result)
+    if power_svg:
+        result = svg_to_png_file(power_svg, 'power_chart', 400, 40, scale=4)
+        if result:
+            chart_cids.append(result)
+    if gpu_svg:
+        result = svg_to_png_file(gpu_svg, 'gpu_chart', 400, 40, scale=4)
+        if result:
+            chart_cids.append(result)
     
     chart_data = {
         'cpu_stroke': cpu_stroke,
@@ -916,9 +1023,24 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'power_stroke': power_stroke,
         'power_fill': power_fill,
         'cpu_load_max': cpu_load_max,
+        'cpu_load_avg': cpu_load_avg,
         'mem_max': mem_max,
+        'mem_avg': mem_avg,
         'power_max': power_max,
+        'power_avg': power_avg,
+        # CID引用标记（模板中使用）
+        'cpu_cid': 'cpu_chart',
+        'mem_cid': 'mem_chart',
+        'power_cid': 'power_chart',
+        'gpu_cid': 'gpu_chart' if gpu_svg else None,
     }
+    
+    # 添加GPU趋势图数据
+    if gpu_util_values:
+        chart_data['gpu_stroke'] = gpu_stroke
+        chart_data['gpu_fill'] = gpu_fill
+        chart_data['gpu_load_max'] = gpu_load_max
+        chart_data['gpu_load_avg'] = gpu_load_avg
     
     # 处理 GPU 区间数据 - 每块GPU的温度、占用、显存趋势
     gpu_interval_data = []
@@ -952,17 +1074,39 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             util_values = [r['util'] for r in records]
             mem_values_gpu = [(r['mem_used']/r['mem_total']*100) if r['mem_total'] > 0 else 0 for r in records]
             
-            # 生成三条曲线的路径（使用统一的归一化方式）
-            # 温度以85度作为100%基准，与占用率、显存(都是0-100%)在视觉上可比
-            temp_max = 85  # 固定85度为100%
-            util_max = 100  # 占用率固定0-100
-            mem_max_val = 100  # 显存占用率固定0-100
+            # 生成三条曲线的路径（统一归一化到整个高度）
+            # 温度: 0-90°C, 占用率: 0-100%, 显存: 0-100%
+            temp_max_val = 90
+            util_max_val = 100
+            mem_max_val = 100
             
-            # 为三条曲线生成路径，使用不同的高度范围来区分
-            # 温度: 顶部区域 (0-33%), 占用率: 中部区域 (33-66%), 显存: 底部区域 (66-100%)
-            temp_stroke = generate_multi_line_path(temp_values, temp_max, 0, 13, 400)  # 顶部13px
-            util_stroke = generate_multi_line_path(util_values, util_max, 13, 13, 400)   # 中部13px
-            mem_stroke = generate_multi_line_path(mem_values_gpu, mem_max_val, 26, 14, 400)  # 底部14px
+            # 三条曲线共享整个高度 (0-40px)
+            temp_stroke, temp_path = generate_multi_line_path(temp_values, temp_max_val, 0, 40, 400)
+            util_stroke, util_path = generate_multi_line_path(util_values, util_max_val, 0, 40, 400)
+            mem_stroke, mem_path = generate_multi_line_path(mem_values_gpu, mem_max_val, 0, 40, 400)
+            
+            # 组合三合一SVG并转换为PNG（使用CID附件方式）
+            # 颜色定义
+            temp_color = "#f0883e"
+            util_color = "#58a6ff"
+            mem_color = "#a371f7"
+            
+            gpu_combo_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="40" viewBox="0 0 400 40" preserveAspectRatio="none">
+                <rect width="400" height="40" fill="#161b22"/>
+                <path d="{temp_path}" fill="none" stroke="{temp_color}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="{util_path}" fill="none" stroke="{util_color}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="{mem_path}" fill="none" stroke="{mem_color}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>''' if temp_path or util_path or mem_path else ""
+            
+            # 为每个GPU生成唯一的CID名称（仅在成功生成图片后才设置）
+            gpu_cid_name = None
+            if gpu_combo_svg:
+                gpu_cid_name = f'gpu_{gpu_index}_chart'
+                result = svg_to_png_file(gpu_combo_svg, gpu_cid_name, 400, 40, scale=4)
+                if result:
+                    chart_cids.append(result)
+                else:
+                    gpu_cid_name = None  # 生成失败，不设置CID
             
             gpu_interval_data.append({
                 'name': gpu_name,
@@ -975,7 +1119,8 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                 'data_points': len(records),
                 'temp_stroke': temp_stroke,
                 'util_stroke': util_stroke,
-                'mem_stroke': mem_stroke
+                'mem_stroke': mem_stroke,
+                'cid_name': gpu_cid_name  # CID引用名（仅成功时）
             })
     
     # 自动识别面板地址逻辑
@@ -1098,12 +1243,17 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             password = configs.get('smtp_pass')
             use_ssl = configs.get('smtp_encryption') == 'true'
 
-            msg = MIMEMultipart('alternative')
+            # 使用 'related' 类型支持内嵌图片
+            msg = MIMEMultipart('related')
             msg['Subject'] = template_data['subject']
             msg['From'] = f"{sender_name} <{user}>"
             msg['To'] = ", ".join(receivers)
             msg['Date'] = formatdate(localtime=True)
             msg['Message-ID'] = make_msgid()
+            
+            # 创建 alternative 部分存放文本和HTML
+            msg_alternative = MIMEMultipart('alternative')
+            msg.attach(msg_alternative)
 
             # 纯文本版本
             plain_text = f"""{SERVER_NAME} {report_type_label}
@@ -1124,8 +1274,19 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 由 IPMI_WEB v{VERSION} 自动生成
 """
-            msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
-            msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+            msg_alternative.attach(MIMEText(plain_text, 'plain', 'utf-8'))
+            msg_alternative.attach(MIMEText(html_content, 'html', 'utf-8'))
+            
+            # 添加图表图片附件（CID方式）
+            for cid_name, file_path in chart_cids:
+                try:
+                    with open(file_path, 'rb') as f:
+                        img = MIMEImage(f.read())
+                        img.add_header('Content-ID', f'<{cid_name}>')
+                        img.add_header('Content-Disposition', 'inline', filename=f'{cid_name}.png')
+                        msg.attach(img)
+                except Exception as e:
+                    print(f"Failed to attach image {cid_name}: {e}")
 
             if port == 465 or use_ssl:
                 try:
@@ -1147,6 +1308,14 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                     smtp.send_message(msg)
             
             logging.info(f" [SUMMARY_EMAIL] Sent {report_type} report via SMTP")
+            
+            # 清理临时图片文件
+            for _, file_path in chart_cids:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except: pass
+            
             return True, email_details
 
         else:  # MTA 模式
