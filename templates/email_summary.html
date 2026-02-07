@@ -135,7 +135,7 @@
                                                         </linearGradient>
                                                     </defs>
                                                     <path d="M0,40 {{ chart_data.cpu_path }} L400,40 Z" fill="url(#grad_cpu)" />
-                                                    <path d="M0,40 {{ chart_data.cpu_path }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
+                                                    <path d="{{ chart_data.cpu_path }}" fill="none" stroke="#58a6ff" stroke-width="1.5" />
                                                 </svg>
                                             </div>
                                             <!-- 趋势图: GPU占用 (如果有GPU数据) -->
@@ -152,7 +152,7 @@
                                                         </linearGradient>
                                                     </defs>
                                                     <path d="M0,40 {{ chart_data.gpu_path }} L400,40 Z" fill="url(#grad_gpu)" />
-                                                    <path d="M0,40 {{ chart_data.gpu_path }}" fill="none" stroke="#76e3ea" stroke-width="1.5" />
+                                                    <path d="{{ chart_data.gpu_path }}" fill="none" stroke="#76e3ea" stroke-width="1.5" />
                                                 </svg>
                                             </div>
                                             {% endif %}
@@ -169,7 +169,7 @@
                                                         </linearGradient>
                                                     </defs>
                                                     <path d="M0,40 {{ chart_data.mem_path }} L400,40 Z" fill="url(#grad_mem)" />
-                                                    <path d="M0,40 {{ chart_data.mem_path }}" fill="none" stroke="#a371f7" stroke-width="1.5" />
+                                                    <path d="{{ chart_data.mem_path }}" fill="none" stroke="#a371f7" stroke-width="1.5" />
                                                 </svg>
                                             </div>
                                             <!-- 趋势图: 系统功耗 -->
@@ -185,7 +185,7 @@
                                                         </linearGradient>
                                                     </defs>
                                                     <path d="M0,40 {{ chart_data.power_path }} L400,40 Z" fill="url(#grad_power)" />
-                                                    <path d="M0,40 {{ chart_data.power_path }}" fill="none" stroke="#f0883e" stroke-width="1.5" />
+                                                    <path d="{{ chart_data.power_path }}" fill="none" stroke="#f0883e" stroke-width="1.5" />
                                                 </svg>
                                             </div>
                                         </td>

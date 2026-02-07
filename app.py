@@ -821,17 +821,23 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         
         # 归一化到SVG坐标系
         points = []
+        # 使用实际的max_val或数据中的最大值进行动态归一化
+        # 确保normalize_base至少为1，避免除以0
+        actual_max = max(sampled) if sampled else 0
+        normalize_base = max(max_val, actual_max) if max_val > 0 else actual_max
+        normalize_base = max(normalize_base, 1)  # 确保不为0
+        
         for i, val in enumerate(sampled):
             x = (i / (len(sampled) - 1)) * width if len(sampled) > 1 else width / 2
-            # 高度反转，0在底部
-            y = height - (min(val, 100) / 100) * height if max_val > 0 else height / 2
+            # 高度反转，0在底部，使用动态归一化
+            y = height - (val / normalize_base) * height
             points.append((x, y))
         
-        # 生成SVG路径
+        # 生成SVG路径 - 使用 L 开头，方便与模板中的 M0,40 连接形成正确填充区域
         if len(points) == 1:
-            return f"M{points[0][0]},{points[0][1]}"
+            return f"L{points[0][0]},{points[0][1]}"
         
-        path = f"M{points[0][0]},{points[0][1]}"
+        path = f"L{points[0][0]},{points[0][1]}"
         for i in range(1, len(points)):
             path += f" L{points[i][0]},{points[i][1]}"
         return path
