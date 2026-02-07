@@ -807,9 +807,9 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     
     # 生成趋势图数据 (最多1000点，SVG路径格式)
     def generate_svg_path(values, max_val, height=40, width=400):
-        """生成SVG路径数据"""
+        """生成SVG路径数据，返回(stroke_path, fill_path)元组"""
         if not values or len(values) == 0:
-            return ""
+            return "", ""
         
         # 降采样到最多1000点
         target_points = min(1000, len(values))
@@ -817,14 +817,12 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         sampled = values[::step]
         
         if len(sampled) == 0:
-            return ""
+            return "", ""
         
         # 归一化到SVG坐标系
         points = []
-        # 使用实际的max_val或数据中的最大值进行动态归一化
-        # 确保normalize_base至少为1，避免除以0
-        actual_max = max(sampled) if sampled else 0
-        normalize_base = max(max_val, actual_max) if max_val > 0 else actual_max
+        # 使用当前数据集的实际最大值进行归一化，确保曲线充满整个高度
+        normalize_base = max(sampled) if sampled else 0
         normalize_base = max(normalize_base, 1)  # 确保不为0
         
         for i, val in enumerate(sampled):
@@ -833,14 +831,26 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             y = height - (val / normalize_base) * height
             points.append((x, y))
         
-        # 生成SVG路径 - 使用 L 开头，方便与模板中的 M0,40 连接形成正确填充区域
-        if len(points) == 1:
-            return f"L{points[0][0]},{points[0][1]}"
+        if len(points) == 0:
+            return "", ""
         
-        path = f"L{points[0][0]},{points[0][1]}"
+        # 生成描边路径（stroke）: 从第一个数据点开始
+        if len(points) == 1:
+            stroke_path = f"M{points[0][0]},{points[0][1]}"
+        else:
+            stroke_path = f"M{points[0][0]},{points[0][1]}"
+            for i in range(1, len(points)):
+                stroke_path += f" L{points[i][0]},{points[i][1]}"
+        
+        # 生成填充路径（fill）: 从左下角开始，沿左边缘上，沿曲线，沿右边缘下，闭合
+        x0, y0 = points[0]
+        xn, yn = points[-1]
+        fill_path = f"M0,{height} L{x0},{y0}"
         for i in range(1, len(points)):
-            path += f" L{points[i][0]},{points[i][1]}"
-        return path
+            fill_path += f" L{points[i][0]},{points[i][1]}"
+        fill_path += f" L{width},{yn} L{width},{height} Z"
+        
+        return stroke_path, fill_path
     
     # 获取原始数据用于趋势图
     conn = get_db_connection()
@@ -871,17 +881,26 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     gpu_load_max = round(max(gpu_util_values), 1) if gpu_util_values else 0
     
     # 生成SVG路径
+    cpu_stroke, cpu_fill = generate_svg_path(cpu_load_values, cpu_load_max) if cpu_load_values else ("", "")
+    mem_stroke, mem_fill = generate_svg_path(mem_values, mem_max) if mem_values else ("", "")
+    power_stroke, power_fill = generate_svg_path(power_values, power_max) if power_values else ("", "")
+    
     chart_data = {
-        'cpu_path': generate_svg_path(cpu_load_values, cpu_load_max) if cpu_load_values else "",
-        'mem_path': generate_svg_path(mem_values, mem_max) if mem_values else "",
-        'power_path': generate_svg_path(power_values, power_max) if power_values else "",
+        'cpu_stroke': cpu_stroke,
+        'cpu_fill': cpu_fill,
+        'mem_stroke': mem_stroke,
+        'mem_fill': mem_fill,
+        'power_stroke': power_stroke,
+        'power_fill': power_fill,
         'cpu_load_max': cpu_load_max,
         'mem_max': mem_max,
         'power_max': power_max,
     }
     
     if gpu_util_values:
-        chart_data['gpu_path'] = generate_svg_path(gpu_util_values, gpu_load_max)
+        gpu_stroke, gpu_fill = generate_svg_path(gpu_util_values, gpu_load_max)
+        chart_data['gpu_stroke'] = gpu_stroke
+        chart_data['gpu_fill'] = gpu_fill
         chart_data['gpu_load_max'] = gpu_load_max
     
     # 自动识别面板地址逻辑
