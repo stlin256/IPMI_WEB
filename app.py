@@ -3054,7 +3054,8 @@ def api_export_data():
         ("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage FROM metrics_v2 ORDER BY timestamp ASC", "metrics_history.csv"),
         ("SELECT * FROM energy_hourly ORDER BY timestamp ASC", "energy_persistence.csv"),
         ("SELECT * FROM recording_intervals ORDER BY timestamp ASC", "recording_intervals.csv"),
-        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv")
+        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv"),
+        ("SELECT * FROM audit_logs ORDER BY timestamp ASC", "audit_logs.csv")
     ]
 
     memory_file = io.BytesIO()
