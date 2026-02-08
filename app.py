@@ -223,6 +223,8 @@ def init_db():
     c = conn.cursor()
     # [关键优化] 开启 Write-Ahead Logging，允许并发读写，解决卡顿的核心！
     c.execute('PRAGMA journal_mode=WAL;')
+    # [日志体积优化] 开启增量自动清理，配合定时任务回收空间
+    c.execute('PRAGMA auto_vacuum = INCREMENTAL;')
 
     # 1.3.6 迁移逻辑：将 server_name 迁移至数据库
     c.execute("SELECT value FROM config WHERE key='software_version'")
@@ -1539,6 +1541,9 @@ def energy_maintenance_task():
                     conn.commit()
                     write_audit('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天', operator='SYSTEM')
             
+            # [日志体积优化] 定期执行增量空间回收
+            c.execute("PRAGMA incremental_vacuum(50);")
+            
             # 1. 查找 metrics_v2 中最早的数据时间
             c.execute("SELECT MIN(timestamp) FROM metrics_v2")
             min_ts_row = c.fetchone()
@@ -1630,6 +1635,11 @@ def calibration_task():
 
 def background_worker():
     last_db_log_time = 0
+    # [性能优化] 批量插入缓冲区
+    metrics_buffer = []
+    sensor_buffer = []
+    interval_buffer = []
+    
     last_net_io = psutil.net_io_counters()
     last_disk_io = psutil.disk_io_counters()
     last_io_time = time.time()
@@ -1767,26 +1777,63 @@ def background_worker():
                 current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
                 
                 if not is_hw_invalid:
-                    execute_db_async('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                             (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
-                              net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
+                    # [性能优化] 使用缓冲区进行批量插入，减少 IOPS
+                    metrics_buffer.append((int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
+                                          net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
                     
-                    # 压缩并保存传感器全量数据 (zlib)
                     if sensors_list:
                         try:
                             compressed_data = zlib.compress(json.dumps(sensors_list).encode('utf-8'))
-                            execute_db_async("INSERT OR REPLACE INTO sensor_history VALUES (?, ?)", (int(now), compressed_data))
+                            sensor_buffer.append((int(now), compressed_data))
                         except Exception as e:
                             logging.error(f"Sensor Compression Error: {e}")
+
+                # 记录每一个循环的实际延迟到缓冲区
+                current_ts = int(now)
+                last_check = last_audit_check_ts.get('last_check', current_ts)
+                gap_seconds = current_ts - last_check
+                interval_buffer.append((current_ts, gap_seconds))
+
+                # 每 10 秒（或缓冲区达到 10 条）执行一次批量写入
+                if len(metrics_buffer) >= 10:
+                    batch_sqls = []
+                    batch_params = []
+                    
+                    # 批量插入指标
+                    for row_p in metrics_buffer:
+                        batch_sqls.append('INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                        batch_params.append(row_p)
+                    
+                    # 批量插入传感器
+                    for row_s in sensor_buffer:
+                        batch_sqls.append('INSERT OR REPLACE INTO sensor_history VALUES (?, ?)')
+                        batch_params.append(row_s)
+                        
+                    # 批量插入间隔记录
+                    for row_i in interval_buffer:
+                        batch_sqls.append('INSERT INTO recording_intervals VALUES (?, ?)')
+                        batch_params.append(row_i)
+
+                    # 执行批量异步写入
+                    execute_db_async(batch_sqls, batch_params)
+                    
+                    # 清空缓冲区
+                    metrics_buffer = []
+                    sensor_buffer = []
+                    interval_buffer = []
+
+                    # 只有在批量写入时才执行清理动作，减少频率
+                    cutoff = int(now) - (current_retention_days * 86400)
+                    execute_db_async([
+                        "DELETE FROM metrics_v2 WHERE timestamp < ?",
+                        "DELETE FROM sensor_history WHERE timestamp < ?",
+                        "DELETE FROM recording_intervals WHERE timestamp < ?"
+                    ], [
+                        (cutoff,),
+                        (cutoff,),
+                        (int(now) - 86400,)
+                    ])
               
-                # Cleanup old data (遵循动态设置的 current_retention_days)
-                cutoff = int(now) - (current_retention_days * 86400)
-                execute_db_async("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
-                execute_db_async("DELETE FROM sensor_history WHERE timestamp < ?", (cutoff,))
-                
-                # 延迟记录只保留 24 小时
-                execute_db_async("DELETE FROM recording_intervals WHERE timestamp < ?", (int(now) - 86400,))
-                
                 # === 秒级告警规则检测 ===
                 c.execute("SELECT * FROM alert_rules WHERE enabled = 1")
                 rules = c.fetchall()
@@ -1876,8 +1923,6 @@ def background_worker():
                 last_check = last_audit_check_ts.get('last_check', current_ts)
                 gap_seconds = current_ts - last_check
                 
-                # 记录每一个循环的实际延迟到数据库
-                execute_db_async("INSERT INTO recording_intervals VALUES (?, ?)", (current_ts, gap_seconds))
                 last_db_log_time = now
                 
                 # 如果间隔超过 2 分钟（120秒），记录异常间隔日志
@@ -1912,6 +1957,9 @@ gpu_tracking = {
 def gpu_worker():
     global gpu_tracking
     last_db_log_time = 0
+    # [性能优化] 批量插入缓冲区
+    gpu_metrics_buffer = []
+    
     retry_delay = 1
     max_retry_delay = 30
     
@@ -1994,29 +2042,36 @@ def gpu_worker():
                     # 记录历史数据 (1s一次)
                     now = time.time()
                     if now - last_db_log_time >= 1.0:
-                        # 批量执行优化
-                        sqls = []
-                        all_params = []
+                        # [性能优化] 使用缓冲区批量写入 GPU 指标
                         for g in current_gpus:
-                            sqls.append('''INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''')
-                            all_params.append((int(now), g['index'], g['name'], g['temp'], 
+                            gpu_metrics_buffer.append((int(now), g['index'], g['name'], g['temp'], 
                                       g['util_gpu'], g['util_mem'], g['memory_total'], g['memory_used'],
                                       g['power_draw'], g['power_limit'], g['clock_core'], g['clock_mem'], 
                                       g['fan_speed'], g['ecc_errors']))
                         
-                        # 清理旧数据 (动态读取 data_retention_days 配置)
-                        # 注意：需要重新获取数据库连接，因为之前的连接已关闭
-                        cleanup_conn = get_db_connection()
-                        cleanup_c = cleanup_conn.cursor()
-                        cleanup_c.execute("SELECT value FROM config WHERE key='data_retention_days'")
-                        retention_row = cleanup_c.fetchone()
-                        current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
-                        cutoff = int(now) - (current_retention_days * 86400)
-                        sqls.append("DELETE FROM gpu_metrics WHERE timestamp < ?")
-                        all_params.append((cutoff,))
-                        cleanup_conn.close()
-                        
-                        execute_db_async(sqls, all_params)
+                        # 每 10 秒（或缓冲区积累一定量数据）执行一次批量写入
+                        if len(gpu_metrics_buffer) >= (10 * len(current_gpus) if current_gpus else 10):
+                            sqls = []
+                            all_params = []
+                            for row_g in gpu_metrics_buffer:
+                                sqls.append('INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                                all_params.append(row_g)
+                            
+                            # 获取清理时间点
+                            cleanup_conn = get_db_connection()
+                            cleanup_c = cleanup_conn.cursor()
+                            cleanup_c.execute("SELECT value FROM config WHERE key='data_retention_days'")
+                            retention_row = cleanup_c.fetchone()
+                            current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
+                            cutoff = int(now) - (current_retention_days * 86400)
+                            cleanup_conn.close()
+
+                            sqls.append("DELETE FROM gpu_metrics WHERE timestamp < ?")
+                            all_params.append((cutoff,))
+                            
+                            execute_db_async(sqls, all_params)
+                            gpu_metrics_buffer = [] # 清空缓冲区
+                            
                         last_db_log_time = now
                 
                 elapsed = time.time() - start_time
