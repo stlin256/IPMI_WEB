@@ -48,7 +48,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.9'
+VERSION = '1.3.10'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -1708,6 +1708,7 @@ def calibration_task():
         conn.close()
 
 def background_worker():
+    worker_start_time = time.time()
     last_db_log_time = 0
     # [性能优化] 批量插入缓冲区
     metrics_buffer = []
@@ -1950,9 +1951,10 @@ def background_worker():
                     elif op == '<=' and val <= threshold: is_anomaly = True
                     elif op == '==' and val == threshold: is_anomaly = True
                     
-                    state = alert_states.get(rid, {'rule_id': rid, 'start_ts': 0, 'last_notify_ts': 0, 'is_alerting': 0})
+                    state = alert_states.get(rid, {'rule_id': rid, 'start_ts': 0, 'last_notify_ts': 0, 'is_alerting': 0, 'recovery_count': 0})
                     
                     if is_anomaly:
+                        state['recovery_count'] = 0 # 重置恢复计数
                         if state['start_ts'] == 0:
                             state['start_ts'] = int(now)
                         
@@ -1977,13 +1979,22 @@ def background_worker():
                                 # 打印调试信息
                                 print(f"[ALERT] Triggered: {rule['name']} ({val} {rule['operator']} {threshold})")
                     else:
-                        if state['is_alerting'] == 1:
-                            # 告警恢复
-                            write_audit('INFO', 'SYSTEM', 'ALERT_RECOVER', f"告警恢复 [{rule['name']}]: {rule['metric']} 已恢复正常 (当前值 {round(val, 1)})", 
-                                       details={'metric': rule['metric'], 'value': val, 'rule_id': rid},
-                                       operator='SYSTEM')
+                        # 指标正常，增加恢复计数 (防抖)
+                        state['recovery_count'] = state.get('recovery_count', 0) + 1
+                        
+                        # 恢复判定逻辑：
+                        # 1. 处于告警状态
+                        # 2. 连续 5 次检测正常 (约 5 秒)
+                        # 3. 避开系统启动的前 15 秒，防止初始化跳变产生的误报
+                        if state['is_alerting'] == 1 and state['recovery_count'] >= 5:
+                            if now - worker_start_time > 15:
+                                write_audit('INFO', 'SYSTEM', 'ALERT_RECOVER', f"告警恢复 [{rule['name']}]: {rule['metric']} 已恢复正常 (当前值 {round(val, 1)})", 
+                                           details={'metric': rule['metric'], 'value': val, 'rule_id': rid},
+                                           operator='SYSTEM')
+                            state['is_alerting'] = 0
+                        
+                        # 只要当前是正常的，就重置触发开始时间
                         state['start_ts'] = 0
-                        state['is_alerting'] = 0
                     
                     alert_states[rid] = state
                     execute_db_async("INSERT OR REPLACE INTO alert_status (rule_id, start_ts, last_notify_ts, is_alerting) VALUES (?, ?, ?, ?)",
@@ -2025,6 +2036,7 @@ gpu_tracking = {
 
 def gpu_worker():
     global gpu_tracking
+    worker_start_time = time.time()
     last_db_log_time = 0
     # [性能优化] 批量插入缓冲区
     gpu_metrics_buffer = []
