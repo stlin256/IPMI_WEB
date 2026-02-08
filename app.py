@@ -2,6 +2,7 @@ import os
 import json
 import zlib
 import time
+import math
 import sqlite3
 import threading
 import subprocess
@@ -47,7 +48,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.7'
+VERSION = '1.3.8'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -1409,6 +1410,55 @@ def get_pwm_from_rpm_percent(percent):
 def get_realtime_rpm_only():
     dump = get_ipmi_dump()
     return int(parse_ipmi_value(dump, r'Fan1 RPM\s+\|\s+([\d\.]+)\s+'))
+
+def lttb_downsample(data, threshold):
+    """
+    Largest Triangle Three Buckets (LTTB) 降采样算法
+    用于在 2000 个点内保留原始数据的极值特征 (毛刺)
+    :param data: [(timestamp, value), ...] 其中 value 必须是数值
+    """
+    data_len = len(data)
+    if threshold >= data_len or threshold <= 2:
+        return data
+
+    sampled = [data[0]]
+    every = (data_len - 2) / (threshold - 2)
+    a = 0
+    next_a = 0
+
+    for i in range(threshold - 2):
+        avg_x = 0; avg_y = 0
+        avg_range_start = int(math.floor((i + 1) * every) + 1)
+        avg_range_end = int(math.floor((i + 2) * every) + 1)
+        avg_range_end = min(avg_range_end, data_len)
+        
+        avg_range_len = avg_range_end - avg_range_start
+        if avg_range_len > 0:
+            for j in range(avg_range_start, avg_range_end):
+                avg_x += data[j][0]
+                avg_y += data[j][1]
+            avg_x /= avg_range_len
+            avg_y /= avg_range_len
+        else:
+            avg_x = data[avg_range_start][0] if avg_range_start < data_len else 0
+            avg_y = data[avg_range_start][1] if avg_range_start < data_len else 0
+
+        range_offs = int(math.floor(i * every) + 1)
+        range_to = int(math.floor((i + 1) * every) + 1)
+        point_a_x, point_a_y = data[a]
+        max_area = -1
+
+        for j in range(range_offs, range_to):
+            area = abs((point_a_x - avg_x) * (data[j][1] - point_a_y) - (point_a_x - data[j][0]) * (avg_y - point_a_y)) * 0.5
+            if area > max_area:
+                max_area = area
+                next_a = j
+        
+        sampled.append(data[next_a])
+        a = next_a
+
+    sampled.append(data[-1])
+    return sampled
 
 # --- 任务线程 ---
 def calculate_energy_consumption(start_ts, end_ts):
@@ -3630,6 +3680,72 @@ def api_history_gpu():
         'mem_used': [d[5] for d in final_data],
         'power': [d[6] for d in final_data]
     })
+
+@app.route('/api/sensor_history_detail')
+@login_required
+def api_sensor_history_detail():
+    name = request.args.get('name')
+    hours = int(request.args.get('hours', 24))
+    if not name: return jsonify({'error': 'Missing name'}), 400
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    cutoff = int(time.time() - (hours * 3600))
+    c.execute("SELECT timestamp, data FROM sensor_history WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows: return jsonify({'times': [], 'values': [], 'is_numeric': True})
+
+    raw_series = []
+    unit = ""
+    
+    # 第一次尝试解析以判断数据类型
+    for r in rows:
+        ts = r['timestamp']
+        try:
+            sensors = json.loads(zlib.decompress(r['data']))
+            target = next((s for s in sensors if s['name'] == name), None)
+            if target:
+                val_raw = target['value']
+                unit = target['unit']
+                raw_series.append((ts, val_raw))
+        except: continue
+
+    if not raw_series: return jsonify({'times': [], 'values': [], 'unit': unit})
+
+    # 判断是否为数值型
+    def to_float(v):
+        try: return float(v)
+        except:
+            if v.startswith('0x'):
+                try: return int(v, 16)
+                except: pass
+            return None
+
+    is_numeric = all(to_float(s[1]) is not None for s in raw_series)
+    
+    if is_numeric:
+        # 数值型：应用 LTTB 降采样
+        data_for_lttb = [(s[0], to_float(s[1])) for s in raw_series]
+        downsampled = lttb_downsample(data_for_lttb, 2000)
+        return jsonify({
+            'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M:%S') for d in downsampled],
+            'values': [d[1] for d in downsampled],
+            'is_numeric': True,
+            'unit': unit
+        })
+    else:
+        # 离散/文本型：简单步进降采样 (LTTB 不适用于文本)
+        # 注意：为了保留刺，离散型采样稍微密集一点，或者取变化点
+        step = max(1, len(raw_series) // 2000)
+        sampled = raw_series[::step]
+        return jsonify({
+            'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M:%S') for d in sampled],
+            'values': [d[1] for d in sampled],
+            'is_numeric': False,
+            'unit': unit
+        })
 
 @app.route('/api/recording_stats')
 @login_required

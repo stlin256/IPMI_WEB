@@ -38,6 +38,22 @@
         .table-striped>tbody>tr:nth-of-type(odd)>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.03) !important; color: var(--text-main) !important; }
         .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.06) !important; color: #fff !important; }
         .scroll-container { max-height: 550px; overflow-y: auto; scrollbar-width: thin; }
+
+        /* 传感器名称点击样式 */
+        .sensor-name-link { color: var(--text-main); cursor: pointer; text-decoration: none; border-bottom: none; transition: all 0.2s; }
+        .sensor-name-link:hover { color: #1f6feb !important; }
+
+        /* 全宽 Modal 适配与美化 */
+        @media (min-width: 992px) {
+            .modal-xl-custom { max-width: 96vw; }
+        }
+        .modal-content-dark { 
+            background-color: #161b22; 
+            border: 1px solid #444c56; 
+            box-shadow: 0 0 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+        }
+        .modal-header-tint { background-color: rgba(255,255,255,0.03); }
+        .modal-backdrop.show { backdrop-filter: blur(8px); opacity: 0.7; }
         
         /* 标签美化 */
         .btn-check-custom + .btn { 
@@ -309,6 +325,31 @@
     </div>
 </div>
 
+<!-- 传感器详细历史 Modal -->
+<div class="modal fade" id="sensorDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-xl-custom modal-dialog-centered">
+        <div class="modal-content modal-content-dark shadow-lg">
+            <div class="modal-header modal-header-tint border-bottom border-secondary py-2">
+                <h5 class="modal-title fs-6 fw-bold text-primary">
+                    <i class="fas fa-chart-line me-2"></i><span id="modal-sensor-name">Sensor Trend</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div class="btn-group btn-group-sm shadow-sm" id="sensor-hist-range-container">
+                        <!-- 动态生成时间切换按钮 -->
+                    </div>
+                </div>
+                <div style="height: 60vh; position: relative;">
+                    <div id="sensor-chart-loader" class="chart-overlay skeleton-sweep" style="display: none; border-radius: 8px;"></div>
+                    <canvas id="sensorDetailChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast 容器 -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
     <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
@@ -545,8 +586,10 @@
             const tbody = document.getElementById('sensor-list');
             const html = d.sensors.map(s => {
                 const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
+                // 仅对非 na 值且有名称的项开启点击
+                const nameDisplay = `<span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span>`;
                 return `<tr>
-                    <td class="text-muted small">${s.source}</td><td class="fw-bold text-light">${s.name}</td>
+                    <td class="text-muted small">${s.source}</td><td>${nameDisplay}</td>
                     <td class="text-end font-monospace text-info">${s.value} <span class="text-muted small">${s.unit}</span></td>
                     <td class="text-center hide-mobile"><i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span></td>
                 </tr>`;
@@ -789,6 +832,127 @@
             const dot = document.getElementById('log-dot');
             if (d.unread) dot.classList.remove('d-none');
             else dot.classList.add('d-none');
+        });
+    }
+
+    // --- 传感器详情图表逻辑 ---
+    let sensorDetailChart = null;
+    let currentActiveSensor = null;
+    const detailModal = new bootstrap.Modal(document.getElementById('sensorDetailModal'));
+
+    async function showSensorDetail(name) {
+        currentActiveSensor = name;
+        document.getElementById('modal-sensor-name').innerText = name;
+        
+        // 1. 初始化按钮组 (遵循 hist 设置，并匹配 hist 页面样式)
+        const settingsRes = await fetch('/api/settings');
+        const settings = await settingsRes.json();
+        const container = document.getElementById('sensor-hist-range-container');
+        
+        const hoursList = settings.dashboard_hours_hist || [1, 24, 168];
+        container.innerHTML = hoursList.map((h, i) => {
+            const label = h >= 24 ? (h/24).toFixed(0) + 'D' : h + 'H';
+            return `
+                <input type="radio" class="btn-check" name="sensorRange" id="sr${h}" value="${h}" ${h==24?'checked':''}>
+                <label class="btn btn-outline-secondary px-3" for="sr${h}">${label}</label>
+            `;
+        }).join('');
+
+        // 2. 绑定事件
+        document.querySelectorAll('input[name="sensorRange"]').forEach(el => {
+            el.onchange = () => loadSensorHistory(name, el.value);
+        });
+
+        detailModal.show();
+        loadSensorHistory(name, 24);
+    }
+
+    async function loadSensorHistory(name, hours) {
+        const loader = document.getElementById('sensor-chart-loader');
+        loader.style.display = 'block';
+
+        try {
+            const res = await fetch(`/api/sensor_history_detail?name=${encodeURIComponent(name)}&hours=${hours}`);
+            const data = await res.json();
+            renderSensorChart(data);
+        } catch (e) {
+            console.error("Failed to load sensor history", e);
+        } finally {
+            loader.style.display = 'none';
+        }
+    }
+
+    function renderSensorChart(data) {
+        const ctx = document.getElementById('sensorDetailChart').getContext('2d');
+        if (sensorDetailChart) sensorDetailChart.destroy();
+
+        const isNumeric = data.is_numeric;
+
+        // 离散值映射逻辑
+        let finalValues = data.values;
+        let yLabels = null;
+
+        if (!isNumeric) {
+            const uniqueStates = [...new Set(data.values)].sort();
+            yLabels = uniqueStates;
+            finalValues = data.values.map(v => uniqueStates.indexOf(v));
+        }
+
+        const themeColor = '#3fb950'; // 翡翠绿
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(63, 185, 80, 0.3)');
+        gradient.addColorStop(1, 'rgba(63, 185, 80, 0)');
+
+        sensorDetailChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.times,
+                datasets: [{
+                    label: data.unit || 'Value',
+                    data: finalValues,
+                    borderColor: themeColor,
+                    backgroundColor: gradient,
+                    fill: isNumeric,
+                    stepped: !isNumeric,
+                    borderWidth: 2,
+                    pointRadius: data.times.length > 500 ? 0 : 2,
+                    tension: isNumeric ? 0.3 : 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                let val = context.parsed.y;
+                                if (!isNumeric && yLabels) val = yLabels[val];
+                                return `Value: ${val} ${data.unit || ''}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { 
+                        grid: { color: '#30363d' }, 
+                        ticks: { color: '#8b949e', maxTicksLimit: 10 } 
+                    },
+                    y: { 
+                        grid: { color: '#30363d' }, 
+                        ticks: { 
+                            color: '#8b949e',
+                            stepSize: isNumeric ? undefined : 1,
+                            callback: function(value) {
+                                if (!isNumeric && yLabels) return yLabels[value];
+                                return value;
+                            }
+                        } 
+                    }
+                }
+            }
         });
     }
 
