@@ -1,5 +1,6 @@
 import os
 import json
+import zlib
 import time
 import sqlite3
 import threading
@@ -255,6 +256,10 @@ def init_db():
                   power REAL, power_limit REAL, clock_core INTEGER, clock_mem INTEGER, 
                   fan INTEGER, ecc INTEGER)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_gpu_metrics_ts ON gpu_metrics(timestamp)')
+
+    # 新增传感器全量历史表 (压缩存储)
+    c.execute('''CREATE TABLE IF NOT EXISTS sensor_history
+                 (timestamp INTEGER PRIMARY KEY, data BLOB)''')
 
     # 防爆破表：记录 IP + User-Agent 组合尝试失败情况
     c.execute('''CREATE TABLE IF NOT EXISTS login_attempts
@@ -1715,10 +1720,19 @@ def background_worker():
                     execute_db_async('''INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
                              (int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
                               net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
+                    
+                    # 压缩并保存传感器全量数据 (zlib)
+                    if sensors_list:
+                        try:
+                            compressed_data = zlib.compress(json.dumps(sensors_list).encode('utf-8'))
+                            execute_db_async("INSERT OR REPLACE INTO sensor_history VALUES (?, ?)", (int(now), compressed_data))
+                        except Exception as e:
+                            logging.error(f"Sensor Compression Error: {e}")
               
                 # Cleanup old data (遵循动态设置的 current_retention_days)
                 cutoff = int(now) - (current_retention_days * 86400)
                 execute_db_async("DELETE FROM metrics_v2 WHERE timestamp < ?", (cutoff,))
+                execute_db_async("DELETE FROM sensor_history WHERE timestamp < ?", (cutoff,))
                 
                 # 延迟记录只保留 24 小时
                 execute_db_async("DELETE FROM recording_intervals WHERE timestamp < ?", (int(now) - 86400,))
@@ -3009,6 +3023,33 @@ def api_export_data():
         finally:
             local_conn.close()
 
+    def export_sensors_task():
+        """专门处理传感器历史数据的解压与导出任务"""
+        local_conn = get_db_connection()
+        try:
+            cur = local_conn.cursor()
+            cur.execute("SELECT timestamp, data FROM sensor_history ORDER BY timestamp ASC")
+            rows = cur.fetchall()
+            if not rows: return None, None
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['timestamp', 'sensors_json'])
+            
+            for row in rows:
+                ts = row['timestamp']
+                compressed_blob = row['data']
+                try:
+                    raw_json = zlib.decompress(compressed_blob).decode('utf-8')
+                    writer.writerow([ts, raw_json])
+                except Exception as e:
+                    logging.error(f"Sensor Export Decompression Error at {ts}: {e}")
+                    writer.writerow([ts, "DECOMPRESSION_ERROR"])
+            
+            return "sensors_history.csv", output.getvalue()
+        finally:
+            local_conn.close()
+
     tasks = [
         ("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage FROM metrics_v2 ORDER BY timestamp ASC", "metrics_history.csv"),
         ("SELECT * FROM energy_hourly ORDER BY timestamp ASC", "energy_persistence.csv"),
@@ -3019,9 +3060,13 @@ def api_export_data():
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_STORED) as zf:
         # 并行执行查询和格式化
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_file = {executor.submit(export_table_task, sql, fname): fname for sql, fname in tasks}
-            for future in concurrent.futures.as_completed(future_to_file):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # 提交常规任务
+            futures = {executor.submit(export_table_task, sql, fname): fname for sql, fname in tasks}
+            # 提交特殊的传感器导出任务
+            futures[executor.submit(export_sensors_task)] = "sensors_history.csv"
+            
+            for future in concurrent.futures.as_completed(futures):
                 filename, csv_data = future.result()
                 if filename and csv_data:
                     zf.writestr(filename, csv_data)
