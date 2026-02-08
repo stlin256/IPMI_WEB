@@ -548,7 +548,7 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
     """发送系统通知邮件 (支持 MTA 和 SMTP)"""
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT key, value FROM config WHERE key LIKE 'email_%' OR key LIKE 'smtp_%'")
+    c.execute("SELECT key, value FROM config WHERE key LIKE 'email_%' OR key LIKE 'smtp_%' OR key = 'last_access_domain'")
     configs = {row['key']: row['value'] for row in c.fetchall()}
     conn.close()
 
@@ -567,6 +567,14 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
     sender_name = configs.get('email_sender_name', f'System@{SERVER_NAME}.local')
 
     try:
+        # 自动识别面板地址逻辑
+        # 优先从数据库读取 last_access_domain
+        base_domain = configs.get('last_access_domain')
+        if not base_domain:
+            # 如果数据库没有，尝试从当前请求头获取 (仅当处于请求上下文中)
+            try: base_domain = request.url_root.rstrip('/')
+            except: base_domain = 'http://localhost:5000'
+
         # 渲染 HTML 模板
         html_content = render_template('email_alert.html',
                                        subject=subject,
@@ -577,7 +585,7 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
                                        version=VERSION,
                                        message=message,
                                        theme_color=theme_color,
-                                       panel_url=request.url_root)
+                                       panel_url=base_domain)
 
         if mode == 'smtp':
             server = configs.get('smtp_server')
