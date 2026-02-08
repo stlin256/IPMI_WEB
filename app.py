@@ -1721,9 +1721,9 @@ def background_worker():
     # 记录上一次有效的 IPMI 数据用于容错
     last_valid_hw = {'power': 0, 'fan_rpm': 0, 'timestamp': 0}
     
-    # 异常间隔检测：记录上次审计日志时间戳
+    # 异常间隔检测：记录上次审计日志时间戳 (使用浮点数以保证精确计算延迟)
     global last_audit_check_ts
-    last_audit_check_ts['last_check'] = int(time.time())
+    last_audit_check_ts['last_check_f'] = time.time()
 
     # 加载告警状态缓存
     try:
@@ -1856,11 +1856,14 @@ def background_worker():
                         except Exception as e:
                             logging.error(f"Sensor Compression Error: {e}")
 
-                # 记录每一个循环的实际延迟到缓冲区
-                current_ts = int(now)
-                last_check = last_audit_check_ts.get('last_check', current_ts)
-                gap_seconds = current_ts - last_check
-                interval_buffer.append((current_ts, gap_seconds))
+                # 记录每一个循环的实际延迟到缓冲区 (使用浮点数记录精确差值)
+                current_now = now
+                last_check_f = last_audit_check_ts.get('last_check_f', current_now)
+                gap_seconds_f = current_now - last_check_f
+                interval_buffer.append((int(current_now), round(gap_seconds_f, 3)))
+                
+                # 更新最后检查时间戳
+                last_audit_check_ts['last_check_f'] = current_now
 
                 # 每 10 秒（或缓冲区达到 10 条）执行一次批量写入
                 if len(metrics_buffer) >= 10:
@@ -1994,15 +1997,12 @@ def background_worker():
                 last_db_log_time = now
                 
                 # 如果间隔超过 2 分钟（120秒），记录异常间隔日志
-                if gap_seconds > 120:
+                if gap_seconds_f > 120:
                     # 写入异常间隔日志（级别为 WARN，触发小红点刷新）
-                    write_audit('WARN', 'SYSTEM', 'DATA_GAP', f'检测到 {gap_seconds} 秒无数据采集区间', 
-                               details={'gap_seconds': gap_seconds, 'last_check': last_check, 'current': current_ts},
+                    write_audit('WARN', 'SYSTEM', 'DATA_GAP', f'检测到 {round(gap_seconds_f, 1)} 秒无数据采集区间', 
+                               details={'gap_seconds': gap_seconds_f, 'last_check': last_check_f, 'current': current_now},
                                operator='SYSTEM')
-                    print(f"[DATA_GAP] Detected gap of {gap_seconds} seconds (last_check: {last_check}, current: {current_ts})")
-                
-                # 更新最后检查时间戳
-                last_audit_check_ts['last_check'] = current_ts
+                    logging.warning(f"[DATA_GAP] Detected gap of {round(gap_seconds_f, 3)} seconds")
           
             # [关键修复] 显式关闭连接
             conn.close()
@@ -3884,21 +3884,22 @@ def api_recording_stats():
     
     if not data: return jsonify([])
     
-    # 为了前端性能，如果点数过多则进行最大值降采样（保留毛刺）
+    # 为了前端性能，如果点数过多则进行降采样（保留浮点精度）
     target_points = 500 
     if len(data) > target_points:
-        step = len(data) / target_points # 使用浮点步长确保更均匀的分布
+        step = len(data) / target_points 
         sampled = []
         for i in range(target_points):
             idx_start = int(i * step)
             idx_end = int((i + 1) * step)
             chunk = data[idx_start:idx_end]
             if chunk:
-                max_val = max([x[1] for x in chunk])
-                sampled.append({'t': data[idx_end-1][0], 'v': max_val})
+                # 使用最大值降采样以突出异常延迟，但保留 3 位小数精度
+                max_val = max([float(x[1]) for x in chunk])
+                sampled.append({'t': data[idx_end-1][0], 'v': round(max_val, 3)})
         return jsonify(sampled)
     
-    return jsonify([{'t': x[0], 'v': x[1]} for x in data])
+    return jsonify([{'t': x[0], 'v': round(float(x[1]), 3)} for x in data])
 
 # --- 定时报告调度器 ---
 def summary_scheduler_task():

@@ -2274,14 +2274,14 @@ n        /* 标签样式 */
             const minVal = Math.min(...values);
             const avgVal = values.reduce((a, b) => a + b, 0) / values.length;
             
-            // 更新标注
-            maxMarker.innerText = `MAX: ${maxVal.toFixed(1)}s`;
+            // 更新标注 (提升至 2 位小数精度)
+            maxMarker.innerText = `MAX: ${maxVal.toFixed(2)}s`;
             maxMarker.style.color = getColor(maxVal);
             
-            avgMarker.innerText = `AVG: ${avgVal.toFixed(1)}s`;
+            avgMarker.innerText = `AVG: ${avgVal.toFixed(2)}s`;
             avgMarker.style.color = getColor(avgVal);
             
-            minMarker.innerText = `MIN: ${minVal.toFixed(1)}s`;
+            minMarker.innerText = `MIN: ${minVal.toFixed(2)}s`;
             minMarker.style.color = getColor(minVal);
 
             // 高清 Canvas 处理
@@ -2348,7 +2348,7 @@ n        /* 标签样式 */
 
             if (index >= 0 && index < chartData.length) {
                 const item = chartData[index];
-                const val = typeof item === 'object' ? item.v : item;
+                const val = typeof item === 'object' ? parseFloat(item.v) : parseFloat(item);
                 const ts = typeof item === 'object' ? item.t : null;
                 
                 const getColor = (v) => {
@@ -2367,7 +2367,7 @@ n        /* 标签样式 */
                     timeStr = targetTime.toLocaleTimeString('zh-CN', { hour12: false });
                 }
 
-                chartTooltip.innerHTML = `${timeStr} &bull; ${val.toFixed(2)}s`;
+                chartTooltip.innerHTML = `${timeStr} &bull; ${val.toFixed(3)}s`;
                 chartTooltip.style.color = getColor(val);
 
                 // 边界检测：确保 tooltip 不超出屏幕
