@@ -212,6 +212,17 @@ rpm_map = {}
 max_rpm = 0
 min_rpm = 0
 
+# 全局变量：存放全速异步采集的硬件数据
+latest_hw_data = {
+    'ipmi_dump': '',
+    'cpu_temp': 0,
+    'power': 0,
+    'fan_rpm': 0,
+    'sensors_list': [],
+    'last_update': 0
+}
+hw_data_lock = threading.Lock()
+
 # --- 数据库 (关键优化：开启WAL模式) ---
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=10) # 增加超时容错
@@ -1356,8 +1367,71 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         return False, f"发送失败: {str(e)}"
 
 def get_ipmi_dump():
+    # 优先从异步采集的缓存中读取，如果不满 10 秒则视为有效，减少物理调用
+    with hw_data_lock:
+        if time.time() - latest_hw_data['last_update'] < 10:
+            return latest_hw_data['ipmi_dump']
+    
+    # 只有缓存失效才手动触发同步读取 (兜底逻辑)
     try: return subprocess.check_output(['ipmitool', 'sensor'], encoding='utf-8', timeout=3)
     except: return ""
+
+def hardware_fetcher():
+    """全速异步硬件数据采集线程"""
+    global latest_hw_data
+    logging.info("[SYSTEM] Hardware Fetcher thread started (High Speed Mode).")
+    
+    while True:
+        try:
+            t0 = time.time()
+            # 1. 采集 IPMI 数据 (耗时操作)
+            ipmi_dump = subprocess.check_output(['ipmitool', 'sensor'], encoding='utf-8', timeout=4)
+            t1 = time.time()
+            
+            # 2. 采集 CPU 温度 (耗时操作)
+            cpu_temp = get_max_cpu_temp()
+            if cpu_temp == 0: 
+                cpu_temp = parse_ipmi_value(ipmi_dump, r'Temp\s+\|\s+([\d\.]+)\s+\|')
+            
+            # 3. 解析常用关键值
+            power = int(parse_ipmi_value(ipmi_dump, r'Pwr Consumption\s+\|\s+([\d\.]+)\s+'))
+            fan_rpm = int(parse_ipmi_value(ipmi_dump, r'Fan1 RPM\s+\|\s+([\d\.]+)\s+'))
+            
+            # 4. 解析全量传感器列表
+            sensors_list = []
+            for line in ipmi_dump.splitlines():
+                parts = line.split('|')
+                if len(parts) >= 4:
+                    val = parts[1].strip(); st = parts[3].strip()
+                    if val == 'na' or st == 'na': continue
+                    sensors_list.append({
+                        'source': 'IPMI', 
+                        'name': parts[0].strip(), 
+                        'value': val, 
+                        'unit': parts[2].strip(), 
+                        'status': st
+                    })
+            
+            # 5. 原子级更新全局变量
+            with hw_data_lock:
+                latest_hw_data.update({
+                    'ipmi_dump': ipmi_dump,
+                    'cpu_temp': cpu_temp,
+                    'power': power,
+                    'fan_rpm': fan_rpm,
+                    'sensors_list': sensors_list,
+                    'last_update': time.time()
+                })
+            
+            t_total = time.time() - t0
+            logging.info(f"[*] HW_FETCHER: IPMI_cmd={round(t1-t0, 2)}s | CPU_temp={round(time.time()-t1, 2)}s | Total={round(t_total, 2)}s")
+            
+            # 全速采集模式下，给 BMC 一点喘息时间 (0.2s)，防止 BMC 挂死
+            time.sleep(0.2)
+            
+        except Exception as e:
+            logging.error(f"Hardware Fetcher Error: {e}")
+            time.sleep(2) # 发生错误时降低频率
 
 def get_log_unread_status():
     try:
@@ -1664,35 +1738,39 @@ def background_worker():
     while True:
         try:
             start_time = time.time()
+            t_loop_start = start_time
           
             if sys_cache['calibration']['active']:
                 time.sleep(1)
                 continue
 
-            # HW Data
-            ipmi_dump = get_ipmi_dump()
-            cpu_temp = get_max_cpu_temp()
-            if cpu_temp == 0: cpu_temp = parse_ipmi_value(ipmi_dump, r'Temp\s+\|\s+([\d\.]+)\s+\|')
-            power = int(parse_ipmi_value(ipmi_dump, r'Pwr Consumption\s+\|\s+([\d\.]+)\s+'))
-            fan_rpm = int(parse_ipmi_value(ipmi_dump, r'Fan1 RPM\s+\|\s+([\d\.]+)\s+'))
+            # HW Data [性能重构] 从异步采集缓冲区直接获取，消除 3s 延迟
+            with hw_data_lock:
+                ipmi_dump = latest_hw_data['ipmi_dump']
+                cpu_temp = latest_hw_data['cpu_temp']
+                power = latest_hw_data['power']
+                fan_rpm = latest_hw_data['fan_rpm']
+                sensors_list = latest_hw_data['sensors_list']
+                hw_age = time.time() - latest_hw_data['last_update']
             
             now = time.time()
             is_hw_invalid = False
             
-            # IPMI 容错逻辑：如果 power 或 fan 为 0，尝试使用 20s 内的前一个点，否则标记无效
-            if power == 0 or fan_rpm == 0:
+            # IPMI 容错逻辑：如果数据由于某种原因（比如 BMC 抽风）为 0 或 超过 20 秒未更新
+            if power == 0 or fan_rpm == 0 or hw_age > 20:
                 if now - last_valid_hw['timestamp'] < 20 and last_valid_hw['timestamp'] > 0:
                     # 使用前一个有效值补偿
-                    if power == 0: power = last_valid_hw['power']
-                    if fan_rpm == 0: fan_rpm = last_valid_hw['fan_rpm']
+                    if power == 0 or hw_age > 20: power = last_valid_hw['power']
+                    if fan_rpm == 0 or hw_age > 20: fan_rpm = last_valid_hw['fan_rpm']
+                    if cpu_temp == 0 or hw_age > 20: cpu_temp = last_valid_hw.get('cpu_temp', 40)
                 else:
                     # 超过 20s 或无历史数据，舍弃该时间点
                     is_hw_invalid = True
             else:
                 # 数据有效，更新历史记录
-                last_valid_hw = {'power': power, 'fan_rpm': fan_rpm, 'timestamp': now}
+                last_valid_hw = {'power': power, 'fan_rpm': fan_rpm, 'cpu_temp': cpu_temp, 'timestamp': now}
 
-            # Res Data
+            # Res Data (毫秒级)
             cpu_u = psutil.cpu_percent(interval=None)
             mem = psutil.virtual_memory()
             curr_net = psutil.net_io_counters()
@@ -1707,16 +1785,6 @@ def background_worker():
             disk_w = (curr_disk.write_bytes - last_disk_io.write_bytes) / dt
           
             last_net_io = curr_net; last_disk_io = curr_disk; last_io_time = now
-
-            # Sensors List
-            sensors_list = []
-            if ipmi_dump:
-                for line in ipmi_dump.splitlines():
-                    parts = line.split('|')
-                    if len(parts) >= 4:
-                        val = parts[1].strip(); st = parts[3].strip()
-                        if val == 'na' or st == 'na': continue
-                        sensors_list.append({'source': 'IPMI', 'name': parts[0].strip(), 'value': val, 'unit': parts[2].strip(), 'status': st})
 
             # Control
             conn = get_db_connection()
@@ -1940,6 +2008,7 @@ def background_worker():
             conn.close()
           
             elapsed = time.time() - start_time
+            logging.info(f"[!] METRIC_LOOP: Total={round(elapsed, 3)}s | Wait={round(max(0.1, 1.0 - elapsed), 3)}s")
             time.sleep(max(0.1, 1.0 - elapsed))
 
         except Exception as e:
@@ -4031,6 +4100,7 @@ if __name__ == '__main__':
             if _threads_started:
                 return
             logging.info("[SYSTEM] Initializing background threads...")
+            threading.Thread(target=hardware_fetcher, daemon=True, name="HardwareFetcher").start()
             threading.Thread(target=background_worker, daemon=True, name="BackgroundWorker").start()
             threading.Thread(target=gpu_worker, daemon=True, name="GPUWorker").start()
             threading.Thread(target=energy_maintenance_task, daemon=True, name="EnergyTask").start()
