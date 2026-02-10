@@ -48,7 +48,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.10'
+VERSION = '1.3.11'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -1969,7 +1969,8 @@ def background_worker():
                         duration_met = (int(now) - state['start_ts']) >= rule['duration']
                         if duration_met:
                             # 达到触发条件
-                            can_notify = (int(now) - state['last_notify_ts']) >= rule['notify_interval']
+                            # [修复] 只有在已经处于告警状态时才检查间隔；若是新触发(is_alerting=0)则立刻报警
+                            can_notify = (state['is_alerting'] == 0) or ((int(now) - state['last_notify_ts']) >= rule['notify_interval'])
                             if can_notify:
                                 # 健壮性获取级别
                                 r_level = 'WARN'
@@ -3835,26 +3836,50 @@ def api_sensor_history_detail():
     conn = get_db_connection()
     c = conn.cursor()
     cutoff = int(time.time() - (hours * 3600))
+    
+    # [性能优化] 先统计总行数，计算步长进行跳步解压
+    c.execute("SELECT COUNT(*) FROM sensor_history WHERE timestamp > ?", (cutoff,))
+    total_count = c.fetchone()[0]
+    
+    if total_count == 0:
+        conn.close()
+        return jsonify({'times': [], 'values': [], 'is_numeric': True})
+
+    # 目标点数 2000 点
+    target_points = 2000
+    step = max(1, total_count // target_points)
+    
+    # 使用迭代器逐行处理，避免一次性载入大数据量到内存
     c.execute("SELECT timestamp, data FROM sensor_history WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
-    rows = c.fetchall()
-    conn.close()
-
-    if not rows: return jsonify({'times': [], 'values': [], 'is_numeric': True})
-
+    
     raw_series = []
     unit = ""
+    count = 0
     
-    # 第一次尝试解析以判断数据类型
-    for r in rows:
-        ts = r['timestamp']
-        try:
-            sensors = json.loads(zlib.decompress(r['data']))
-            target = next((s for s in sensors if s['name'] == name), None)
-            if target:
-                val_raw = target['value']
-                unit = target['unit']
-                raw_series.append((ts, val_raw))
-        except: continue
+    while True:
+        row = c.fetchone()
+        if not row: break
+        
+        # 跳步逻辑：每 step 行处理一次
+        if count % step == 0:
+            ts = row['timestamp']
+            try:
+                sensors = json.loads(zlib.decompress(row['data']))
+                target = next((s for s in sensors if s['name'] == name), None)
+                if target:
+                    val_raw = target['value']
+                    unit = target['unit']
+                    raw_series.append((ts, val_raw))
+            except: pass
+        
+        count += 1
+        # 防止结果集溢出目标点数太多 (由于 step 是向下取整)
+        if len(raw_series) >= target_points + 100:
+            break
+
+    conn.close()
+
+    if not raw_series: return jsonify({'times': [], 'values': [], 'unit': unit})
 
     if not raw_series: return jsonify({'times': [], 'values': [], 'unit': unit})
 

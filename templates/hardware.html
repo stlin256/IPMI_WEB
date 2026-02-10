@@ -582,19 +582,49 @@
                 }
             }
 
-            // 传感器列表渲染
+            // 传感器列表渲染 (性能优化：增量更新 DOM，避免全量替换导致的卡顿)
             const tbody = document.getElementById('sensor-list');
-            const html = d.sensors.map(s => {
+            const seenNames = new Set();
+
+            d.sensors.forEach(s => {
+                seenNames.add(s.name);
+                // 使用名称的 Base64 编码作为 ID，避免特殊字符和空格引起的问题
+                const safeId = "snr-" + btoa(encodeURIComponent(s.name)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+                let row = document.getElementById(safeId);
+                
                 const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
-                // 仅对非 na 值且有名称的项开启点击
-                const nameDisplay = `<span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span>`;
-                return `<tr>
-                    <td class="text-muted small">${s.source}</td><td>${nameDisplay}</td>
-                    <td class="text-end font-monospace text-info">${s.value} <span class="text-muted small">${s.unit}</span></td>
-                    <td class="text-center hide-mobile"><i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span></td>
-                </tr>`;
-            }).join('');
-            if (tbody.innerHTML !== html) tbody.innerHTML = html;
+                const valueHtml = `${s.value} <span class="text-muted small">${s.unit}</span>`;
+                const statusHtml = `<i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span>`;
+
+                if (!row) {
+                    // 创建新行
+                    const tr = document.createElement('tr');
+                    tr.id = safeId;
+                    tr.setAttribute('data-name', s.name);
+                    tr.innerHTML = `
+                        <td class="text-muted small">${s.source}</td>
+                        <td><span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span></td>
+                        <td class="text-end font-monospace text-info sensor-value-cell">${valueHtml}</td>
+                        <td class="text-center hide-mobile sensor-status-cell">${statusHtml}</td>
+                    `;
+                    tbody.appendChild(tr);
+                } else {
+                    // 更新现有行 (仅当内容变化时操作 DOM)
+                    const valCell = row.querySelector('.sensor-value-cell');
+                    const stCell = row.querySelector('.sensor-status-cell');
+                    if (valCell && valCell.innerHTML !== valueHtml) valCell.innerHTML = valueHtml;
+                    if (stCell && stCell.innerHTML !== statusHtml) stCell.innerHTML = statusHtml;
+                }
+            });
+
+            // 移除不再存在的传感器
+            Array.from(tbody.rows).forEach(row => {
+                const name = row.getAttribute('data-name');
+                if (name && !seenNames.has(name)) {
+                    row.remove();
+                }
+            });
+
             document.getElementById('sensor-count').innerText = d.sensors.length;
         }).catch(e => console.log('Fetch error:', e));
     }
