@@ -161,9 +161,9 @@
             <div class="d-flex align-items-center">
                 <span class="fw-bold me-3"><i class="fas fa-history me-2"></i>Trends</span>
                 <div class="btn-group btn-group-sm" id="tr-container">
-                    <input type="radio" class="btn-check" name="histRange" id="hr1" value="1" onchange="loadHistory()">
+                    <input type="radio" class="btn-check" name="histRange" id="hr1" value="1" onchange="saveHistRangePrefs(); loadHistory()">
                     <label class="btn btn-outline-secondary px-3" for="hr1">1H</label>
-                    <input type="radio" class="btn-check" name="histRange" id="hr24" value="24" checked onchange="loadHistory()">
+                    <input type="radio" class="btn-check" name="histRange" id="hr24" value="24" checked onchange="saveHistRangePrefs(); loadHistory()">
                     <label class="btn btn-outline-secondary px-3" for="hr24">24H</label>
                 </div>
             </div>
@@ -430,6 +430,7 @@
 
         // 初始化加载顺序
         loadPrefs();
+        loadHistRangePrefs();
         loadInitialConfig(); 
         refreshData(); 
         loadHistory(false); 
@@ -822,21 +823,59 @@
     }
 
     // --- 动态看板选项处理 ---
+    function saveHistRangePrefs() {
+        const hoursEl = document.querySelector('input[name="histRange"]:checked');
+        if (hoursEl) {
+            localStorage.setItem('hw_hist_time_range', hoursEl.value);
+        }
+    }
+
+    function loadHistRangePrefs(defaultHours = 24) {
+        const savedHours = localStorage.getItem('hw_hist_time_range');
+        if (savedHours) {
+            const savedEl = document.querySelector(`input[name="histRange"][value="${savedHours}"]`);
+            if (savedEl) {
+                savedEl.checked = true;
+                return;
+            }
+        }
+        const defaultEl = document.querySelector(`input[name="histRange"][value="${defaultHours}"]`);
+        if (defaultEl) defaultEl.checked = true;
+    }
+
+    function getSensorRangePref(defaultHours = 24) {
+        const savedHours = parseInt(localStorage.getItem('hw_sensor_time_range'), 10);
+        return Number.isNaN(savedHours) ? defaultHours : savedHours;
+    }
+
+    function saveSensorRangePrefs(hours) {
+        localStorage.setItem('hw_sensor_time_range', String(hours));
+    }
+
     async function loadDashboardOptions() {
         try {
             const res = await fetch('/api/settings');
             const settings = await res.json();
             const container = document.getElementById('tr-container');
             if (container && settings.dashboard_hours_hw) {
-                container.innerHTML = settings.dashboard_hours_hw.map((h, i) => {
+                const savedHours = parseInt(localStorage.getItem('hw_hist_time_range'), 10);
+                const allowedHours = settings.dashboard_hours_hw;
+                const hasSaved = !Number.isNaN(savedHours) && allowedHours.includes(savedHours);
+                const defaultHours = hasSaved ? savedHours : (allowedHours.includes(24) ? 24 : allowedHours[0]);
+
+                container.innerHTML = allowedHours.map((h, i) => {
                     const label = h > 24 ? (h/24).toFixed(0) + 'D' : h + 'H';
                     return `
-                        <input type="radio" class="btn-check" name="histRange" id="hr${h}" value="${h}" ${h==24?'checked':''} onchange="loadHistory()">
+                        <input type="radio" class="btn-check" name="histRange" id="hr${h}" value="${h}" ${h===defaultHours?'checked':''} onchange="saveHistRangePrefs(); loadHistory()">
                         <label class="btn btn-outline-secondary px-3" for="hr${h}">${label}</label>
                     `;
                 }).join('');
+            } else {
+                loadHistRangePrefs();
             }
-        } catch (e) {}
+        } catch (e) {
+            loadHistRangePrefs();
+        }
     }
 
     function loadHistory(isSilent = false) {
