@@ -39,6 +39,14 @@
             scrollbar-width: none; /* Firefox */
         }
         .scrollable-tabs-container::-webkit-scrollbar { display: none; }
+        @media (hover: hover) and (pointer: fine) {
+            .scrollable-tabs-container { cursor: grab; }
+            .scrollable-tabs-container.is-dragging {
+                cursor: grabbing;
+                user-select: none;
+            }
+            .scrollable-tabs-container.is-dragging .btn { pointer-events: none; }
+        }
         
         /* 胶囊样式优化 */
         .btn-check-custom + .btn { 
@@ -446,7 +454,76 @@
         }
     }
 
+    function initTagScroller() {
+        const isDesktopPointer = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+        const containers = document.querySelectorAll('.scrollable-tabs-container');
+
+        containers.forEach(container => {
+            let isDragging = false;
+            let dragStartX = 0;
+            let dragStartScrollLeft = 0;
+            let hasMoved = false;
+            let suppressClick = false;
+
+            container.addEventListener('wheel', (e) => {
+                if (!isDesktopPointer()) return;
+                if (container.scrollWidth <= container.clientWidth) return;
+
+                const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+                if (delta === 0) return;
+
+                const before = container.scrollLeft;
+                container.scrollLeft += delta;
+                if (container.scrollLeft !== before) e.preventDefault();
+            }, { passive: false });
+
+            container.addEventListener('mousedown', (e) => {
+                if (!isDesktopPointer()) return;
+                if (e.button !== 0) return;
+
+                isDragging = true;
+                hasMoved = false;
+                dragStartX = e.clientX;
+                dragStartScrollLeft = container.scrollLeft;
+                container.classList.add('is-dragging');
+            });
+
+            container.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const deltaX = e.clientX - dragStartX;
+
+                if (!hasMoved && Math.abs(deltaX) > 4) hasMoved = true;
+                if (hasMoved) {
+                    container.scrollLeft = dragStartScrollLeft - deltaX;
+                    e.preventDefault();
+                }
+            });
+
+            const stopDrag = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                container.classList.remove('is-dragging');
+                if (hasMoved) {
+                    suppressClick = true;
+                    setTimeout(() => { suppressClick = false; }, 0);
+                }
+            };
+
+            container.addEventListener('mouseleave', stopDrag);
+            window.addEventListener('mouseup', stopDrag);
+
+            container.addEventListener('click', (e) => {
+                if (suppressClick) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, true);
+        });
+    }
+
     function init() {
+        initTagScroller();
+
         // 监听所有图表容器的鼠标移出，确保清理状态
         ['chartTemp', 'chartPower', 'chartLoad', 'chartIO'].forEach(id => {
             const canvas = document.getElementById(id);
