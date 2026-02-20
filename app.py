@@ -48,7 +48,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.11'
+VERSION = '1.3.12'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -1755,6 +1755,8 @@ def background_worker():
     target_temp_active_last = False
     target_temp_last_adjust_ts = 0.0
     target_temp_last_applied_percent = None
+    target_temp_initialized = False
+    target_temp_mode_enter_ts = 0.0
     
     # 异常间隔检测：记录上次审计日志时间戳 (使用浮点数以保证精确计算延迟)
     global last_audit_check_ts
@@ -1855,66 +1857,90 @@ def background_worker():
                 mode = 'fixed' # 更新模式状态
                 target_temp_active_last = False
                 target_temp_last_applied_percent = None
+                target_temp_initialized = False
+                target_temp_mode_enter_ts = 0.0
             elif target_mode_enabled and calibration_ready:
                 set_fan_mode('manual')
                 
                 if not target_temp_active_last:
-                    if max_rpm > 0 and fan_rpm > 0:
-                        target_temp_fan_percent = clamp_int(round((fan_rpm / max_rpm) * 100), 20, 10, 100)
-                    else:
-                        target_temp_fan_percent = 20
+                    target_temp_mode_enter_ts = now
+                    target_temp_initialized = False
                     target_temp_filtered = cpu_temp if cpu_temp > 0 else target_temp_target
                     target_temp_last_adjust_ts = now
                     target_temp_last_applied_percent = None
                 
-                if target_temp_filtered is None:
-                    target_temp_filtered = cpu_temp if cpu_temp > 0 else target_temp_target
-                
-                if cpu_temp > 0:
-                    # 更强平滑，避免短时波动触发剧烈调速
-                    alpha = 0.20
-                    target_temp_filtered = alpha * cpu_temp + (1 - alpha) * target_temp_filtered
-                
-                err = target_temp_filtered - target_temp_target
-                
-                # 高温保护必须优先触发
+                startup_wait_seconds = 3.0
+                warmup_elapsed = (now - target_temp_mode_enter_ts) >= startup_wait_seconds
+                hw_ready_for_target = (not is_hw_invalid) and (hw_age <= 5) and (fan_rpm > 0) and (cpu_temp > 0)
+                can_run_closed_loop = False
+
+                # 高温保护必须优先触发，不受启动等待限制
                 if cpu_temp >= 85:
                     target_temp_fan_percent = 100
+                    target_temp_initialized = True
+                    can_run_closed_loop = True
                 else:
-                    # 目标温度闭环：设置死区 + 升降速不同节奏（降速更慢）
-                    deadband = 2.0
-                    step = 0
-                    adjust_interval = None
+                    # 启动后先等待硬件数据稳定，再用真实转速作为起点
+                    if not target_temp_initialized:
+                        if warmup_elapsed and hw_ready_for_target:
+                            if max_rpm > 0:
+                                target_temp_fan_percent = clamp_int(round((fan_rpm / max_rpm) * 100), 20, 10, 100)
+                            else:
+                                target_temp_fan_percent = 20
+                            target_temp_filtered = cpu_temp
+                            target_temp_last_adjust_ts = now
+                            target_temp_initialized = True
+                            can_run_closed_loop = True
+                    else:
+                        can_run_closed_loop = True
                     
-                    if err >= deadband:
-                        # 升速也放慢：更长间隔 + 更小步进，减少温度/风扇振荡
-                        adjust_interval = 4.0
-                        if err >= 15:
-                            step = 2
-                        else:
-                            step = 1
-                    elif err <= -deadband:
-                        adjust_interval = 4.0
-                        if err <= -12:
-                            step = -2
-                        else:
-                            step = -1
-                    
-                    if adjust_interval is not None and (now - target_temp_last_adjust_ts) >= adjust_interval:
-                        target_temp_fan_percent += step
-                        target_temp_last_adjust_ts = now
+                    if can_run_closed_loop:
+                        if target_temp_filtered is None:
+                            target_temp_filtered = cpu_temp if cpu_temp > 0 else target_temp_target
+                        
+                        if cpu_temp > 0:
+                            # 更强平滑，避免短时波动触发剧烈调速
+                            alpha = 0.20
+                            target_temp_filtered = alpha * cpu_temp + (1 - alpha) * target_temp_filtered
+                        
+                        err = target_temp_filtered - target_temp_target
+                        # 目标温度闭环：设置死区 + 升降速不同节奏（降速更慢）
+                        deadband = 2.0
+                        step = 0
+                        adjust_interval = None
+                        
+                        if err >= deadband:
+                            # 升速也放慢：更长间隔 + 更小步进，减少温度/风扇振荡
+                            adjust_interval = 4.0
+                            if err >= 15:
+                                step = 2
+                            else:
+                                step = 1
+                        elif err <= -deadband:
+                            adjust_interval = 4.0
+                            if err <= -12:
+                                step = -2
+                            else:
+                                step = -1
+                        
+                        if adjust_interval is not None and (now - target_temp_last_adjust_ts) >= adjust_interval:
+                            target_temp_fan_percent += step
+                            target_temp_last_adjust_ts = now
                 
-                target_temp_fan_percent = clamp_int(round(target_temp_fan_percent), 20, 10, 100)
-                # 仅在目标变化时下发 PWM，避免每秒重复写入造成风扇抖动
-                if target_temp_last_applied_percent is None or target_temp_fan_percent != target_temp_last_applied_percent:
-                    set_raw_pwm(get_pwm_from_rpm_percent(target_temp_fan_percent))
-                    target_temp_last_applied_percent = target_temp_fan_percent
+                if target_temp_initialized:
+                    target_temp_fan_percent = clamp_int(round(target_temp_fan_percent), 20, 10, 100)
+                    # 仅在目标变化时下发 PWM，避免每秒重复写入造成风扇抖动
+                    if target_temp_last_applied_percent is None or target_temp_fan_percent != target_temp_last_applied_percent:
+                        set_raw_pwm(get_pwm_from_rpm_percent(target_temp_fan_percent))
+                        target_temp_last_applied_percent = target_temp_fan_percent
                 mode = 'target_temp'
                 target_temp_active_last = True
             elif mode == 'auto':
                 set_fan_mode('auto')
                 target_temp_active_last = False
                 target_temp_last_applied_percent = None
+                target_temp_initialized = False
+                target_temp_mode_enter_ts = 0.0
             else: # curve mode
                 set_fan_mode('manual')
                 step = 5
@@ -1927,6 +1953,8 @@ def background_worker():
                 set_raw_pwm(get_pwm_from_rpm_percent(target_percent))
                 target_temp_active_last = False
                 target_temp_last_applied_percent = None
+                target_temp_initialized = False
+                target_temp_mode_enter_ts = 0.0
 
             # Update Cache
             with cache_lock:
