@@ -233,7 +233,7 @@
                                     <tr>
                                         <td style="padding: 15px;">
                                             <div style="font-size: 13px; color: #e6edf3; font-weight: bold; margin-bottom: 10px;">
-                                                CPU 0
+                                                {{ cpu_info|default('CPU 0') }}
                                                 <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ cpu_data_points|default('--') }} 个数据点</span>
                                             </div>
                                             <!-- 统计数据 -->

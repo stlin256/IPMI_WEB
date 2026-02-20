@@ -1383,6 +1383,23 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     net_rx_total = coerce_float(res_stats.get('net_rx_total')) or 0.0
     net_tx_total = coerce_float(res_stats.get('net_tx_total')) or 0.0
 
+    # === 获取 CPU 信息用于邮件报告 ===
+    cpu_info_str = "Unknown"
+    try:
+        # 尝试从数据库读取启动时收集的 CPU 信息
+        conn_cpu = get_db_connection()
+        c_cpu = conn_cpu.cursor()
+        c_cpu.execute("SELECT value FROM config WHERE key='startup_cpu_info'")
+        cpu_row = c_cpu.fetchone()
+        conn_cpu.close()
+        if cpu_row and cpu_row[0]:
+            cpu_data = json.loads(cpu_row[0])
+            cpu_model = cpu_data.get('model', 'Unknown')
+            cpu_sockets = cpu_data.get('sockets', 1)
+            cpu_info_str = f"{cpu_model} x{cpu_sockets}" if cpu_model != 'Unknown' else f"x{cpu_sockets}"
+    except Exception as e:
+        print(f"Failed to get CPU info for email: {e}")
+
     # 准备模板数据 (添加 gpu_data)
     template_data = {
         'subject': f'{report_type_label}报告 - {datetime.now().strftime("%Y-%m-%d")}',
@@ -1436,7 +1453,8 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'version': VERSION,
         'report_range': report_range,
         'report_frequency': f"{hours}小时",
-        'panel_url': base_domain
+        'panel_url': base_domain,
+        'cpu_info': cpu_info_str
     }
     
     # 增加累计发送次数统计
@@ -4261,7 +4279,20 @@ def build_startup_payload():
     try:
         # 获取 CPU 逻辑核心数
         payload['hardware_topology']['cpu']['logical_threads'] = psutil.cpu_count(logical=True) or 0
-        payload['hardware_topology']['cpu']['sockets'] = psutil.cpu_count(logical=False) or 1
+        
+        # 获取物理 CPU 数量（路数）- 通过计算不同的 physical id 数量
+        physical_cpu_count = 1  # 默认值
+        try:
+            physical_ids = set()
+            with open('/proc/cpuinfo', 'r') as f:
+                for line in f:
+                    if 'physical id' in line:
+                        physical_ids.add(line.split(':')[1].strip())
+            if physical_ids:
+                physical_cpu_count = len(physical_ids)
+        except Exception:
+            pass
+        payload['hardware_topology']['cpu']['sockets'] = physical_cpu_count
         
         # 尝试读取 CPU 型号
         try:
@@ -5056,9 +5087,25 @@ if __name__ == '__main__':
         
         log_summary = (f"软件启动 - 版本: {VERSION} | "
                       f"平台: {platform_info.get('vendor', 'Unknown')} {platform_info.get('model', 'Unknown')} | "
-                      f"CPU: {cpu_info.get('model', 'Unknown')} ({cpu_info.get('sockets', 1)}x, {cpu_info.get('logical_threads', 1)} 线程) | "
+                      f"CPU: {cpu_info.get('model', 'Unknown')} ({cpu_info.get('sockets', 1)}核心, {cpu_info.get('logical_threads', 1)} 线程) | "
                       f"内存: {mem_info.get('total_gb', 0)} GB ({mem_info.get('physical_modules_count', 0)} 条) | "
                       f"BMC IP: {platform_info.get('bmc_ip', 'Unknown')}")
+        
+        # 将 CPU 信息保存到数据库，供邮件报告使用
+        try:
+            cpu_data = {
+                'model': cpu_info.get('model', 'Unknown'),
+                'sockets': cpu_info.get('sockets', 1),
+                'threads': cpu_info.get('logical_threads', 0)
+            }
+            conn_cpu = get_db_connection()
+            c_cpu = conn_cpu.cursor()
+            c_cpu.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('startup_cpu_info', ?)", (json.dumps(cpu_data),))
+            conn_cpu.commit()
+            conn_cpu.close()
+            logging.info(f"[STARTUP] CPU info saved to database: {cpu_data}")
+        except Exception as cpu_save_err:
+            print(f"Failed to save CPU info to database: {cpu_save_err}")
         
         write_audit('INFO', 'SYSTEM', 'STARTUP', log_summary, details=startup_payload, operator='SYSTEM')
         logging.info(f"[STARTUP] Hardware Probe: {json.dumps(startup_payload, indent=2, ensure_ascii=False)}")
@@ -5078,6 +5125,21 @@ if __name__ == '__main__':
                 'ipmitool': shutil.which('ipmitool') is not None,
                 'sensors': shutil.which('sensors') is not None
             }
+            # 即使降级记录，也保存 CPU 信息到数据库
+            try:
+                cpu_data = {
+                    'model': 'Unknown',
+                    'sockets': psutil.cpu_count(logical=False) or 1,
+                    'threads': psutil.cpu_count(logical=True) or 0
+                }
+                conn_cpu = get_db_connection()
+                c_cpu = conn_cpu.cursor()
+                c_cpu.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('startup_cpu_info', ?)", (json.dumps(cpu_data),))
+                conn_cpu.commit()
+                conn_cpu.close()
+            except Exception as cpu_save_err:
+                print(f"Failed to save CPU info in fallback: {cpu_save_err}")
+            
             write_audit('INFO', 'SYSTEM', 'STARTUP', f'软件已启动 (版本: {VERSION})', details=system_info, operator='SYSTEM')
         except Exception as e2:
             print(f"Failed to log fallback startup: {e2}")
