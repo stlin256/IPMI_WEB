@@ -1,6 +1,9 @@
 **此版本readme是在较早时候创建的，与当前版本的实际内容有较大差异**
 
-# IPMI 硬件监控与风扇控制面板
+**如需了解项目最新情况，可访问DeepWiki**
+
+
+# IPMI 硬件监控与风扇控制面板  [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/IPMI_WEB)
 
 这是一个轻量级的、基于 Web 的仪表板，用于通过 IPMI 监控服务器硬件状态并控制风扇速度。它使用 Python Flask 作为后端，并调用 `ipmitool` 和 `sensors` 等系统命令来收集数据。
 
