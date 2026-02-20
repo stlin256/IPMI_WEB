@@ -70,6 +70,7 @@
         /* 新增样式：处理禁用状态的视觉效果 */
         .fixed-control-group { transition: opacity 0.3s ease, filter 0.3s ease; }
         .fixed-control-group.disabled-visual { opacity: 0.5; filter: grayscale(0.8); pointer-events: none; }
+        .override-panel { border: 1px solid #30363d; border-radius: 10px; padding: 0.75rem; background: rgba(13, 17, 23, 0.45); }
         
         /* 骨架屏流光扫过特效 */
         .skeleton-sweep {
@@ -149,7 +150,7 @@
                 <div class="text-uppercase small text-muted fw-bold mb-2">Fan Control Mode</div>
                 <div id="mode-display" class="h3 fw-bold mb-3">--</div>
                 <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch Mode</button>
-                <div id="fixed-mode-warning" class="text-warning small mt-2 d-none"><i class="fas fa-exclamation-triangle"></i> Disable Fixed Speed to switch</div>
+                <div id="fixed-mode-warning" class="text-warning small mt-2 d-none"><i class="fas fa-exclamation-triangle"></i> Disable override mode to switch</div>
             </div>
         </div>
     </div>
@@ -216,38 +217,62 @@
                         Calibrated Range: <span id="rpm-range-display" class="text-info font-monospace fw-bold">--</span>
                     </div>
 
-                    <!-- 新增：固定转速控制区域 -->
                     <div class="border-top border-secondary pt-3 mt-1">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label for="fixedFanSwitch" class="form-check-label fw-bold text-light">
-                                <i class="fas fa-thumbtack me-2 text-warning"></i> Fixed Fan Speed
-                            </label>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="fixedFanSwitch" 
-                                       style="transform: scale(1.4); cursor: pointer;" onchange="toggleFixedSwitch(this)">
-                            </div>
-                        </div>
-
-                        <!-- 滑块和数值区域 -->
-                        <div id="fixed-controls-wrapper" class="fixed-control-group disabled-visual">
-                            <div class="d-flex align-items-center mt-3">
-                                <input type="range" class="form-range flex-grow-1" min="10" max="100" id="fixedFanSlider" 
-                                       oninput="handleFixedSliderInput(this.value)" 
-                                       onchange="handleFixedSliderChange(this.value)" disabled>
-                            </div>
-                            <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
-                                <div class="w-50 border-end border-secondary">
-                                    <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-5">--%</div>
-                                    <div class="text-muted small" style="font-size: 0.75rem;">TARGET</div>
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                <div class="override-panel h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label for="fixedFanSwitch" class="form-check-label fw-bold text-light small">
+                                            <i class="fas fa-thumbtack me-2 text-warning"></i> Fixed Speed
+                                        </label>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" role="switch" id="fixedFanSwitch" 
+                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleFixedSwitch(this)">
+                                        </div>
+                                    </div>
+                                    <div id="fixed-controls-wrapper" class="fixed-control-group disabled-visual">
+                                        <input type="range" class="form-range" min="10" max="100" id="fixedFanSlider" 
+                                               oninput="handleFixedSliderInput(this.value)" 
+                                               onchange="handleFixedSliderChange(this.value)" disabled>
+                                        <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
+                                            <div class="w-50 border-end border-secondary">
+                                                <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-6">--%</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;">TARGET</div>
+                                            </div>
+                                            <div class="w-50">
+                                                <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-6">--</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;">EST. RPM</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="w-50">
-                                    <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-5">--</div>
-                                    <div class="text-muted small" style="font-size: 0.75rem;">EST. RPM</div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <div class="override-panel h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label for="targetTempSwitch" class="form-check-label fw-bold text-light small">
+                                            <i class="fas fa-bullseye me-2 text-info"></i> Target Temp
+                                        </label>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" role="switch" id="targetTempSwitch" 
+                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleTargetTempSwitch(this)">
+                                        </div>
+                                    </div>
+                                    <div id="target-temp-controls-wrapper" class="fixed-control-group disabled-visual">
+                                        <input type="range" class="form-range" min="20" max="85" id="targetTempSlider" 
+                                               oninput="handleTargetTempSliderInput(this.value)" 
+                                               onchange="handleTargetTempSliderChange(this.value)" disabled>
+                                        <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
+                                            <div class="w-100">
+                                                <div id="targetTempValue" class="font-monospace text-info fw-bold fs-6">--°C</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;">CPU TARGET</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <!-- 结束新增区域 -->
 
                 </div>
             </div>
@@ -369,6 +394,11 @@
     
     // 状态标记，防止滑块拖动时被后台数据覆盖
     let isDraggingFixedSlider = false;
+    let isDraggingTargetTempSlider = false;
+    let fixedTargetDebounceTimer = null;
+    let targetTempDebounceTimer = null;
+    let lastSavedFixedTarget = null;
+    let lastSavedTargetTemp = null;
 
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
@@ -408,14 +438,27 @@
         setInterval(() => loadHistory(true), 20000);
     }
     
-    // --- 新增功能逻辑 Start ---
+    // --- Fan Override Controls ---
+    function isTruthy(v) {
+        return v === true || v === 'true';
+    }
 
-    // 1. 页面加载时获取一次完整配置，设置UI初值
+    async function postJson(url, payload) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        let body = {};
+        try { body = await res.json(); } catch (_) {}
+        if (!res.ok) throw new Error(body.error || 'Request failed');
+        return body;
+    }
+
     function loadInitialConfig() {
         fetch('/api/config').then(r => r.json()).then(d => {
             if(!d) return;
-            
-            // 曲线预览
+
             if(d.curve) {
                 const labels = Object.keys(d.curve).sort((a,b)=>a-b);
                 const data = labels.map(k=>d.curve[k]);
@@ -424,60 +467,142 @@
                 miniCurveChart.update();
             }
 
-            // Fixed Fan Speed 初始化
-            const isFixed = d.fixed_fan_speed_enabled === true || d.fixed_fan_speed_enabled === 'true';
-            const target = d.fixed_fan_speed_target || 30;
+            const isFixed = isTruthy(d.fixed_fan_speed_enabled);
+            const fixedTarget = d.fixed_fan_speed_target || 30;
+            const isTargetTemp = isTruthy(d.target_temp_mode_enabled);
+            const targetTemp = d.target_temp_target || 65;
+            const calibrationReady = isTruthy(d.calibration_ready);
 
-            document.getElementById('fixedFanSwitch').checked = isFixed;
-            const slider = document.getElementById('fixedFanSlider');
-            slider.value = target;
-            
-            // 手动调用一次更新UI状态（设置禁用/启用样式）和数值
+            const fixedSwitch = document.getElementById('fixedFanSwitch');
+            const fixedSlider = document.getElementById('fixedFanSlider');
+            fixedSwitch.checked = isFixed;
+            fixedSlider.value = fixedTarget;
+            lastSavedFixedTarget = parseInt(fixedTarget);
             updateFixedUIState(isFixed);
-            updateFixedValuesDisplay(target);
+            updateFixedValuesDisplay(fixedTarget);
+
+            const targetSwitch = document.getElementById('targetTempSwitch');
+            const targetSlider = document.getElementById('targetTempSlider');
+            targetSlider.value = targetTemp;
+            lastSavedTargetTemp = parseInt(targetTemp);
+            updateTargetTempValuesDisplay(targetTemp);
+            updateTargetTempCalibrationState(calibrationReady);
+
+            const targetEnabled = isTargetTemp && calibrationReady;
+            targetSwitch.checked = targetEnabled;
+            updateTargetTempUIState(targetEnabled);
+
+            if (isFixed) {
+                targetSwitch.checked = false;
+                updateTargetTempUIState(false);
+            }
         });
     }
 
-    // 2. 切换开关
     function toggleFixedSwitch(el) {
         const isEnabled = el.checked;
-        updateFixedUIState(isEnabled); // 立即更新UI视觉
-        
-        // 发送请求，成功后立刻刷新数据，防止UI跳变
-        fetch('/api/config/fixed_fan_speed', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ enabled: isEnabled })
-        }).then(() => {
-            showToast(isEnabled ? "Fixed Speed Enabled" : "Fixed Speed Disabled");
-            refreshData(); // <--- 关键修改：立刻强制刷新
-        }).catch(() => showToast("Failed to update setting", true));
+        clearTimeout(fixedTargetDebounceTimer);
+        clearTimeout(targetTempDebounceTimer);
+
+        if (isEnabled) {
+            const targetSwitch = document.getElementById('targetTempSwitch');
+            targetSwitch.checked = false;
+            updateTargetTempUIState(false);
+        }
+
+        updateFixedUIState(isEnabled);
+
+        postJson('/api/config/fixed_fan_speed', { enabled: isEnabled })
+            .then(() => {
+                showToast(isEnabled ? 'Fixed Speed Enabled' : 'Fixed Speed Disabled');
+                refreshData();
+            })
+            .catch((err) => {
+                el.checked = !isEnabled;
+                updateFixedUIState(!isEnabled);
+                showToast(err.message || 'Failed to update setting', true);
+            });
     }
 
-    // 3. 滑块拖动中 (oninput) - 只更新显示，不发请求
+    function toggleTargetTempSwitch(el) {
+        const isEnabled = el.checked;
+        clearTimeout(targetTempDebounceTimer);
+        clearTimeout(fixedTargetDebounceTimer);
+
+        if (isEnabled && maxRPM <= 0) {
+            el.checked = false;
+            updateTargetTempUIState(false);
+            showToast('Run calibration before enabling target temperature mode', true);
+            return;
+        }
+
+        if (isEnabled) {
+            const fixedSwitch = document.getElementById('fixedFanSwitch');
+            fixedSwitch.checked = false;
+            updateFixedUIState(false);
+        }
+
+        updateTargetTempUIState(isEnabled);
+
+        postJson('/api/config/target_temp_mode', { enabled: isEnabled })
+            .then(() => {
+                showToast(isEnabled ? 'Target Temperature Mode Enabled' : 'Target Temperature Mode Disabled');
+                refreshData();
+            })
+            .catch((err) => {
+                el.checked = !isEnabled;
+                updateTargetTempUIState(!isEnabled);
+                showToast(err.message || 'Failed to update setting', true);
+                refreshData();
+            });
+    }
+
     function handleFixedSliderInput(val) {
         isDraggingFixedSlider = true;
         updateFixedValuesDisplay(val);
     }
 
-    // 4. 滑块松开 (onchange) - 发送请求
     function handleFixedSliderChange(val) {
         isDraggingFixedSlider = false;
-        fetch('/api/config/fixed_fan_speed', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ target: parseInt(val) })
-        }).then(() => {
-            showToast(`Target Speed set to ${val}%`);
-            refreshData(); // <--- 关键修改：立刻强制刷新
-        }).catch(() => showToast("Failed to set target speed", true));
+        const targetVal = parseInt(val);
+        clearTimeout(fixedTargetDebounceTimer);
+        fixedTargetDebounceTimer = setTimeout(() => {
+            if (lastSavedFixedTarget !== null && targetVal === lastSavedFixedTarget) return;
+            postJson('/api/config/fixed_fan_speed', { target: targetVal })
+                .then(() => {
+                    lastSavedFixedTarget = targetVal;
+                    showToast(`Target Speed set to ${targetVal}%`);
+                    refreshData();
+                })
+                .catch((err) => showToast(err.message || 'Failed to set target speed', true));
+        }, 700);
     }
 
-    // 辅助：更新禁用/启用视觉状态
+    function handleTargetTempSliderInput(val) {
+        isDraggingTargetTempSlider = true;
+        updateTargetTempValuesDisplay(val);
+    }
+
+    function handleTargetTempSliderChange(val) {
+        isDraggingTargetTempSlider = false;
+        const targetVal = parseInt(val);
+        clearTimeout(targetTempDebounceTimer);
+        targetTempDebounceTimer = setTimeout(() => {
+            if (lastSavedTargetTemp !== null && targetVal === lastSavedTargetTemp) return;
+            postJson('/api/config/target_temp_mode', { target: targetVal })
+                .then(() => {
+                    lastSavedTargetTemp = targetVal;
+                    showToast(`Target Temperature set to ${targetVal}°C`);
+                    refreshData();
+                })
+                .catch((err) => showToast(err.message || 'Failed to set target temperature', true));
+        }, 700);
+    }
+
     function updateFixedUIState(enabled) {
         const wrapper = document.getElementById('fixed-controls-wrapper');
         const slider = document.getElementById('fixedFanSlider');
-        
+
         if (enabled) {
             wrapper.classList.remove('disabled-visual');
             slider.disabled = false;
@@ -487,15 +612,43 @@
         }
     }
 
-    // 辅助：更新百分比和 RPM 显示
+    function updateTargetTempUIState(enabled) {
+        const wrapper = document.getElementById('target-temp-controls-wrapper');
+        const slider = document.getElementById('targetTempSlider');
+        const switchEl = document.getElementById('targetTempSwitch');
+
+        if (enabled && !switchEl.disabled) {
+            wrapper.classList.remove('disabled-visual');
+            slider.disabled = false;
+        } else {
+            wrapper.classList.add('disabled-visual');
+            slider.disabled = true;
+        }
+    }
+
+    function updateTargetTempCalibrationState(calibrated) {
+        const switchEl = document.getElementById('targetTempSwitch');
+
+        if (calibrated) {
+            switchEl.disabled = false;
+        } else {
+            switchEl.disabled = true;
+            switchEl.checked = false;
+            updateTargetTempUIState(false);
+        }
+    }
+
     function updateFixedValuesDisplay(pct) {
         document.getElementById('fixedFanValuePct').innerText = pct + '%';
-        // 计算 RPM
         const estRpm = maxRPM > 0 ? Math.round(maxRPM * (pct/100)) : '--';
         document.getElementById('fixedFanValueRpm').innerText = estRpm;
     }
 
-    // --- 新增功能逻辑 End ---
+    function updateTargetTempValuesDisplay(temp) {
+        document.getElementById('targetTempValue').innerText = temp + '°C';
+    }
+
+    // --- Fan Override Controls End ---
 
     function showToast(msg, isError = false) {
         const toastEl = document.getElementById('opToast');
@@ -530,55 +683,70 @@
             // 更新全局 RPM 数据
             maxRPM = d.max_rpm || 0;
             minRPM = d.min_rpm || 0;
-            const rangeText = (maxRPM > 0) ? `${minRPM} - ${maxRPM} RPM` : "Not Calibrated";
+            const calibrated = maxRPM > 0;
+            const rangeText = calibrated ? `${minRPM} - ${maxRPM} RPM` : "Not Calibrated";
             document.getElementById('rpm-range-display').innerText = rangeText;
+            updateTargetTempCalibrationState(calibrated);
 
-            // 如果滑块未被拖动，更新固定模式区域的估算 RPM（因为 maxRPM 可能变化）
             if (!isDraggingFixedSlider) {
                 const currentSliderVal = document.getElementById('fixedFanSlider').value;
                 updateFixedValuesDisplay(currentSliderVal);
             }
+            if (!isDraggingTargetTempSlider) {
+                const currentTargetTemp = document.getElementById('targetTempSlider').value;
+                updateTargetTempValuesDisplay(currentTargetTemp);
+            }
 
-            // 处理模式显示
             const modeText = document.getElementById('mode-display');
             const btn = document.getElementById('btn-mode');
             const warnMsg = document.getElementById('fixed-mode-warning');
+            const fixedSwitch = document.getElementById('fixedFanSwitch');
+            const targetSwitch = document.getElementById('targetTempSwitch');
 
-            if (d.mode === 'fixed') {
-                // 固定模式：优先级最高
-                modeText.innerText = 'FIXED SPEED';
-                modeText.className = 'h3 fw-bold mb-3 text-warning';
-                
-                // 禁用切换 Auto/Manual 的按钮
+            if (d.mode === 'fixed' || d.mode === 'target_temp') {
+                const isFixedMode = d.mode === 'fixed';
+                modeText.innerText = isFixedMode ? 'FIXED SPEED' : 'TARGET TEMP';
+                modeText.className = `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`;
                 btn.className = 'btn w-100 py-2 fw-bold btn-secondary disabled';
                 btn.innerHTML = '<i class="fas fa-ban me-2"></i>Mode Locked';
                 warnMsg.classList.remove('d-none');
-                
-                // 确保 UI 开关是开着的 (同步多端状态)
-                const switchEl = document.getElementById('fixedFanSwitch');
-                // 只有当用户没有正在操作的时候才覆盖
-                // (这里简化处理，后端权威状态回来后更新UI是合理的)
-                if (!switchEl.checked) {
-                    switchEl.checked = true;
-                    updateFixedUIState(true);
+                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Disable ${isFixedMode ? 'Fixed Speed' : 'Target Temp'} to switch`;
+
+                if (isFixedMode) {
+                    if (!fixedSwitch.checked) {
+                        fixedSwitch.checked = true;
+                        updateFixedUIState(true);
+                    }
+                    if (targetSwitch.checked) {
+                        targetSwitch.checked = false;
+                        updateTargetTempUIState(false);
+                    }
+                } else {
+                    if (!targetSwitch.checked) {
+                        targetSwitch.checked = true;
+                        updateTargetTempUIState(true);
+                    }
+                    if (fixedSwitch.checked) {
+                        fixedSwitch.checked = false;
+                        updateFixedUIState(false);
+                    }
                 }
-                
             } else {
-                // 正常 Auto/Manual 模式
                 const isAuto = d.mode === 'auto';
                 modeText.innerText = isAuto ? 'AUTOMATIC' : 'MANUAL';
                 modeText.className = `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`;
-                
                 btn.className = `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
                 btn.innerHTML = isAuto ? '<i class="fas fa-hand-paper me-2"></i>Switch to Manual' : '<i class="fas fa-robot me-2"></i>Switch to Auto';
-                btn.onclick = toggleMode; // 恢复点击事件
+                btn.onclick = toggleMode;
                 warnMsg.classList.add('d-none');
 
-                // 确保 UI 开关是关着的
-                const switchEl = document.getElementById('fixedFanSwitch');
-                if (switchEl.checked) {
-                    switchEl.checked = false;
+                if (fixedSwitch.checked) {
+                    fixedSwitch.checked = false;
                     updateFixedUIState(false);
+                }
+                if (targetSwitch.checked) {
+                    targetSwitch.checked = false;
+                    updateTargetTempUIState(false);
                 }
             }
 
@@ -797,8 +965,8 @@
 
     function toggleMode() {
         const modeText = document.getElementById('mode-display').innerText;
-        if(modeText.includes('FIXED')) {
-            showToast("Please disable Fixed Fan Speed first", true);
+        if(modeText.includes('FIXED') || modeText.includes('TARGET')) {
+            showToast("Please disable active override mode first", true);
             return;
         }
         

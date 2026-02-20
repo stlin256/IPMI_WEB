@@ -292,6 +292,8 @@ def init_db():
     # [修复] 确保固定转速的配置项存在
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('fixed_fan_speed_target', '30')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('target_temp_mode_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('target_temp_target', '65')")
     
     # 清理存量 0 值数据 (仅运行一次)
     c.execute("SELECT value FROM config WHERE key='db_zero_cleanup_done'")
@@ -537,6 +539,23 @@ def load_calibration_map():
           
     except Exception as e:
         print(f"Calib Load Error: {e}")
+
+def clamp_int(value, default_value, min_value, max_value):
+    try:
+        value = int(value)
+    except:
+        value = default_value
+    return max(min_value, min(max_value, value))
+
+def parse_bool(value, default_value=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default_value
+    return str(value).strip().lower() == 'true'
+
+def is_calibration_ready():
+    return bool(rpm_map) and max_rpm > 0
 
 # --- 辅助函数 ---
 def get_client_ip():
@@ -1730,6 +1749,13 @@ def background_worker():
     # 记录上一次有效的 IPMI 数据用于容错
     last_valid_hw = {'power': 0, 'fan_rpm': 0, 'timestamp': 0}
     
+    # 目标温度模式状态（平滑温度 + 渐进调速）
+    target_temp_filtered = None
+    target_temp_fan_percent = 20
+    target_temp_active_last = False
+    target_temp_last_adjust_ts = 0.0
+    target_temp_last_applied_percent = None
+    
     # 异常间隔检测：记录上次审计日志时间戳 (使用浮点数以保证精确计算延迟)
     global last_audit_check_ts
     last_audit_check_ts['last_check_f'] = time.time()
@@ -1812,14 +1838,83 @@ def background_worker():
 
             c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'")
             fixed_target_row = c.fetchone()
-            fixed_target = int(fixed_target_row[0]) if fixed_target_row else 30
+            fixed_target = clamp_int(fixed_target_row[0] if fixed_target_row else 30, 30, 10, 100)
+            
+            c.execute("SELECT value FROM config WHERE key='target_temp_mode_enabled'")
+            target_mode_row = c.fetchone()
+            target_mode_enabled = (target_mode_row[0] == 'true') if target_mode_row else False
+            
+            c.execute("SELECT value FROM config WHERE key='target_temp_target'")
+            target_temp_row = c.fetchone()
+            target_temp_target = clamp_int(target_temp_row[0] if target_temp_row else 65, 65, 20, 85)
+            calibration_ready = is_calibration_ready()
           
             if fixed_enabled:
                 set_fan_mode('manual')
                 set_raw_pwm(get_pwm_from_rpm_percent(fixed_target))
                 mode = 'fixed' # 更新模式状态
+                target_temp_active_last = False
+                target_temp_last_applied_percent = None
+            elif target_mode_enabled and calibration_ready:
+                set_fan_mode('manual')
+                
+                if not target_temp_active_last:
+                    if max_rpm > 0 and fan_rpm > 0:
+                        target_temp_fan_percent = clamp_int(round((fan_rpm / max_rpm) * 100), 20, 10, 100)
+                    else:
+                        target_temp_fan_percent = 20
+                    target_temp_filtered = cpu_temp if cpu_temp > 0 else target_temp_target
+                    target_temp_last_adjust_ts = now
+                    target_temp_last_applied_percent = None
+                
+                if target_temp_filtered is None:
+                    target_temp_filtered = cpu_temp if cpu_temp > 0 else target_temp_target
+                
+                if cpu_temp > 0:
+                    # 更强平滑，避免短时波动触发剧烈调速
+                    alpha = 0.20
+                    target_temp_filtered = alpha * cpu_temp + (1 - alpha) * target_temp_filtered
+                
+                err = target_temp_filtered - target_temp_target
+                
+                # 高温保护必须优先触发
+                if cpu_temp >= 85:
+                    target_temp_fan_percent = 100
+                else:
+                    # 目标温度闭环：设置死区 + 升降速不同节奏（降速更慢）
+                    deadband = 2.0
+                    step = 0
+                    adjust_interval = None
+                    
+                    if err >= deadband:
+                        # 升速也放慢：更长间隔 + 更小步进，减少温度/风扇振荡
+                        adjust_interval = 4.0
+                        if err >= 15:
+                            step = 2
+                        else:
+                            step = 1
+                    elif err <= -deadband:
+                        adjust_interval = 4.0
+                        if err <= -12:
+                            step = -2
+                        else:
+                            step = -1
+                    
+                    if adjust_interval is not None and (now - target_temp_last_adjust_ts) >= adjust_interval:
+                        target_temp_fan_percent += step
+                        target_temp_last_adjust_ts = now
+                
+                target_temp_fan_percent = clamp_int(round(target_temp_fan_percent), 20, 10, 100)
+                # 仅在目标变化时下发 PWM，避免每秒重复写入造成风扇抖动
+                if target_temp_last_applied_percent is None or target_temp_fan_percent != target_temp_last_applied_percent:
+                    set_raw_pwm(get_pwm_from_rpm_percent(target_temp_fan_percent))
+                    target_temp_last_applied_percent = target_temp_fan_percent
+                mode = 'target_temp'
+                target_temp_active_last = True
             elif mode == 'auto':
                 set_fan_mode('auto')
+                target_temp_active_last = False
+                target_temp_last_applied_percent = None
             else: # curve mode
                 set_fan_mode('manual')
                 step = 5
@@ -1830,6 +1925,8 @@ def background_worker():
                 if cpu_temp >= 85: target_percent = 100
               
                 set_raw_pwm(get_pwm_from_rpm_percent(target_percent))
+                target_temp_active_last = False
+                target_temp_last_applied_percent = None
 
             # Update Cache
             with cache_lock:
@@ -2663,7 +2760,7 @@ def api_alert_rules():
     
     if request.method == 'POST':
         try:
-            data = request.json
+            data = request.json or {}
             if 'id' in data:
                 # 更新 (包含新增的 level 字段)
                 c.execute('''UPDATE alert_rules SET name=?, metric=?, operator=?, threshold=?, duration=?, notify_interval=?, enabled=?, level=?
@@ -2743,7 +2840,7 @@ def api_settings():
 
     if request.method == 'POST':
         try:
-            data = request.json
+            data = request.json or {}
             now = int(time.time())
             changes = [] # 记录所有变更详情
             
@@ -2903,7 +3000,7 @@ def api_settings():
 def api_summary_email_manual():
     """手动触发概览报告发送"""
     try:
-        data = request.json
+        data = request.json or {}
         report_type = data.get('type', 'manual') # daily, weekly, custom
         type_cn = {'daily': '日报', 'weekly': '周报', 'custom': '自定义', 'manual': '手动'}.get(report_type, report_type)
         
@@ -2945,7 +3042,7 @@ def api_summary_email_manual():
 def api_test_email():
     """手动发送测试邮件"""
     try:
-        data = request.json
+        data = request.json or {}
         # 临时更新配置用于测试
         mode = data.get('email_mode', 'mta')
         smtp_user = data.get('smtp_user', '')
@@ -3062,7 +3159,7 @@ def api_log_delay_config():
     
     if request.method == 'POST':
         try:
-            data = request.json
+            data = request.json or {}
             if 'log_delay_warn' in data:
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('log_delay_warn', ?)", (str(float(data['log_delay_warn'])),))
             if 'log_delay_danger' in data:
@@ -3134,7 +3231,7 @@ def api_config_import():
     - 逻辑：遍历 settings 键值对，若 config 表中已存在则更新，不存在则忽略（防止版本跨度过大导致无效键污染）。
     """
     try:
-        data = request.json
+        data = request.json or {}
         if not data or 'metadata' not in data or 'settings' not in data:
             return jsonify({'error': '无效的配置文件格式'}), 400
             
@@ -3624,25 +3721,28 @@ def api_config():
             res_curve = c.execute("SELECT value FROM config WHERE key='curve'").fetchone()
             res_fixed_enabled = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_enabled'").fetchone()
             res_fixed_target = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'").fetchone()
+            res_target_temp_enabled = c.execute("SELECT value FROM config WHERE key='target_temp_mode_enabled'").fetchone()
+            res_target_temp_target = c.execute("SELECT value FROM config WHERE key='target_temp_target'").fetchone()
           
             # 处理数据，给默认值防止 NoneType 错误
             curve_data = json.loads(res_curve[0]) if res_curve and res_curve[0] else {}
             if not curve_data:
                 curve_data = {str(i): 20 for i in range(30, 95, 5)}
 
-            fixed_enabled = (res_fixed_enabled[0] == 'true') if res_fixed_enabled and res_fixed_enabled[0] else False
-          
-            fixed_target = 30
-            if res_fixed_target and res_fixed_target[0]:
-                try:
-                    fixed_target = int(res_fixed_target[0])
-                except:
-                    fixed_target = 30
+            fixed_enabled = parse_bool(res_fixed_enabled[0] if res_fixed_enabled else False)
+            fixed_target = clamp_int(res_fixed_target[0] if res_fixed_target else 30, 30, 10, 100)
+            calibration_ready = is_calibration_ready()
+            target_temp_enabled_raw = parse_bool(res_target_temp_enabled[0] if res_target_temp_enabled else False)
+            target_temp_enabled = target_temp_enabled_raw and calibration_ready
+            target_temp_target = clamp_int(res_target_temp_target[0] if res_target_temp_target else 65, 65, 20, 85)
 
             return jsonify({
                 'curve': curve_data,
                 'fixed_fan_speed_enabled': fixed_enabled,
-                'fixed_fan_speed_target': fixed_target
+                'fixed_fan_speed_target': fixed_target,
+                'target_temp_mode_enabled': target_temp_enabled,
+                'target_temp_target': target_temp_target,
+                'calibration_ready': calibration_ready
             })
         except Exception as e:
             print(f"Config GET Error: {e}")
@@ -3654,7 +3754,7 @@ def api_config():
 
     if request.method == 'POST':
         try:
-            data = request.json
+            data = request.json or {}
             details = {}
             msg_parts = []
             
@@ -3670,15 +3770,54 @@ def api_config():
           
             # 兼容性保存
             if 'enabled' in data:
-                val = 'true' if data['enabled'] else 'false'
+                fixed_enabled = parse_bool(data['enabled'])
+                val = 'true' if fixed_enabled else 'false'
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', ?)", (val,))
                 details['fixed_enabled'] = val
-                msg_parts.append(f"定速开启->{val}")
+                if fixed_enabled:
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp_mode_enabled', 'false')")
+                    details['target_temp_enabled'] = 'false'
+                msg_parts.append(f"固定转速模式->{'开启' if fixed_enabled else '关闭'}")
           
             if 'target' in data:
-                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_target', ?)", (str(data['target']),))
-                details['fixed_target'] = data['target']
-                msg_parts.append(f"定速目标->{data['target']}")
+                fixed_target = clamp_int(data['target'], 30, 10, 100)
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_target', ?)", (str(fixed_target),))
+                details['fixed_target'] = fixed_target
+                msg_parts.append(f"目标转速->{fixed_target}%")
+
+            if 'target_temp_enabled' in data:
+                target_temp_enabled = parse_bool(data['target_temp_enabled'])
+                if target_temp_enabled and not is_calibration_ready():
+                    return jsonify({'error': 'Calibration required before enabling target temperature mode'}), 400
+                val = 'true' if target_temp_enabled else 'false'
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp_mode_enabled', ?)", (val,))
+                details['target_temp_enabled'] = val
+                msg_parts.append(f"目标温度模式->{'开启' if target_temp_enabled else '关闭'}")
+                if target_temp_enabled:
+                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', 'false')")
+                    details['fixed_enabled'] = 'false'
+
+            if 'target_temp_target' in data:
+                target_temp_target = clamp_int(data['target_temp_target'], 65, 20, 85)
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp_target', ?)", (str(target_temp_target),))
+                details['target_temp_target'] = target_temp_target
+                msg_parts.append(f"目标温度->{target_temp_target}°C")
+
+            if 'enabled' in data:
+                current_fixed_target_row = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'").fetchone()
+                current_fixed_target = clamp_int(current_fixed_target_row[0] if current_fixed_target_row else 30, 30, 10, 100)
+                details['fixed_target_percent'] = current_fixed_target
+                fixed_target_msg = f"目标转速->{current_fixed_target}%"
+                if fixed_target_msg not in msg_parts:
+                    msg_parts.append(fixed_target_msg)
+
+            if 'target_temp_enabled' in data:
+                current_target_temp_row = c.execute("SELECT value FROM config WHERE key='target_temp_target'").fetchone()
+                current_target_temp = clamp_int(current_target_temp_row[0] if current_target_temp_row else 65, 65, 20, 85)
+                details['target_temp_c'] = current_target_temp
+                target_temp_msg = f"目标温度->{current_target_temp}°C"
+                if target_temp_msg not in msg_parts:
+                    msg_parts.append(target_temp_msg)
 
             conn.commit()
             
@@ -3697,27 +3836,82 @@ def api_config_fixed_fan_speed():
     conn = get_db_connection()
     c = conn.cursor()
     try:
-        data = request.json
+        data = request.json or {}
         details = {}
         msg_parts = []
         
         if 'enabled' in data:
-            val = str(data['enabled']).lower()
-            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_enabled'", (val,))
+            fixed_enabled = parse_bool(data['enabled'])
+            val = 'true' if fixed_enabled else 'false'
+            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', ?)", (val,))
             details['enabled'] = val
-            msg_parts.append(f"开启->{val}")
+            if fixed_enabled:
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp_mode_enabled', 'false')")
+                details['target_temp_enabled'] = 'false'
+            msg_parts.append(f"固定转速模式->{'开启' if fixed_enabled else '关闭'}")
             
         if 'target' in data:
-            val = str(data['target'])
-            c.execute("UPDATE config SET value=? WHERE key='fixed_fan_speed_target'", (val,))
-            details['target'] = val
-            msg_parts.append(f"目标->{val}")
+            fixed_target = clamp_int(data['target'], 30, 10, 100)
+            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_target', ?)", (str(fixed_target),))
+            details['target'] = fixed_target
+            msg_parts.append(f"目标转速->{fixed_target}%")
+        
+        # 统一补充当前目标转速到日志详情
+        current_fixed_target_row = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'").fetchone()
+        current_fixed_target = clamp_int(current_fixed_target_row[0] if current_fixed_target_row else 30, 30, 10, 100)
+        details['fixed_target_percent'] = current_fixed_target
+        if 'enabled' in data and f"目标转速->{current_fixed_target}%" not in msg_parts:
+            msg_parts.append(f"目标转速->{current_fixed_target}%")
             
         conn.commit()
-        write_audit('INFO', 'FAN', 'UPDATE_FIXED', f"更新定速设置: {', '.join(msg_parts)}", details=details)
+        write_audit('INFO', 'FAN', 'UPDATE_FIXED', f"更新固定转速模式: {', '.join(msg_parts)}", details=details)
         return jsonify({'status': 'ok'})
     except Exception as e:
         write_audit('ERROR', 'FAN', 'UPDATE_FIXED_FAIL', f"更新定速设置失败: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/config/target_temp_mode', methods=['POST'])
+@login_required
+def api_config_target_temp_mode():
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
+        data = request.json or {}
+        details = {}
+        msg_parts = []
+        
+        if 'enabled' in data:
+            target_temp_enabled = parse_bool(data['enabled'])
+            if target_temp_enabled and not is_calibration_ready():
+                return jsonify({'error': 'Calibration required before enabling target temperature mode'}), 400
+            val = 'true' if target_temp_enabled else 'false'
+            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp_mode_enabled', ?)", (val,))
+            details['enabled'] = val
+            msg_parts.append(f"目标温度模式->{'开启' if target_temp_enabled else '关闭'}")
+            if target_temp_enabled:
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fixed_fan_speed_enabled', 'false')")
+                details['fixed_enabled'] = 'false'
+        
+        if 'target' in data:
+            target_temp_target = clamp_int(data['target'], 65, 20, 85)
+            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('target_temp_target', ?)", (str(target_temp_target),))
+            details['target'] = target_temp_target
+            msg_parts.append(f"目标温度->{target_temp_target}°C")
+        
+        # 统一补充当前目标温度到日志详情
+        current_target_temp_row = c.execute("SELECT value FROM config WHERE key='target_temp_target'").fetchone()
+        current_target_temp = clamp_int(current_target_temp_row[0] if current_target_temp_row else 65, 65, 20, 85)
+        details['target_temp_c'] = current_target_temp
+        if 'enabled' in data and f"目标温度->{current_target_temp}°C" not in msg_parts:
+            msg_parts.append(f"目标温度->{current_target_temp}°C")
+        
+        conn.commit()
+        write_audit('INFO', 'FAN', 'UPDATE_TARGET_TEMP', f"更新目标温度模式: {', '.join(msg_parts)}", details=details)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        write_audit('ERROR', 'FAN', 'UPDATE_TARGET_TEMP_FAIL', f"更新目标温度模式失败: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
