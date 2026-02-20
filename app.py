@@ -4109,6 +4109,316 @@ def api_insights():
 
     return jsonify(analysis)
 
+# --- 启动时硬件信息探测函数 ---
+def discover_rapl_package_sources_for_startup():
+    """
+    Discover RAPL package-level energy counters.
+    Returns: [{'pkg': '0', 'energy_path': '/sys/.../energy_uj', 'max_range_uj': 123}, ...]
+    """
+    bases = [
+        pathlib.Path('/sys/class/powercap'),
+        pathlib.Path('/sys/devices/virtual/powercap'),
+    ]
+    existing_bases = [b for b in bases if b.exists()]
+    if not existing_bases:
+        return []
+
+    zones = []
+    seen = set()
+    for base in existing_bases:
+        for energy_path in base.rglob('energy_uj'):
+            zone_dir = energy_path.parent.resolve()
+            zone_key = str(zone_dir)
+            if zone_key in seen:
+                continue
+            seen.add(zone_key)
+
+            name_path = zone_dir / 'name'
+            try:
+                zone_name = name_path.read_text(encoding='utf-8', errors='ignore').strip()
+            except Exception:
+                zone_name = zone_dir.name
+
+            m = re.search(r'package[\s\-_]*(\d+)', zone_name.lower())
+            pkg = m.group(1) if m else None
+            try:
+                max_range = int((zone_dir / 'max_energy_range_uj').read_text(encoding='utf-8', errors='ignore').strip())
+            except Exception:
+                max_range = 0
+
+            zones.append({
+                'zone_dir': zone_dir,
+                'zone_name': zone_name,
+                'pkg': pkg,
+                'energy_path': str((zone_dir / 'energy_uj').resolve()),
+                'max_range_uj': max_range
+            })
+
+    if not zones:
+        return []
+
+    package_zones = [z for z in zones if z['zone_name'].lower().startswith('package-')]
+    if package_zones:
+        return sorted(package_zones, key=lambda z: (0, int(z['pkg'])) if (z['pkg'] or '').isdigit() else (1, z['zone_name']))
+
+    top_level = []
+    for z in zones:
+        zone_dir = pathlib.Path(z['zone_dir'])
+        is_sub_zone = False
+        for base in existing_bases:
+            parent = zone_dir.parent
+            while str(parent).startswith(str(base)):
+                if (parent / 'energy_uj').exists():
+                    is_sub_zone = True
+                    break
+                if parent == base:
+                    break
+                parent = parent.parent
+            if is_sub_zone:
+                break
+        if not is_sub_zone:
+            top_level.append(z)
+
+    selected = top_level if top_level else zones
+    synthetic_idx = 0
+    for z in selected:
+        if z['pkg'] is None:
+            z['pkg'] = f'x{synthetic_idx}'
+            synthetic_idx += 1
+    return sorted(selected, key=lambda z: (0, int(z['pkg'])) if z['pkg'].isdigit() else (1, z['pkg']))
+
+def build_startup_payload():
+    """
+    构建启动时的完整硬件信息载荷
+    """
+    import datetime
+    import json
+    
+    payload = {
+        "app_name": "IPMI_WEB",
+        "version": VERSION,
+        "timestamp": datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "environment": {
+            "ipmitool": shutil.which('ipmitool') is not None,
+            "ipmitool_path": shutil.which('ipmitool') or "Not found",
+            "sensors_cmd": shutil.which('sensors') is not None,
+            "sensors_path": shutil.which('sensors') or "Not found"
+        },
+        "system": {
+            "os": f"{platform.system()} {platform.release()}",
+            "kernel": platform.version(),
+            "arch": platform.machine(),
+            "python": platform.python_version(),
+            "cpu_cores": psutil.cpu_count(logical=True),
+            "memory_total_gb": 0,
+            "memory_available_gb": 0
+        },
+        "platform": {
+            "vendor": "Unknown",
+            "model": "Unknown",
+            "bmc_ip": "Unknown"
+        },
+        "hardware_topology": {
+            "cpu": {
+                "sockets": 0,
+                "logical_threads": 0,
+                "model": "Unknown"
+            },
+            "memory": {
+                "total_gb": 0,
+                "physical_modules_count": 0,
+                "physical_modules": []
+            },
+            "network": {
+                "physical_interfaces": []
+            },
+            "pcie": {
+                "gpus": []
+            },
+            "storage": {
+                "block_devices": []
+            }
+        },
+        "startup_telemetry_baseline": {
+            "sensors_discovered": False,
+            "temperatures_c": {},
+            "fans_rpm": {}
+        },
+        "has_ssl": HAS_CERT,
+        "port": PORT,
+        "server_name": SERVER_NAME
+    }
+    
+    # 1. 系统信息 (使用 psutil)
+    try:
+        mem = psutil.virtual_memory()
+        payload['system']['memory_total_gb'] = round(mem.total / 1024**3, 1)
+        payload['system']['memory_available_gb'] = round(mem.available / 1024**3, 1)
+    except Exception:
+        pass
+    
+    # 2. CPU 拓扑
+    try:
+        # 获取 CPU 逻辑核心数
+        payload['hardware_topology']['cpu']['logical_threads'] = psutil.cpu_count(logical=True) or 0
+        payload['hardware_topology']['cpu']['sockets'] = psutil.cpu_count(logical=False) or 1
+        
+        # 尝试读取 CPU 型号
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                for line in f:
+                    if 'model name' in line:
+                        payload['hardware_topology']['cpu']['model'] = line.split(':')[1].strip()
+                        break
+        except Exception:
+            pass
+    except Exception:
+        pass
+    
+    # 3. 内存信息
+    try:
+        mem_info = psutil.virtual_memory()
+        payload['hardware_topology']['memory']['total_gb'] = round(mem_info.total / 1024**3, 1)
+        
+        # 尝试读取 DIMM 信息
+        try:
+            if os.path.exists('/proc/meminfo'):
+                with open('/proc/meminfo', 'r') as f:
+                    for line in f:
+                        if line.startswith('MemTotal:'):
+                            kb = int(line.split()[1])
+                            payload['hardware_topology']['memory']['total_gb'] = round(kb / 1024**2, 1)
+                            break
+        except Exception:
+            pass
+        
+        # 尝试读取 DIMM 槽位信息 (dmidecode)
+        try:
+            result = subprocess.run(['dmidecode', '-t', 'memory'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                modules = []
+                current_module = {}
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith('Memory Device'):
+                        if current_module:
+                            modules.append(current_module)
+                        current_module = {}
+                    elif line.startswith('Locator:'):
+                        current_module['locator'] = line.split(':', 1)[1].strip()
+                    elif line.startswith('Size:'):
+                        size_str = line.split(':', 1)[1].strip()
+                        if 'No Module' not in size_str:
+                            current_module['size'] = size_str
+                if current_module:
+                    modules.append(current_module)
+                
+                if modules:
+                    payload['hardware_topology']['memory']['physical_modules'] = modules[:16]  # 限制数量
+                    payload['hardware_topology']['memory']['physical_modules_count'] = len(modules)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    
+    # 4. 网络接口信息
+    try:
+        net_if = psutil.net_if_stats()
+        interfaces = []
+        for iface, stats in net_if.items():
+            if iface == 'lo':
+                continue
+            interfaces.append({
+                "interface": iface,
+                "speed_mbps": stats.speed if stats.speed > 0 else "Unknown",
+                "state": "up" if stats.isup else "down"
+            })
+        payload['hardware_topology']['network']['physical_interfaces'] = interfaces
+    except Exception:
+        pass
+    
+    # 5. PCIe 设备 (GPU)
+    try:
+        result = subprocess.run(['lspci'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            gpus = []
+            for line in result.stdout.splitlines():
+                if 'VGA' in line or '3D controller' in line:
+                    gpus.append(line.strip())
+            payload['hardware_topology']['pcie']['gpus'] = gpus
+    except Exception:
+        pass
+    
+    # 6. 存储设备
+    try:
+        result = subprocess.run(['lsblk', '-d', '-o', 'NAME,MODEL,SIZE,TYPE', '--noheadings'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            devices = []
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 4 and parts[3] == 'disk':
+                    devices.append({
+                        "device": f"/dev/{parts[0]}",
+                        "model": parts[1] if len(parts) > 1 else "Unknown",
+                        "size": parts[2] if len(parts) > 2 else "Unknown",
+                        "is_hdd": True  # 简化判断
+                    })
+            payload['hardware_topology']['storage']['block_devices'] = devices[:10]  # 限制数量
+    except Exception:
+        pass
+    
+    # 7. 平台信息 (BMC IP)
+    try:
+        # 尝试通过 IPMI 获取 BMC IP
+        result = subprocess.run(['ipmitool', 'lan', 'print'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if 'IP Address' in line and 'Source' not in line:
+                    ip = line.split(':')[1].strip()
+                    if ip and ip != '0.0.0.0':
+                        payload['platform']['bmc_ip'] = ip
+                        break
+        
+        # 尝试获取服务器厂商和型号
+        result = subprocess.run(['dmidecode', '-s', 'system-manufacturer'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0 and result.stdout.strip():
+            payload['platform']['vendor'] = result.stdout.strip()
+        
+        result = subprocess.run(['dmidecode', '-s', 'system-product-name'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0 and result.stdout.strip():
+            payload['platform']['model'] = result.stdout.strip()
+    except Exception:
+        pass
+    
+    # 8. 启动时基线遥测 (CPU 温度、风扇转速)
+    try:
+        # 获取 CPU 温度
+        result = subprocess.run(['sensors'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            temps = {}
+            for line in result.stdout.splitlines():
+                match = re.match(r'(Core \d+|Package id \d+):\s+\+([\d\.]+)°C', line)
+                if match:
+                    temps[match.group(1)] = round(float(match.group(2)), 1)
+            if temps:
+                payload['startup_telemetry_baseline']['temperatures_c'] = temps
+                payload['startup_telemetry_baseline']['sensors_discovered'] = True
+    except Exception:
+        pass
+    
+    try:
+        # 获取 IPMI 风扇转速
+        result = subprocess.run(['ipmitool', 'sensor', 'get', 'Fan1'], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                match = re.match(r'Reading:\s+(\d+)\s+RPM', line)
+                if match:
+                    payload['startup_telemetry_baseline']['fans_rpm']['Fan1'] = int(match.group(1))
+    except Exception:
+        pass
+    
+    return payload
+
 # --- [关键修复] Config 路由重写，防止数据库连接错误 ---
 @app.route('/api/config', methods=['GET', 'POST'])
 @login_required
@@ -4713,23 +5023,64 @@ if __name__ == '__main__':
     check_environment()
     init_db()
 
-    # 记录系统启动日志
+    # 记录系统启动日志 - 使用本地函数构建完整的启动详情
     try:
+        # 使用本地 build_startup_payload 函数构建完整的启动载荷
+        startup_payload = build_startup_payload()
+        
+        # 补充应用层信息
+        startup_payload['app_version'] = VERSION
+        startup_payload['server_name'] = SERVER_NAME
+        startup_payload['port'] = PORT
+        startup_payload['has_ssl'] = HAS_CERT
+        
+        # 添加 psutil 相关的信息
         mem = psutil.virtual_memory()
-        system_info = {
-            'version': VERSION,
-            'os': f"{platform.system()} {platform.release()}",
-            'kernel': platform.version(),
-            'arch': platform.machine(),
-            'python': platform.python_version(),
-            'cpu_cores': psutil.cpu_count(logical=True),
-            'memory_total': f"{round(mem.total / 1024**3, 1)} GB",
+        startup_payload['system']['cpu_cores'] = psutil.cpu_count(logical=True)
+        startup_payload['system']['memory_total_gb'] = round(mem.total / 1024**3, 1)
+        startup_payload['system']['memory_available_gb'] = round(mem.available / 1024**3, 1)
+        
+        # 添加环境检测信息
+        startup_payload['environment'] = {
             'ipmitool': shutil.which('ipmitool') is not None,
-            'sensors': shutil.which('sensors') is not None
+            'sensors_cmd': shutil.which('sensors') is not None,
+            'ipmitool_path': shutil.which('ipmitool') or 'Not found',
+            'sensors_path': shutil.which('sensors') or 'Not found'
         }
-        write_audit('INFO', 'SYSTEM', 'STARTUP', f'软件已启动 (版本: {VERSION})', details=system_info, operator='SYSTEM')
+        
+        # 格式化输出日志
+        platform_info = startup_payload.get('platform', {})
+        hw_info = startup_payload.get('hardware_topology', {})
+        cpu_info = hw_info.get('cpu', {})
+        mem_info = hw_info.get('memory', {})
+        
+        log_summary = (f"软件启动 - 版本: {VERSION} | "
+                      f"平台: {platform_info.get('vendor', 'Unknown')} {platform_info.get('model', 'Unknown')} | "
+                      f"CPU: {cpu_info.get('model', 'Unknown')} ({cpu_info.get('sockets', 1)}x, {cpu_info.get('logical_threads', 1)} 线程) | "
+                      f"内存: {mem_info.get('total_gb', 0)} GB ({mem_info.get('physical_modules_count', 0)} 条) | "
+                      f"BMC IP: {platform_info.get('bmc_ip', 'Unknown')}")
+        
+        write_audit('INFO', 'SYSTEM', 'STARTUP', log_summary, details=startup_payload, operator='SYSTEM')
+        logging.info(f"[STARTUP] Hardware Probe: {json.dumps(startup_payload, indent=2, ensure_ascii=False)}")
     except Exception as e:
         print(f"Failed to log startup: {e}")
+        # 降级到原有的简单日志记录
+        try:
+            mem = psutil.virtual_memory()
+            system_info = {
+                'version': VERSION,
+                'os': f"{platform.system()} {platform.release()}",
+                'kernel': platform.version(),
+                'arch': platform.machine(),
+                'python': platform.python_version(),
+                'cpu_cores': psutil.cpu_count(logical=True),
+                'memory_total': f"{round(mem.total / 1024**3, 1)} GB",
+                'ipmitool': shutil.which('ipmitool') is not None,
+                'sensors': shutil.which('sensors') is not None
+            }
+            write_audit('INFO', 'SYSTEM', 'STARTUP', f'软件已启动 (版本: {VERSION})', details=system_info, operator='SYSTEM')
+        except Exception as e2:
+            print(f"Failed to log fallback startup: {e2}")
 
     # 启动后台工作线程 (使用锁确保仅启动一次)
     _thread_init_lock = threading.Lock()
