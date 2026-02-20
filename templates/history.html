@@ -67,6 +67,8 @@
         #chk-fan:checked + .btn { background-color: rgba(63, 185, 80, 0.15); color: #3fb950; border-color: #238636; }
         /* Sys Power - Gold (#d29922) */
         #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
+        /* CPU Power Total - Orange (#f0883e) */
+        #chk-cpu-pwr:checked + .btn { background-color: rgba(240, 136, 62, 0.15); color: #f0883e; border-color: #f0883e; }
         
         /* CPU Util - Light Blue (#79c0ff) */
         #chk-cpu:checked + .btn { background-color: rgba(121, 192, 255, 0.15); color: #79c0ff; border-color: #58a6ff; }
@@ -256,6 +258,9 @@
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-pwr" onchange="handleTagChange()">
                 <label class="btn" for="chk-pwr"><i class="fas fa-bolt me-1"></i> Power</label>
 
+               <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu-pwr" checked onchange="handleTagChange()">
+               <label class="btn" for="chk-cpu-pwr"><i class="fas fa-microchip me-1"></i> CPU Power</label>
+
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu" checked onchange="handleTagChange()">
                <label class="btn" for="chk-cpu"><i class="fas fa-microchip me-1"></i> CPU</label>
 
@@ -285,6 +290,8 @@
 
                <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-gpu-mem" onchange="handleTagChange()">
                <label class="btn" for="chk-gpu-mem"><i class="fas fa-memory me-1"></i> GPU Memory</label>
+
+               <span id="cpu-pkg-toggle-container"></span>
             </div>
             
             <div id="skeleton-screen" class="d-flex flex-column gap-5 mt-2 d-none">
@@ -303,6 +310,10 @@
                             <canvas id="chartTemp"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-bolt me-1"></i> Power Board</div>
+                            <canvas id="chartPower"></canvas>
+                        </div>
+                        <div style="height: 300px; width: 100%">
                             <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-microchip me-1"></i> Compute Loads</div>
                             <canvas id="chartLoad"></canvas>
                         </div>
@@ -319,7 +330,7 @@
 </div>
 
 <script>
-    let charts = { temp: null, load: null, io: null, pwrDist: null, loadDist: null, vramEff: null, tempDist: null };
+    let charts = { temp: null, power: null, load: null, io: null, pwrDist: null, loadDist: null, vramEff: null, tempDist: null };
     let rawData = {};
     let isBaseDataLoading = false;
     let baseAbortController = null;
@@ -437,7 +448,7 @@
 
     function init() {
         // 监听所有图表容器的鼠标移出，确保清理状态
-        ['chartTemp', 'chartLoad', 'chartIO'].forEach(id => {
+        ['chartTemp', 'chartPower', 'chartLoad', 'chartIO'].forEach(id => {
             const canvas = document.getElementById(id);
             if (canvas) {
                 canvas.addEventListener('mouseleave', () => {
@@ -464,6 +475,7 @@
         Chart.register(crosshairPlugin);
         
         charts.temp = new Chart(document.getElementById('chartTemp'), { type: 'line', data: { labels: [], datasets: [] }, options: baseChartOptions });
+        charts.power = new Chart(document.getElementById('chartPower'), { type: 'line', data: { labels: [], datasets: [] }, options: baseChartOptions });
         charts.load = new Chart(document.getElementById('chartLoad'), { type: 'line', data: { labels: [], datasets: [] }, options: baseChartOptions });
         charts.io = new Chart(document.getElementById('chartIO'), { type: 'line', data: { labels: [], datasets: [] }, options: baseChartOptions });
         
@@ -495,7 +507,7 @@
         
         charts.pwrDist = new Chart(document.getElementById('chartPowerDist'), {
             type: 'doughnut',
-            data: { labels: ['CPU + Others', 'GPU'], datasets: [{ data: [0, 0], backgroundColor: ['#1f6feb', '#39c5bb'], borderWidth: 0 }] },
+            data: { labels: ['CPU', 'GPU', 'Others'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#58a6ff', '#76e3ea', '#8b949e'], borderWidth: 0 }] },
             options: { 
                 ...deepCommonOptions, 
                 cutout: '70%', 
@@ -635,6 +647,40 @@
         gradient.addColorStop(0, color + '33');
         gradient.addColorStop(1, color + '00');
         return gradient;
+    }
+
+    function cpuPkgColorByIndex(idx) {
+        const palette = ['#58a6ff', '#a371f7', '#3fb950', '#d29922', '#ff7b72', '#39c5bb'];
+        return palette[idx % palette.length];
+    }
+
+    function ensureCpuPkgToggleControls() {
+        const container = document.getElementById('cpu-pkg-toggle-container');
+        if (!container) return;
+        const pkgMap = rawData.cpu_pkg_power || {};
+        const pkgKeys = Object.keys(pkgMap).sort((a, b) => {
+            const ai = parseInt(a, 10), bi = parseInt(b, 10);
+            const an = !isNaN(ai), bn = !isNaN(bi);
+            if (an && bn) return ai - bi;
+            if (an) return -1;
+            if (bn) return 1;
+            return a.localeCompare(b);
+        });
+
+        if (pkgKeys.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const saved = JSON.parse(localStorage.getItem('hist_tags') || '{}');
+        container.innerHTML = pkgKeys.map((pkg) => {
+            const id = `chk-cpu-pkg-${pkg}`;
+            const checked = (saved[id] === undefined) ? true : !!saved[id];
+            return `
+               <input type="checkbox" class="btn-check btn-check-custom cpu-pkg-toggle" id="${id}" ${checked ? 'checked' : ''} onchange="handleTagChange()">
+               <label class="btn" for="${id}"><i class="fas fa-microchip me-1"></i> CPU${pkg} Power</label>
+            `;
+        }).join('');
     }
 
     let lastInsightsHours = -1;
@@ -839,22 +885,51 @@
             document.getElementById('stat-energy-date').innerText = 'since ' + (rawData.stats.energy_start_date || '--');
         }
 
-        const dsTemp = [], dsLoad = [], dsIO = [];
+        ensureCpuPkgToggleControls();
+
+        const dsTemp = [], dsPower = [], dsLoad = [], dsIO = [];
         const ctxTemp = document.getElementById('chartTemp').getContext('2d');
+        const ctxPower = document.getElementById('chartPower').getContext('2d');
         const ctxLoad = document.getElementById('chartLoad').getContext('2d');
         const ctxIO = document.getElementById('chartIO').getContext('2d');
 
-        // --- 热力图表 (Temp + Fan) ---
+        // --- 温度图表 (Temp + Fan) ---
         if(document.getElementById('chk-temp').checked) 
             dsTemp.push({label:'CPU Temp', data:rawData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient(ctxTemp, '#1f6feb'), fill: true});
         if(rawData.gpu && rawData.gpu.temp && document.getElementById('chk-gpu-temp').checked)
             dsTemp.push({label:'GPU Temp', data:rawData.gpu.temp, borderColor:'#39c5bb', backgroundColor: createGradient(ctxTemp, '#39c5bb'), fill: true});
         if(document.getElementById('chk-fan').checked) 
             dsTemp.push({label:'Fan Speed', data:rawData.fan_rpm, borderColor:'#3fb950', yAxisID: 'y1'});
+
+        // --- 功耗图表 ---
         if(document.getElementById('chk-pwr').checked) 
-            dsTemp.push({label:'Sys Power', data:rawData.power, borderColor:'#d29922', yAxisID: 'y1'});
+            dsPower.push({label:'Sys Power', data:rawData.power, borderColor:'#d29922', backgroundColor: createGradient(ctxPower, '#d29922'), fill: true});
         if(rawData.gpu && rawData.gpu.power && document.getElementById('chk-gpu-pwr').checked)
-            dsTemp.push({label:'GPU Power', data:rawData.gpu.power, borderColor:'#f85149', yAxisID: 'y1'});
+            dsPower.push({label:'GPU Power', data:rawData.gpu.power, borderColor:'#f85149'});
+        if(rawData.cpu_power && document.getElementById('chk-cpu-pwr').checked)
+            dsPower.push({label:'CPU Power', data:rawData.cpu_power, borderColor:'#f0883e', backgroundColor: createGradient(ctxPower, '#f0883e'), fill: true});
+
+        if (rawData.cpu_pkg_power) {
+            const pkgKeys = Object.keys(rawData.cpu_pkg_power).sort((a, b) => {
+                const ai = parseInt(a, 10), bi = parseInt(b, 10);
+                const an = !isNaN(ai), bn = !isNaN(bi);
+                if (an && bn) return ai - bi;
+                if (an) return -1;
+                if (bn) return 1;
+                return a.localeCompare(b);
+            });
+            pkgKeys.forEach((pkg, idx) => {
+                const toggle = document.getElementById(`chk-cpu-pkg-${pkg}`);
+                if (toggle && toggle.checked) {
+                    dsPower.push({
+                        label: `CPU${pkg} Power`,
+                        data: rawData.cpu_pkg_power[pkg],
+                        borderColor: cpuPkgColorByIndex(idx),
+                        borderDash: [4, 3]
+                    });
+                }
+            });
+        }
 
         // --- 负载图表 (Load + GPU Mem) ---
         if(document.getElementById('chk-cpu').checked)
@@ -876,7 +951,7 @@
         if(document.getElementById('chk-disk-w').checked)
             dsIO.push({label:'Disk W', data:rawData.disk_w, borderColor:'#f85149'});
 
-        // 更新三个图表
+        // 更新四个图表
         const updateSingleChart = (chart, ds) => {
             chart.data.labels = rawData.times;
             chart.data.datasets = ds;
@@ -885,6 +960,7 @@
         };
 
         updateSingleChart(charts.temp, dsTemp);
+        updateSingleChart(charts.power, dsPower);
         updateSingleChart(charts.load, dsLoad);
         updateSingleChart(charts.io, dsIO);
 
@@ -897,14 +973,15 @@
             const ana = rawData.analysis;
 
             // 1. 功耗占比 (转换成百分比展示)
-            const totalPwr = (ana.cpu_power_avg || 0) + (ana.gpu_power_avg || 0);
+            const totalPwr = (ana.cpu_power_avg || 0) + (ana.gpu_power_avg || 0) + (ana.others_power_avg || 0);
             if (totalPwr > 0) {
                 charts.pwrDist.data.datasets[0].data = [
                     (ana.cpu_power_avg / totalPwr * 100).toFixed(1),
-                    (ana.gpu_power_avg / totalPwr * 100).toFixed(1)
+                    (ana.gpu_power_avg / totalPwr * 100).toFixed(1),
+                    (ana.others_power_avg / totalPwr * 100).toFixed(1)
                 ];
             } else {
-                charts.pwrDist.data.datasets[0].data = [0, 0];
+                charts.pwrDist.data.datasets[0].data = [0, 0, 0];
             }
             charts.pwrDist.update();
 

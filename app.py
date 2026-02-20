@@ -3,6 +3,7 @@ import json
 import zlib
 import time
 import math
+import pathlib
 import sqlite3
 import threading
 import subprocess
@@ -48,7 +49,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.12'
+VERSION = '1.3.13'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -204,7 +205,8 @@ sys_cache = {
     'env': {'ipmitool': True, 'sensors': True},
     'hw': {'temp': 0, 'power': 0, 'fan_rpm': 0, 'mode': 'auto', 'sensors': [], 'max_rpm': 0, 'min_rpm': 0},
     'res': {'cpu': 0, 'mem_percent': 0, 'mem_used': 0, 'mem_total': 0, 
-            'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0},
+            'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0,
+            'cpu_power_w': 0, 'cpu_pkg_power': {}},
     'gpu': {'online': False, 'gpus': [], 'last_update': 0, 'retry_delay': 1},
     'calibration': {'active': False, 'progress': 0, 'current_pwm': 0, 'current_rpm': 0, 'log': ''}
 }
@@ -257,9 +259,21 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS metrics_v2 
                  (timestamp INTEGER, cpu_temp REAL, fan_rpm INTEGER, power_watts INTEGER,
+                  cpu_power_w REAL, cpu_pkg_power_json TEXT,
                   cpu_usage REAL, mem_usage REAL, net_recv_speed REAL, net_sent_speed REAL,
                   disk_read_speed REAL, disk_write_speed REAL)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics_v2(timestamp)')
+
+    # metrics_v2 增量迁移：补齐 CPU 功耗字段
+    try:
+        c.execute("PRAGMA table_info(metrics_v2)")
+        metric_cols = [row[1] for row in c.fetchall()]
+        if 'cpu_power_w' not in metric_cols:
+            c.execute("ALTER TABLE metrics_v2 ADD COLUMN cpu_power_w REAL")
+        if 'cpu_pkg_power_json' not in metric_cols:
+            c.execute("ALTER TABLE metrics_v2 ADD COLUMN cpu_pkg_power_json TEXT")
+    except Exception as e:
+        print(f"Migration Error (metrics_v2 cpu power columns): {e}")
     
     c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
     
@@ -557,6 +571,125 @@ def parse_bool(value, default_value=False):
 def is_calibration_ready():
     return bool(rpm_map) and max_rpm > 0
 
+def parse_cpu_pkg_power_json(raw):
+    """Parse cpu package power json into a normalized dict[str, float]."""
+    if not raw:
+        return {}
+    try:
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            return {}
+        out = {}
+        for k, v in obj.items():
+            try:
+                out[str(k)] = float(v)
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return {}
+
+def sort_pkg_keys(keys):
+    """Sort package keys numerically when possible, then lexicographically."""
+    return sorted(
+        [str(k) for k in keys],
+        key=lambda k: (0, int(k)) if str(k).isdigit() else (1, str(k))
+    )
+
+def safe_round(value, decimals):
+    """
+    安全地将值四舍五入到指定小数位数。
+    忽略非数值类型（如JSON字符串、None等），返回None。
+    """
+    if value is None:
+        return None
+    try:
+        # 尝试直接转换为float
+        return round(float(value), decimals)
+    except (ValueError, TypeError):
+        # 如果失败，可能是JSON字符串或其他非数值类型
+        return None
+
+def discover_rapl_package_sources():
+    """
+    Discover RAPL package-level energy counters.
+    Returns: [{'pkg': '0', 'energy_path': '/sys/.../energy_uj', 'max_range_uj': 123}, ...]
+    """
+    bases = [
+        pathlib.Path('/sys/class/powercap'),
+        pathlib.Path('/sys/devices/virtual/powercap'),
+    ]
+    existing_bases = [b for b in bases if b.exists()]
+    if not existing_bases:
+        return []
+
+    zones = []
+    seen = set()
+    for base in existing_bases:
+        for energy_path in base.rglob('energy_uj'):
+            zone_dir = energy_path.parent.resolve()
+            zone_key = str(zone_dir)
+            if zone_key in seen:
+                continue
+            seen.add(zone_key)
+
+            name_path = zone_dir / 'name'
+            try:
+                zone_name = name_path.read_text(encoding='utf-8', errors='ignore').strip()
+            except Exception:
+                zone_name = zone_dir.name
+
+            m = re.search(r'package[\s\-_]*(\d+)', zone_name.lower())
+            pkg = m.group(1) if m else None
+            try:
+                max_range = int((zone_dir / 'max_energy_range_uj').read_text(encoding='utf-8', errors='ignore').strip())
+            except Exception:
+                max_range = 0
+
+            zones.append({
+                'zone_dir': zone_dir,
+                'zone_name': zone_name,
+                'pkg': pkg,
+                'energy_path': str((zone_dir / 'energy_uj').resolve()),
+                'max_range_uj': max_range
+            })
+
+    if not zones:
+        return []
+
+    # Prefer explicit package-* zones.
+    package_zones = [z for z in zones if z['zone_name'].lower().startswith('package-')]
+    if package_zones:
+        return sorted(package_zones, key=lambda z: (0, int(z['pkg'])) if (z['pkg'] or '').isdigit() else (1, z['zone_name']))
+
+    # Fallback: keep only top-level zones (exclude sub-zones that have a parent with energy_uj).
+    top_level = []
+    for z in zones:
+        zone_dir = pathlib.Path(z['zone_dir'])
+        is_sub_zone = False
+        for base in existing_bases:
+            parent = zone_dir.parent
+            while str(parent).startswith(str(base)):
+                if (parent / 'energy_uj').exists():
+                    is_sub_zone = True
+                    break
+                if parent == base:
+                    break
+                parent = parent.parent
+            if is_sub_zone:
+                break
+        if not is_sub_zone:
+            top_level.append(z)
+
+    selected = top_level if top_level else zones
+    # If package id missing, assign stable synthetic ids.
+    synthetic_idx = 0
+    for z in selected:
+        if z['pkg'] is None:
+            z['pkg'] = f'x{synthetic_idx}'
+            synthetic_idx += 1
+    return sorted(selected, key=lambda z: (0, int(z['pkg'])) if z['pkg'].isdigit() else (1, z['pkg']))
+
 # --- 辅助函数 ---
 def get_client_ip():
     if request.headers.get('X-Forwarded-For'):
@@ -745,9 +878,11 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                     MIN(fan_rpm) as fan_min, MAX(fan_rpm) as fan_max, AVG(fan_rpm) as fan_avg,
                     (SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as pwr_current,
                     MIN(power_watts) as pwr_min, MAX(power_watts) as pwr_max, AVG(power_watts) as pwr_avg,
+                    (SELECT cpu_power_w FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as cpu_pwr_current,
+                    MIN(cpu_power_w) as cpu_pwr_min, MAX(cpu_power_w) as cpu_pwr_max, AVG(cpu_power_w) as cpu_pwr_avg,
                     COUNT(*) as data_points
                  FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ?""", 
-              (start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now))
+              (start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now))
     hw_stats = dict(c.fetchone()) or {}
     
     # 资源指标统计
@@ -837,9 +972,23 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         msg = f"[{row['module']}] {row['action']}: {row['message']}"
         log_entries.append({'time': log_time, 'color': color, 'msg': msg[:100]})
     
+    def coerce_float(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    def rounded_or_default(value, digits, default='--'):
+        number = coerce_float(value)
+        if number is None:
+            return default
+        return round(number, digits)
+
     # 计算耗电量 (简化计算)
-    power_avg = hw_stats.get('pwr_avg', 0) or 0
-    energy_wh = power_avg * hours
+    power_avg = coerce_float(hw_stats.get('pwr_avg')) or 0.0
+    hours_numeric = coerce_float(hours) or 0.0
+    energy_wh = power_avg * hours_numeric
     
     # 生成趋势图数据 (最多1000点，SVG路径格式)
     def generate_svg_path(values, max_val, height=40, width=400, color='#58a6ff'):
@@ -998,17 +1147,36 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     conn = get_db_connection()
     c = conn.cursor()
     
-    # 获取 CPU 占用原始数据
+    def numeric_series_from_rows(rows):
+        series = []
+        for row in rows:
+            try:
+                v = float(row[0])
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(v):
+                series.append(v)
+        return series
+
+    # 获取 CPU 状态三线图原始数据（过滤非数值脏数据）
+    c.execute("SELECT cpu_temp FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    cpu_temp_values = numeric_series_from_rows(c.fetchall())
+
+    # 获取 CPU 占用原始数据（过滤非数值脏数据）
     c.execute("SELECT cpu_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
-    cpu_load_values = [row[0] or 0 for row in c.fetchall()]
+    cpu_load_values = numeric_series_from_rows(c.fetchall())
+
+    # 获取 CPU 功耗原始数据（过滤非数值脏数据）
+    c.execute("SELECT cpu_power_w FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    cpu_power_values = numeric_series_from_rows(c.fetchall())
     
-    # 获取内存使用原始数据
+    # 获取内存使用原始数据（过滤非数值脏数据）
     c.execute("SELECT mem_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
-    mem_values = [row[0] or 0 for row in c.fetchall()]
+    mem_values = numeric_series_from_rows(c.fetchall())
     
-    # 获取功耗原始数据
+    # 获取功耗原始数据（过滤非数值脏数据）
     c.execute("SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
-    power_values = [row[0] or 0 for row in c.fetchall()]
+    power_values = numeric_series_from_rows(c.fetchall())
     
     # 获取 GPU 详细数据（用于区间统计和趋势图）
     c.execute("""SELECT gpu_index, gpu_name, temp, util_gpu, mem_used, mem_total, timestamp 
@@ -1018,7 +1186,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     
     # 获取 GPU 占用原始数据（用于顶部的GPU趋势图）
     c.execute("SELECT util_gpu FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
-    gpu_util_values = [row[0] or 0 for row in c.fetchall()]
+    gpu_util_values = numeric_series_from_rows(c.fetchall())
     
     conn.close()
     
@@ -1041,6 +1209,30 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     mem_stroke, mem_fill, mem_svg = generate_svg_path(mem_values, mem_max, color='#a371f7') if mem_values else ("", "", "")
     power_stroke, power_fill, power_svg = generate_svg_path(power_values, power_max, color='#f0883e') if power_values else ("", "", "")
     gpu_stroke, gpu_fill, gpu_svg = generate_svg_path(gpu_util_values, gpu_load_max, color='#76e3ea') if gpu_util_values else ("", "", "")
+
+    # 生成 CPU 状态三线图（温度 / 占用 / 功耗）
+    cpu_temp_stroke, cpu_temp_path = ("", "")
+    cpu_util_stroke, cpu_util_path = ("", "")
+    cpu_power_stroke, cpu_power_path = ("", "")
+    cpu_cid_name = None
+    cpu_status_svg = ""
+    cpu_data_points = max(actual_points, len(cpu_temp_values), len(cpu_load_values), len(cpu_power_values))
+
+    if cpu_temp_values:
+        cpu_temp_stroke, cpu_temp_path = generate_multi_line_path(cpu_temp_values, 90, 0, 40, 400)
+    if cpu_load_values:
+        cpu_util_stroke, cpu_util_path = generate_multi_line_path(cpu_load_values, 100, 0, 40, 400)
+    if cpu_power_values:
+        cpu_power_scale = max(max(cpu_power_values), 1)
+        cpu_power_stroke, cpu_power_path = generate_multi_line_path(cpu_power_values, cpu_power_scale, 0, 40, 400)
+
+    if cpu_temp_path or cpu_util_path or cpu_power_path:
+        cpu_status_svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="40" viewBox="0 0 400 40" preserveAspectRatio="none">
+            <rect width="400" height="40" fill="#161b22"/>
+            <path d="{cpu_temp_path}" fill="none" stroke="#f0883e" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="{cpu_util_path}" fill="none" stroke="#58a6ff" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="{cpu_power_path}" fill="none" stroke="#a371f7" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>'''
     
     # 转换SVG为PNG临时文件（CID附件方式）
     chart_cids = []  # 存储 (cid_name, file_path) 列表
@@ -1048,6 +1240,13 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         result = svg_to_png_file(cpu_svg, 'cpu_chart', 400, 40, scale=4)
         if result:
             chart_cids.append(result)
+    if cpu_status_svg:
+        cpu_cid_name = 'cpu_status_chart'
+        result = svg_to_png_file(cpu_status_svg, cpu_cid_name, 400, 40, scale=4)
+        if result:
+            chart_cids.append(result)
+        else:
+            cpu_cid_name = None
     if mem_svg:
         result = svg_to_png_file(mem_svg, 'mem_chart', 400, 40, scale=4)
         if result:
@@ -1097,10 +1296,10 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             gpu_index = row[0]
             gpu_groups[gpu_index].append({
                 'name': row[1],
-                'temp': row[2] or 0,
-                'util': row[3] or 0,
-                'mem_used': row[4] or 0,
-                'mem_total': row[5] or 1,
+                'temp': coerce_float(row[2]) or 0.0,
+                'util': coerce_float(row[3]) or 0.0,
+                'mem_used': coerce_float(row[4]) or 0.0,
+                'mem_total': coerce_float(row[5]) or 0.0,
                 'timestamp': row[6]
             })
         
@@ -1180,6 +1379,10 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     # 优先级：数据库记录 > 当前请求头 (如果是手动) > localhost 兜底
     base_domain = domain_row[0] if domain_row else (request.url_root.rstrip('/') if request else 'http://localhost:5000')
 
+    cpu_max_for_color = coerce_float(hw_stats.get('cpu_max')) or 0.0
+    net_rx_total = coerce_float(res_stats.get('net_rx_total')) or 0.0
+    net_tx_total = coerce_float(res_stats.get('net_tx_total')) or 0.0
+
     # 准备模板数据 (添加 gpu_data)
     template_data = {
         'subject': f'{report_type_label}报告 - {datetime.now().strftime("%Y-%m-%d")}',
@@ -1191,36 +1394,44 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'report_time_end': time_end_str,
         'report_duration': f'{hours}小时',
         'data_points': actual_points,
+        'cpu_data_points': cpu_data_points,
         'uptime_percent': uptime_percent,
         # 硬件数据
-        'cpu_current_temp': round(hw_stats.get('cpu_current', 0), 1) if hw_stats.get('cpu_current') else '--',
-        'cpu_avg_temp': round(hw_stats.get('cpu_avg', 0), 1) if hw_stats.get('cpu_avg') else '--',
-        'cpu_max_temp': round(hw_stats.get('cpu_max', 0), 1) if hw_stats.get('cpu_max') else '--',
-        'temp_color': '#3fb950' if (hw_stats.get('cpu_max', 0) or 0) < 70 else '#d29922' if (hw_stats.get('cpu_max', 0) or 0) < 85 else '#f85149',
-        'power_current': round(hw_stats.get('pwr_current', 0), 0) if hw_stats.get('pwr_current') else '--',
-        'power_avg': round(hw_stats.get('pwr_avg', 0), 0) if hw_stats.get('pwr_avg') else '--',
-        'power_max': round(hw_stats.get('pwr_max', 0), 0) if hw_stats.get('pwr_max') else '--',
+        'cpu_current_temp': rounded_or_default(hw_stats.get('cpu_current'), 1),
+        'cpu_avg_temp': rounded_or_default(hw_stats.get('cpu_avg'), 1),
+        'cpu_max_temp': rounded_or_default(hw_stats.get('cpu_max'), 1),
+        'temp_color': '#3fb950' if cpu_max_for_color < 70 else '#d29922' if cpu_max_for_color < 85 else '#f85149',
+        'power_current': rounded_or_default(hw_stats.get('pwr_current'), 0),
+        'power_avg': rounded_or_default(hw_stats.get('pwr_avg'), 0),
+        'power_max': rounded_or_default(hw_stats.get('pwr_max'), 0),
         'power_total_kwh': round(energy_wh / 1000.0, 2),
-        'fan_current_rpm': round(hw_stats.get('fan_current', 0), 0) if hw_stats.get('fan_current') else '--',
-        'fan_avg_rpm': round(hw_stats.get('fan_avg', 0), 0) if hw_stats.get('fan_avg') else '--',
-        'fan_max_rpm': round(hw_stats.get('fan_max', 0), 0) if hw_stats.get('fan_max') else '--',
+        'cpu_power_current': rounded_or_default(hw_stats.get('cpu_pwr_current'), 1),
+        'cpu_power_avg': rounded_or_default(hw_stats.get('cpu_pwr_avg'), 1),
+        'cpu_power_max': rounded_or_default(hw_stats.get('cpu_pwr_max'), 1),
+        'fan_current_rpm': rounded_or_default(hw_stats.get('fan_current'), 0),
+        'fan_avg_rpm': rounded_or_default(hw_stats.get('fan_avg'), 0),
+        'fan_max_rpm': rounded_or_default(hw_stats.get('fan_max'), 0),
         # 资源数据
-        'cpu_current_load': round(hw_stats.get('cpu_current_load', 0), 1) if hw_stats.get('cpu_current_load') else '--',
-        'cpu_avg_load': round(res_stats.get('cpu_avg', 0), 1) if res_stats.get('cpu_avg') else '--',
-        'cpu_max_load': round(res_stats.get('cpu_max', 0), 1) if res_stats.get('cpu_max') else '--',
-        'mem_current': round(hw_stats.get('mem_current', 0), 1) if hw_stats.get('mem_current') else '--',
-        'mem_avg': round(res_stats.get('mem_avg', 0), 1) if res_stats.get('mem_avg') else '--',
-        'mem_max': round(res_stats.get('mem_max', 0), 1) if res_stats.get('mem_max') else '--',
+        'cpu_current_load': rounded_or_default(hw_stats.get('cpu_current_load'), 1),
+        'cpu_avg_load': rounded_or_default(res_stats.get('cpu_avg'), 1),
+        'cpu_max_load': rounded_or_default(res_stats.get('cpu_max'), 1),
+        'mem_current': rounded_or_default(hw_stats.get('mem_current'), 1),
+        'mem_avg': rounded_or_default(res_stats.get('mem_avg'), 1),
+        'mem_max': rounded_or_default(res_stats.get('mem_max'), 1),
         # 磁盘读写速度
         'disk_r': '--',
         'disk_w': '--',
-        'net_rx_total': f"{round((res_stats.get('net_rx_total', 0) or 0) / 1024 / 1024, 2)} GB",
-        'net_tx_total': f"{round((res_stats.get('net_tx_total', 0) or 0) / 1024 / 1024, 2)} GB",
-        'net_rx_avg': f"{round((res_stats.get('net_rx_total', 0) or 0) / 3600 / 1024, 1)} KB/s",
-        'net_tx_avg': f"{round((res_stats.get('net_tx_total', 0) or 0) / 3600 / 1024, 1)} KB/s",
+        'net_rx_total': f"{round(net_rx_total / 1024 / 1024, 2)} GB",
+        'net_tx_total': f"{round(net_tx_total / 1024 / 1024, 2)} GB",
+        'net_rx_avg': f"{round(net_rx_total / 3600 / 1024, 1)} KB/s",
+        'net_tx_avg': f"{round(net_tx_total / 3600 / 1024, 1)} KB/s",
         # 日志
         'logs': log_entries,
         'chart_data': chart_data,
+        'cpu_cid_name': cpu_cid_name,
+        'cpu_temp_stroke': cpu_temp_stroke,
+        'cpu_util_stroke': cpu_util_stroke,
+        'cpu_power_stroke': cpu_power_stroke,
         'gpu_interval_data': gpu_interval_data,
         'version': VERSION,
         'report_range': report_range,
@@ -1758,6 +1969,13 @@ def background_worker():
     target_temp_initialized = False
     target_temp_mode_enter_ts = 0.0
     
+    # CPU RAPL 功耗采集状态
+    rapl_sources = []
+    rapl_last_discovery_ts = 0.0
+    rapl_prev = {}
+    cpu_pkg_power = {}
+    cpu_power_total = 0.0
+    
     # 异常间隔检测：记录上次审计日志时间戳 (使用浮点数以保证精确计算延迟)
     global last_audit_check_ts
     last_audit_check_ts['last_check_f'] = time.time()
@@ -1806,6 +2024,57 @@ def background_worker():
             else:
                 # 数据有效，更新历史记录
                 last_valid_hw = {'power': power, 'fan_rpm': fan_rpm, 'cpu_temp': cpu_temp, 'timestamp': now}
+
+            # CPU RAPL 功耗采集（每秒循环中计算，自动处理多 package）
+            if (not rapl_sources) or ((now - rapl_last_discovery_ts) >= 60):
+                rapl_sources = discover_rapl_package_sources()
+                rapl_last_discovery_ts = now
+                source_pkgs = {s['pkg'] for s in rapl_sources}
+                rapl_prev = {k: v for k, v in rapl_prev.items() if k in source_pkgs}
+
+            if rapl_sources:
+                pkg_power_sample = {}
+                sample_points = 0
+                for src in rapl_sources:
+                    pkg = src['pkg']
+                    energy_path = src['energy_path']
+                    max_range = src.get('max_range_uj', 0) or 0
+                    try:
+                        curr_energy = int(pathlib.Path(energy_path).read_text(encoding='utf-8', errors='ignore').strip())
+                    except Exception:
+                        continue
+
+                    prev = rapl_prev.get(pkg)
+                    rapl_prev[pkg] = (curr_energy, now, max_range)
+                    if prev is None:
+                        continue
+
+                    prev_energy, prev_ts, prev_max = prev
+                    dt = now - prev_ts
+                    if dt <= 0:
+                        continue
+
+                    if curr_energy >= prev_energy:
+                        delta = curr_energy - prev_energy
+                    else:
+                        wrap_max = max_range if max_range > 0 else prev_max
+                        if wrap_max > 0:
+                            delta = curr_energy + (wrap_max - prev_energy)
+                        else:
+                            continue
+
+                    watts = (delta / 1_000_000.0) / dt
+                    if watts < 0 or watts > 2000:
+                        continue
+                    pkg_power_sample[pkg] = watts
+                    sample_points += 1
+
+                if sample_points > 0:
+                    cpu_pkg_power = pkg_power_sample
+                    cpu_power_total = sum(pkg_power_sample.values())
+            else:
+                cpu_pkg_power = {}
+                cpu_power_total = 0.0
 
             # Res Data (毫秒级)
             cpu_u = psutil.cpu_percent(interval=None)
@@ -1968,7 +2237,9 @@ def background_worker():
                     'mem_used': round(mem.used/1024**3, 1), 
                     'mem_total': round(mem.total/1024**3, 1),
                     'net_in': int(net_in), 'net_out': int(net_out), 
-                    'disk_r': int(disk_r), 'disk_w': int(disk_w)
+                    'disk_r': int(disk_r), 'disk_w': int(disk_w),
+                    'cpu_power_w': round(cpu_power_total, 2) if cpu_pkg_power else 0,
+                    'cpu_pkg_power': {k: round(v, 2) for k, v in cpu_pkg_power.items()}
                 }
 
             # DB Log (1s precision)
@@ -1980,7 +2251,13 @@ def background_worker():
                 
                 if not is_hw_invalid:
                     # [性能优化] 使用缓冲区进行批量插入，减少 IOPS
-                    metrics_buffer.append((int(now), cpu_temp, fan_rpm, power, cpu_u, mem.percent, 
+                    cpu_power_record = round(cpu_power_total, 3) if cpu_pkg_power else None
+                    cpu_pkg_power_json = json.dumps(
+                        {k: round(v, 3) for k, v in cpu_pkg_power.items()},
+                        separators=(',', ':')
+                    ) if cpu_pkg_power else None
+                    metrics_buffer.append((int(now), cpu_temp, fan_rpm, power, cpu_power_record, cpu_pkg_power_json,
+                                          cpu_u, mem.percent,
                                           net_in/1024, net_out/1024, disk_r/1024/1024, disk_w/1024/1024))
                     
                     if sensors_list:
@@ -2006,7 +2283,12 @@ def background_worker():
                     
                     # 批量插入指标
                     for row_p in metrics_buffer:
-                        batch_sqls.append('INSERT INTO metrics_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                        batch_sqls.append(
+                            'INSERT INTO metrics_v2 '
+                            '(timestamp, cpu_temp, fan_rpm, power_watts, cpu_power_w, cpu_pkg_power_json, '
+                            'cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed) '
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                        )
                         batch_params.append(row_p)
                     
                     # 批量插入传感器
@@ -2076,6 +2358,8 @@ def background_worker():
                     val = current_metrics[rule['metric']]
                     op = rule['operator']
                     threshold = rule['threshold']
+                    val_rounded = safe_round(val, 1)
+                    val_display = val_rounded if val_rounded is not None else val
                     
                     is_anomaly = False
                     if op == '>' and val > threshold: is_anomaly = True
@@ -2103,7 +2387,7 @@ def background_worker():
                                     if 'level' in rule.keys(): r_level = rule['level']
                                 except: pass
                                 
-                                msg = f"告警触发 [{rule['name']}]: {rule['metric']} 当前值 {round(val, 1)} {rule['operator']} {threshold} (持续 {int(now)-state['start_ts']}s)"
+                                msg = f"告警触发 [{rule['name']}]: {rule['metric']} 当前值 {val_display} {rule['operator']} {threshold} (持续 {int(now)-state['start_ts']}s)"
                                 # 强制写入审计日志
                                 write_audit(r_level, 'SYSTEM', 'ALERT_TRIGGER', msg, 
                                            details={'metric': rule['metric'], 'value': val, 'threshold': threshold, 'rule_id': rid},
@@ -2122,7 +2406,7 @@ def background_worker():
                         # 3. 避开系统启动的前 15 秒，防止初始化跳变产生的误报
                         if state['is_alerting'] == 1 and state['recovery_count'] >= 5:
                             if now - worker_start_time > 15:
-                                write_audit('INFO', 'SYSTEM', 'ALERT_RECOVER', f"告警恢复 [{rule['name']}]: {rule['metric']} 已恢复正常 (当前值 {round(val, 1)})", 
+                                write_audit('INFO', 'SYSTEM', 'ALERT_RECOVER', f"告警恢复 [{rule['name']}]: {rule['metric']} 已恢复正常 (当前值 {val_display})", 
                                            details={'metric': rule['metric'], 'value': val, 'rule_id': rid},
                                            operator='SYSTEM')
                             state['is_alerting'] = 0
@@ -3370,8 +3654,51 @@ def api_export_data():
         finally:
             local_conn.close()
 
+    def export_metrics_task():
+        """导出 metrics_v2，并将 CPU 分路功耗 JSON 展开成独立列。"""
+        local_conn = get_db_connection()
+        try:
+            cur = local_conn.cursor()
+            cur.execute("""SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_power_w, cpu_pkg_power_json,
+                                  cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed
+                           FROM metrics_v2 ORDER BY timestamp ASC""")
+            rows = cur.fetchall()
+            if not rows:
+                return None, None
+
+            pkg_keys = set()
+            normalized_rows = []
+            for row in rows:
+                pkg_map = parse_cpu_pkg_power_json(row['cpu_pkg_power_json'])
+                pkg_keys.update(pkg_map.keys())
+                normalized_rows.append((row, pkg_map))
+            pkg_keys = sort_pkg_keys(pkg_keys)
+
+            output = io.StringIO()
+            writer = csv.writer(output)
+            header = [
+                'timestamp', 'cpu_temp', 'fan_rpm', 'power_watts',
+                'cpu_power_w', 'cpu_pkg_power_json',
+                'cpu_usage', 'mem_usage', 'net_recv_speed', 'net_sent_speed', 'disk_read_speed', 'disk_write_speed'
+            ] + [f'cpu_pkg_{k}_w' for k in pkg_keys]
+            writer.writerow(header)
+
+            for row, pkg_map in normalized_rows:
+                line = [
+                    row['timestamp'], row['cpu_temp'], row['fan_rpm'], row['power_watts'],
+                    row['cpu_power_w'], row['cpu_pkg_power_json'],
+                    row['cpu_usage'], row['mem_usage'], row['net_recv_speed'], row['net_sent_speed'],
+                    row['disk_read_speed'], row['disk_write_speed']
+                ]
+                for k in pkg_keys:
+                    line.append(pkg_map.get(k))
+                writer.writerow(line)
+
+            return "metrics_history.csv", output.getvalue()
+        finally:
+            local_conn.close()
+
     tasks = [
-        ("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage FROM metrics_v2 ORDER BY timestamp ASC", "metrics_history.csv"),
         ("SELECT * FROM energy_hourly ORDER BY timestamp ASC", "energy_persistence.csv"),
         ("SELECT * FROM recording_intervals ORDER BY timestamp ASC", "recording_intervals.csv"),
         ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv"),
@@ -3384,6 +3711,8 @@ def api_export_data():
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             # 提交常规任务
             futures = {executor.submit(export_table_task, sql, fname): fname for sql, fname in tasks}
+            # 提交 metrics_v2 定制导出任务（含 CPU 分路功耗展开列）
+            futures[executor.submit(export_metrics_task)] = "metrics_history.csv"
             # 提交特殊的传感器导出任务
             futures[executor.submit(export_sensors_task)] = "sensors_history.csv"
             
@@ -3443,12 +3772,12 @@ def api_history():
         'hw': {'temps': [round(d[1],1) if d[1] is not None else None for d in final_data], 
                 'fans': [d[2] for d in final_data], 
                 'power': [d[3] for d in final_data]},
-        'res': {'cpu': [round(d[4],1) if d[4] is not None else None for d in final_data], 
-                'mem': [round(d[5],1) if d[5] is not None else None for d in final_data], 
-                'net_in': [round(d[6],1) if d[6] is not None else None for d in final_data], 
-                'net_out': [round(d[7],1) if d[7] is not None else None for d in final_data],
-                'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data], 
-                'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data]}
+        'res': {'cpu': [safe_round(d[4], 1) for d in final_data],
+                'mem': [safe_round(d[5], 1) for d in final_data],
+                'net_in': [safe_round(d[6], 1) for d in final_data],
+                'net_out': [safe_round(d[7], 1) for d in final_data],
+                'disk_r': [safe_round(d[8], 1) for d in final_data],
+                'disk_w': [safe_round(d[9], 1) for d in final_data]}
     })
 
 # --- 自定义历史数据 智能降采样 ---
@@ -3460,32 +3789,42 @@ def api_history_custom():
     c = conn.cursor()
     cutoff = int(time.time() - (hours * 3600))
     
-    # 归一化查询：将时间戳按秒取整，确保对齐
-    c.execute("SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    # 系统指标（包含 CPU 功耗与分路功耗 JSON）
+    c.execute("""SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_power_w, cpu_pkg_power_json,
+                        cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed
+                 FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC""", (cutoff,))
     raw_data = c.fetchall()
     
-    # 获取对应时间段的 GPU 数据用于对齐
-    c.execute("SELECT timestamp, temp, util_gpu, util_mem, mem_used, power FROM gpu_metrics WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    # GPU 按秒聚合（多卡合并）
+    c.execute("""SELECT timestamp, AVG(temp) AS temp, AVG(util_gpu) AS util_gpu, AVG(util_mem) AS util_mem,
+                        SUM(mem_used) AS mem_used, SUM(power) AS power_total
+                 FROM gpu_metrics WHERE timestamp > ?
+                 GROUP BY timestamp ORDER BY timestamp ASC""", (cutoff,))
     gpu_raw = c.fetchall()
     conn.close()
     
     if not raw_data:
-        return jsonify({'times': [], 'cpu_temp': [], 'fan_rpm': [], 'power': [], 'cpu_load': [], 'mem_load': [], 'net_in': [], 'net_out': [], 'disk_r': [], 'disk_w': [], 'stats': {}})
+        return jsonify({
+            'times': [],
+            'cpu_temp': [], 'fan_rpm': [],
+            'power': [], 'cpu_power': [], 'cpu_pkg_power': {},
+            'cpu_load': [], 'mem_load': [],
+            'net_in': [], 'net_out': [], 'disk_r': [], 'disk_w': [],
+            'gpu': {'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []},
+            'stats': {}
+        })
 
-    # 将 GPU 数据放入字典，方便快速查找
-    gpu_map = {d[0]: d for d in gpu_raw}
-    
     # 计算全局统计信息（抽样前）
-    cpu_temps = [d[1] for d in raw_data]
-    cpu_loads = [d[4] for d in raw_data]
-    net_ins = [d[6] for d in raw_data]
-    disk_rs = [d[8] for d in raw_data]
+    cpu_temps = [d[1] for d in raw_data if d[1] is not None]
+    cpu_loads = [d[6] for d in raw_data if d[6] is not None]
+    net_ins = [d[8] for d in raw_data if d[8] is not None]
+    disk_rs = [d[10] for d in raw_data if d[10] is not None]
     
     stats = {
-        'max_temp': round(max(cpu_temps), 1),
-        'avg_load': round(sum(cpu_loads) / len(cpu_loads), 1),
-        'max_net': round(max(net_ins), 1),
-        'max_disk': round(max(disk_rs), 1)
+        'max_temp': round(max(cpu_temps), 1) if cpu_temps else 0,
+        'avg_load': round(sum(cpu_loads) / len(cpu_loads), 1) if cpu_loads else 0,
+        'max_net': round(max(net_ins), 1) if net_ins else 0,
+        'max_disk': round(max(disk_rs), 1) if disk_rs else 0
     }
   
     # [关键修复] LTTB 降采样思路简化：在 1s 精度下，步进采样需配合局部极值保留
@@ -3516,11 +3855,18 @@ def api_history_custom():
             if curr_ts - prev_ts > max(ABSOLUTE_GAP_LIMIT, step * 10):
                 # 插入一个 null 数据点，时间戳取中间，各字段设为 None
                 # 前端 Chart.js 会识别并断开连线
-                final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None))
+                final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None, None, None))
         
         final_data.append(sampled_data[i])
 
-    # 对齐 GPU 数据到系统数据的时间轴
+    # 识别 CPU package 维度
+    cpu_pkg_keys = set()
+    for d in raw_data:
+        cpu_pkg_keys.update(parse_cpu_pkg_power_json(d[5]).keys())
+    cpu_pkg_keys = sort_pkg_keys(cpu_pkg_keys)
+    cpu_pkg_series = {k: [] for k in cpu_pkg_keys}
+
+    # 对齐 GPU 数据到系统数据时间轴
     aligned_gpu = {
         'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []
     }
@@ -3532,8 +3878,16 @@ def api_history_custom():
         ts = d[0]
         # 如果是断点占位符
         if d[1] is None:
-            for k in aligned_gpu: aligned_gpu[k].append(None)
+            for k in aligned_gpu:
+                aligned_gpu[k].append(None)
+            for pkg in cpu_pkg_keys:
+                cpu_pkg_series[pkg].append(None)
             continue
+
+        pkg_map = parse_cpu_pkg_power_json(d[5])
+        for pkg in cpu_pkg_keys:
+            v = pkg_map.get(pkg)
+            cpu_pkg_series[pkg].append(round(v, 3) if v is not None else None)
             
         # 寻找最近的 GPU 数据点 (允许前后 2s 的误差)
         found = False
@@ -3562,8 +3916,8 @@ def api_history_custom():
         temp_ws = 0.0
         gap_limit = 120
         for i in range(len(raw_data) - 1):
-            t1, _, _, p1, _, _, _, _, _, _ = raw_data[i]
-            t2, _, _, p2, _, _, _, _, _, _ = raw_data[i+1]
+            t1, _, _, p1, _, _, _, _, _, _, _, _ = raw_data[i]
+            t2, _, _, p2, _, _, _, _, _, _, _, _ = raw_data[i+1]
             dt = t2 - t1
             if 0 < dt <= gap_limit:
                 temp_ws += (p1 + p2) / 2.0 * dt
@@ -3611,12 +3965,14 @@ def api_history_custom():
         'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in final_data],
         'fan_rpm': [d[2] for d in final_data],
         'power': [d[3] for d in final_data],
-        'cpu_load': [round(d[4],1) if d[4] is not None else None for d in final_data],
-        'mem_load': [round(d[5],1) if d[5] is not None else None for d in final_data],
-        'net_in': [round(d[6],1) if d[6] is not None else None for d in final_data],
-        'net_out': [round(d[7],1) if d[7] is not None else None for d in final_data],
-        'disk_r': [round(d[8],1) if d[8] is not None else None for d in final_data],
-        'disk_w': [round(d[9],1) if d[9] is not None else None for d in final_data],
+        'cpu_power': [round(d[4], 3) if d[4] is not None else None for d in final_data],
+        'cpu_pkg_power': cpu_pkg_series,
+        'cpu_load': [safe_round(d[6], 1) for d in final_data],
+        'mem_load': [safe_round(d[7], 1) for d in final_data],
+        'net_in': [safe_round(d[8], 1) for d in final_data],
+        'net_out': [safe_round(d[9], 1) for d in final_data],
+        'disk_r': [safe_round(d[10], 1) for d in final_data],
+        'disk_w': [safe_round(d[11], 1) for d in final_data],
         'gpu': aligned_gpu, # 直接包含对齐后的 GPU 数据
         'stats': stats
     })
@@ -3631,15 +3987,16 @@ def api_insights():
     cutoff = int(time.time() - (hours * 3600))
     
     # 获取全量原始数据进行精准分析
-    c.execute("SELECT timestamp, cpu_temp, power_watts, cpu_usage FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    c.execute("SELECT timestamp, cpu_temp, power_watts, cpu_power_w, cpu_usage FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
     raw_data = c.fetchall()
     
-    c.execute("SELECT timestamp, temp, util_gpu, util_mem, power FROM gpu_metrics WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
+    c.execute("""SELECT timestamp, AVG(temp) AS temp, AVG(util_gpu) AS util_gpu, AVG(util_mem) AS util_mem, SUM(power) AS power_total
+                 FROM gpu_metrics WHERE timestamp > ? GROUP BY timestamp ORDER BY timestamp ASC""", (cutoff,))
     gpu_raw = c.fetchall()
     conn.close()
     
     analysis = {
-        'cpu_power_avg': 0, 'gpu_power_avg': 0,
+        'sys_power_avg': 0, 'cpu_power_avg': 0, 'gpu_power_avg': 0, 'others_power_avg': 0,
         'cpu_temp_labels': [], 'cpu_temp_dist': [], 
         'gpu_temp_dist': [],
         'cpu_load_dist': [0]*5, # <10, 10-30, 30-60, 60-90, >90
@@ -3665,9 +4022,10 @@ def api_insights():
     
     cpu_load_counts = [0]*5
     gpu_load_counts = [0]*5
-    gpu_pwr_sum = 0
-    cpu_pwr_sum = 0
-    gpu_pwr_points = 0
+    sys_pwr_sum = 0.0
+    gpu_pwr_sum = 0.0
+    cpu_pwr_sum = 0.0
+    others_pwr_sum = 0.0
     
     # 散点图空间聚类预处理 (100x100 网格，精确到 1%)
     grid_size = 100
@@ -3676,7 +4034,7 @@ def api_insights():
     gpu_raw_map = {g[0]: g for g in gpu_raw}
     
     for d in raw_data:
-        ts, t, p, l = d
+        ts, t, p_sys, p_cpu, l = d
         if t is not None:
             it = int(round(t))
             if it in cpu_temp_counts: cpu_temp_counts[it] += 1
@@ -3688,6 +4046,7 @@ def api_insights():
             else: cpu_load_counts[4] += 1
         
         g = gpu_raw_map.get(ts)
+        gp = None
         if g:
             gt, gl, gm, gp = g[1], g[2], g[3], g[4]
             if gt is not None:
@@ -3703,14 +4062,27 @@ def api_insights():
                 gx = int(gl * grid_size / 100.1)
                 gy = int(gm * grid_size / 100.1)
                 vram_eff_grid[(gx, gy)] = vram_eff_grid.get((gx, gy), 0) + 1
-            if gp is not None:
-                gpu_pwr_sum += gp
-                cpu_pwr_sum += max(0, p - gp)
-                gpu_pwr_points += 1
-            else:
-                cpu_pwr_sum += p
-        else:
-            cpu_pwr_sum += p
+        # 安全转换：先检查是否为有效数值，避免 "nan" 或无效字符串导致 TypeError
+        def safe_float(val, default=0.0):
+            if val is None:
+                return default
+            try:
+                f = float(val)
+                if math.isnan(f) or math.isinf(f):
+                    return default
+                return f
+            except (ValueError, TypeError):
+                return default
+        
+        sys_p = safe_float(p_sys)
+        gpu_p = safe_float(gp) if g else 0.0
+        cpu_p = safe_float(p_cpu) if p_cpu is not None else max(0.0, sys_p - gpu_p)
+        others_p = max(0.0, sys_p - cpu_p - gpu_p)
+
+        sys_pwr_sum += sys_p
+        cpu_pwr_sum += cpu_p
+        others_pwr_sum += others_p
+        gpu_pwr_sum += gpu_p
 
     max_weight = max(vram_eff_grid.values()) if vram_eff_grid else 1
     for (gx, gy), weight in vram_eff_grid.items():
@@ -3730,9 +4102,10 @@ def api_insights():
         analysis['gpu_temp_dist'] = [0] * len(temp_labels)
         analysis['gpu_load_dist'] = [0] * 5
     
+    analysis['sys_power_avg'] = round(sys_pwr_sum / raw_total_points, 1)
     analysis['cpu_power_avg'] = round(cpu_pwr_sum / raw_total_points, 1)
-    if gpu_pwr_points > 0:
-        analysis['gpu_power_avg'] = round(gpu_pwr_sum / gpu_pwr_points, 1)
+    analysis['others_power_avg'] = round(others_pwr_sum / raw_total_points, 1)
+    analysis['gpu_power_avg'] = round(gpu_pwr_sum / raw_total_points, 1)
 
     return jsonify(analysis)
 

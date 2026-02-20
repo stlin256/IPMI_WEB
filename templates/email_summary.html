@@ -226,6 +226,59 @@
                                 </table>
                             </div>
 
+                            <!-- CPU 状态 -->
+                            <div style="margin-bottom: 25px;">
+                                <div style="color: #1f6feb; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">CPU 状态</div>
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
+                                    <tr>
+                                        <td style="padding: 15px;">
+                                            <div style="font-size: 13px; color: #e6edf3; font-weight: bold; margin-bottom: 10px;">
+                                                CPU 0
+                                                <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ cpu_data_points|default('--') }} 个数据点</span>
+                                            </div>
+                                            <!-- 统计数据 -->
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 12px;">
+                                                <tr>
+                                                    <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 10px; color: #8b949e;">平均温度</div>
+                                                        <div style="font-size: 13px; color: #f0883e; font-weight: bold;" class="nowrap">{{ cpu_avg_temp|default('--') }}°C</div>
+                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ cpu_max_temp|default('--') }}°C</div>
+                                                    </td>
+                                                    <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
+                                                        <div style="font-size: 10px; color: #8b949e;">平均占用</div>
+                                                        <div style="font-size: 13px; color: #58a6ff; font-weight: bold;" class="nowrap">{{ cpu_avg_load|default('--') }}%</div>
+                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ cpu_max_load|default('--') }}%</div>
+                                                    </td>
+                                                    <td class="data-cell" width="33%" style="padding: 5px;">
+                                                        <div style="font-size: 10px; color: #8b949e;">平均功耗</div>
+                                                        <div style="font-size: 13px; color: #a371f7; font-weight: bold;" class="nowrap">{{ cpu_power_avg|default('--') }}W</div>
+                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ cpu_power_max|default('--') }}W</div>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                            <!-- 三合一趋势图 -->
+                                            <div style="margin-top: 10px;">
+                                                <div style="font-size: 10px; color: #8b949e; margin-bottom: 5px;">
+                                                    <span style="color: #f0883e;">● 温度</span>
+                                                    <span style="color: #58a6ff; margin-left: 8px;">● 占用</span>
+                                                    <span style="color: #a371f7; margin-left: 8px;">● 功耗</span>
+                                                </div>
+                                                {% if cpu_cid_name %}
+                                                <img src="cid:{{ cpu_cid_name }}" width="100%" height="40" style="display: block; border-radius: 4px; background-color: #161b22; line-height: 40px; vertical-align: top; height: 40px;" alt="CPU趋势" border="0" />
+                                                {% else %}
+                                                <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block; background-color: #161b22; border-radius: 4px;">
+                                                    <!-- 三条曲线共享整个高度 -->
+                                                    <path d="{{ cpu_temp_stroke|default('') }}" fill="none" stroke="#f0883e" stroke-width="0.8" />
+                                                    <path d="{{ cpu_util_stroke|default('') }}" fill="none" stroke="#58a6ff" stroke-width="0.8" />
+                                                    <path d="{{ cpu_power_stroke|default('') }}" fill="none" stroke="#a371f7" stroke-width="0.8" />
+                                                </svg>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
                             <!-- GPU 状态 -->
                             {% if gpu_interval_data is defined and gpu_interval_data|length > 0 %}
                             <div style="margin-bottom: 25px;">

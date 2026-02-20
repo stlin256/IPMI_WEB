@@ -98,6 +98,9 @@
                                     <div class="gauge-label">%</div>
                                 </div>
                             </div>
+                            <div class="res-sub-text">
+                                <span id="val-cpu-power">--</span> W
+                            </div>
                         </div>
                     </div>
                     <!-- Memory -->
@@ -306,6 +309,7 @@
             if (d.cpu === undefined) return;
             document.getElementById('val-cpu').innerText = d.cpu;
             document.getElementById('val-mem').innerText = d.mem_percent;
+            document.getElementById('val-cpu-power').innerText = (d.cpu_power_w !== undefined ? d.cpu_power_w : '--');
             document.getElementById('val-mem-used').innerText = d.mem_used;
             document.getElementById('val-mem-total').innerText = d.mem_total;
             document.getElementById('str-disk-r').innerText = formatBytes(d.disk_r);
