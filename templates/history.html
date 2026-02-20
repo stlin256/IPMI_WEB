@@ -45,7 +45,6 @@
                 cursor: grabbing;
                 user-select: none;
             }
-            .scrollable-tabs-container.is-dragging .btn { pointer-events: none; }
         }
         
         /* 胶囊样式优化 */
@@ -459,10 +458,10 @@
         const containers = document.querySelectorAll('.scrollable-tabs-container');
 
         containers.forEach(container => {
+            let isPointerDown = false;
             let isDragging = false;
             let dragStartX = 0;
             let dragStartScrollLeft = 0;
-            let hasMoved = false;
             let suppressClick = false;
 
             container.addEventListener('wheel', (e) => {
@@ -481,35 +480,39 @@
                 if (!isDesktopPointer()) return;
                 if (e.button !== 0) return;
 
-                isDragging = true;
-                hasMoved = false;
+                isPointerDown = true;
+                isDragging = false;
                 dragStartX = e.clientX;
                 dragStartScrollLeft = container.scrollLeft;
-                container.classList.add('is-dragging');
             });
 
-            container.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
+            window.addEventListener('mousemove', (e) => {
+                if (!isPointerDown) return;
                 const deltaX = e.clientX - dragStartX;
 
-                if (!hasMoved && Math.abs(deltaX) > 4) hasMoved = true;
-                if (hasMoved) {
+                if (!isDragging && Math.abs(deltaX) > 6) {
+                    isDragging = true;
+                    container.classList.add('is-dragging');
+                }
+                if (isDragging) {
                     container.scrollLeft = dragStartScrollLeft - deltaX;
                     e.preventDefault();
                 }
             });
 
             const stopDrag = () => {
-                if (!isDragging) return;
+                if (!isPointerDown) return;
+                const wasDragging = isDragging;
+                isPointerDown = false;
                 isDragging = false;
                 container.classList.remove('is-dragging');
-                if (hasMoved) {
+
+                if (wasDragging) {
                     suppressClick = true;
-                    setTimeout(() => { suppressClick = false; }, 0);
+                    requestAnimationFrame(() => { suppressClick = false; });
                 }
             };
 
-            container.addEventListener('mouseleave', stopDrag);
             window.addEventListener('mouseup', stopDrag);
 
             container.addEventListener('click', (e) => {

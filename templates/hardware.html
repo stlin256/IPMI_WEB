@@ -843,15 +843,6 @@
         if (defaultEl) defaultEl.checked = true;
     }
 
-    function getSensorRangePref(defaultHours = 24) {
-        const savedHours = parseInt(localStorage.getItem('hw_sensor_time_range'), 10);
-        return Number.isNaN(savedHours) ? defaultHours : savedHours;
-    }
-
-    function saveSensorRangePrefs(hours) {
-        localStorage.setItem('hw_sensor_time_range', String(hours));
-    }
-
     async function loadDashboardOptions() {
         try {
             const res = await fetch('/api/settings');
