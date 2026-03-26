@@ -862,7 +862,19 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     
     # 计算时间范围
     now = force_ts if force_ts else int(time.time())
-    start_ts = now - (hours * 3600)
+
+    # 对于日报，时间范围应锚定到预设的发送时间，而不是实际发送时间
+    # 这样即使日报因失败/重试而延迟发送，报告周期仍然是"昨天预定时间到今天预定时间"
+    if report_type == 'daily':
+        daily_time_str = configs.get('summary_daily_time', '08:00')
+        daily_hour, daily_min = map(int, daily_time_str.split(':'))
+        # 计算今天预定发送时间的戳
+        today_scheduled = datetime.now().replace(hour=daily_hour, minute=daily_min, second=0, microsecond=0)
+        end_ts = int(today_scheduled.timestamp())
+        start_ts = end_ts - (hours * 3600)
+    else:
+        end_ts = now
+        start_ts = now - (hours * 3600)
     
     # 获取统计区间数据
     conn = get_db_connection()
@@ -881,8 +893,8 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                     (SELECT cpu_power_w FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1) as cpu_pwr_current,
                     MIN(cpu_power_w) as cpu_pwr_min, MAX(cpu_power_w) as cpu_pwr_max, AVG(cpu_power_w) as cpu_pwr_avg,
                     COUNT(*) as data_points
-                 FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ?""", 
-              (start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now, start_ts, now))
+                 FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ?""",
+              (start_ts, end_ts, start_ts, end_ts, start_ts, end_ts, start_ts, end_ts, start_ts, end_ts, start_ts, end_ts, start_ts, end_ts))
     hw_stats = dict(c.fetchone()) or {}
     
     # 资源指标统计
@@ -891,7 +903,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                     MIN(mem_usage) as mem_min, MAX(mem_usage) as mem_max, AVG(mem_usage) as mem_avg,
                     SUM(net_recv_speed) as net_rx_total, SUM(net_sent_speed) as net_tx_total
                  FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ?""", 
-              (start_ts, now))
+              (start_ts, end_ts))
     res_stats = dict(c.fetchone()) or {}
     
     # 获取最近系统日志 (用于报告中的日志区域)
@@ -901,12 +913,12 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                      FROM audit_logs 
                      WHERE timestamp >= ? AND timestamp <= ?
                      AND (module = 'AUTH' OR action IN ('STARTUP', 'SCHEDULER_START') OR level IN ('WARN', 'ERROR', 'SECURITY'))
-                     ORDER BY timestamp DESC""", (start_ts, now))
+                     ORDER BY timestamp DESC""", (start_ts, end_ts))
     else:
         # 日报及自定义：获取区间内的所有事件 (全量获取)
-        c.execute("""SELECT timestamp, level, module, action, message 
+        c.execute("""SELECT timestamp, level, module, action, message
                      FROM audit_logs WHERE timestamp >= ? AND timestamp <= ?
-                     ORDER BY timestamp DESC""", (start_ts, now))
+                     ORDER BY timestamp DESC""", (start_ts, end_ts))
     logs = c.fetchall()
     
     # 获取 GPU 数据
@@ -914,14 +926,14 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                     AVG(util_gpu) as util_avg, AVG(util_mem) as mem_avg,
                     AVG(power) as pwr_avg
                  FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ?
-                 GROUP BY gpu_index""", (start_ts, now))
+                 GROUP BY gpu_index""", (start_ts, end_ts))
     gpu_rows = c.fetchall()
     conn.close()
     
     # 计算在线率 (中断超过60秒才算离线)
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT timestamp, power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT timestamp, power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     power_data = c.fetchall()
     conn.close()
     
@@ -943,7 +955,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     
     # 格式化时间
     time_start_str = datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d %H:%M')
-    time_end_str = datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M')
+    time_end_str = datetime.fromtimestamp(end_ts).strftime('%Y-%m-%d %H:%M')
     
     # 获取服务器名称
     conn_s = get_db_connection()
@@ -1159,33 +1171,33 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         return series
 
     # 获取 CPU 状态三线图原始数据（过滤非数值脏数据）
-    c.execute("SELECT cpu_temp FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT cpu_temp FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     cpu_temp_values = numeric_series_from_rows(c.fetchall())
 
     # 获取 CPU 占用原始数据（过滤非数值脏数据）
-    c.execute("SELECT cpu_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT cpu_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     cpu_load_values = numeric_series_from_rows(c.fetchall())
 
     # 获取 CPU 功耗原始数据（过滤非数值脏数据）
-    c.execute("SELECT cpu_power_w FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT cpu_power_w FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     cpu_power_values = numeric_series_from_rows(c.fetchall())
-    
+
     # 获取内存使用原始数据（过滤非数值脏数据）
-    c.execute("SELECT mem_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT mem_usage FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     mem_values = numeric_series_from_rows(c.fetchall())
-    
+
     # 获取功耗原始数据（过滤非数值脏数据）
-    c.execute("SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT power_watts FROM metrics_v2 WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     power_values = numeric_series_from_rows(c.fetchall())
-    
+
     # 获取 GPU 详细数据（用于区间统计和趋势图）
-    c.execute("""SELECT gpu_index, gpu_name, temp, util_gpu, mem_used, mem_total, timestamp 
-                 FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? 
-                 ORDER BY gpu_index, timestamp ASC""", (start_ts, now))
+    c.execute("""SELECT gpu_index, gpu_name, temp, util_gpu, mem_used, mem_total, timestamp
+                 FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ?
+                 ORDER BY gpu_index, timestamp ASC""", (start_ts, end_ts))
     gpu_raw_data = c.fetchall()
-    
+
     # 获取 GPU 占用原始数据（用于顶部的GPU趋势图）
-    c.execute("SELECT util_gpu FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, now))
+    c.execute("SELECT util_gpu FROM gpu_metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC", (start_ts, end_ts))
     gpu_util_values = numeric_series_from_rows(c.fetchall())
     
     conn.close()
