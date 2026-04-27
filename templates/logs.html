@@ -1276,7 +1276,22 @@ n        /* 标签样式 */
         }
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[ch]));
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, '&#96;');
+    }
+
     function parseUAInfo(ua) {
+        ua = String(ua || '');
         let tag = "Unknown";
         if (ua.includes("HuaweiBrowser") || ua.includes("ArkWeb")) tag = "Huawei";
         else if (ua.includes("Edg/")) tag = "Edge";
@@ -1332,6 +1347,10 @@ n        /* 标签样式 */
     function renderLogLine(log, idx) {
         const fingerprintId = getFingerprintId(log.operator, log.ua);
         const uaTag = parseUAInfo(log.ua);
+        const safeTime = escapeHtml(log.time_str);
+        const safeOperator = escapeHtml(log.operator);
+        const safeModule = escapeHtml(log.module);
+        const safeFingerprint = escapeAttr(fingerprintId);
         
         // 统一状态配置 - 所有状态使用等宽长度 [XXXX] 格式
         const isSuccess = log.action === 'LOGIN_SUCCESS';
@@ -1375,37 +1394,40 @@ n        /* 标签样式 */
         if (log.ua) {
             detailsContent += (detailsContent ? '\n' : '') + `User-Agent: ${log.ua}`;
         }
+        const safeMainMsg = escapeHtml(mainMsg);
+        const safeDetailsContent = escapeHtml(detailsContent);
+        const safeDetailsId = escapeAttr(detailsId);
         
         return `
             <div class="cli-line fingerprint-group">
-                <span class="cli-time">${log.time_str}</span>
+                <span class="cli-time">${safeTime}</span>
                 <span class="cli-status ${statusClass}">${statusText}</span>
                 <div class="cli-content">
                     <span class="cli-tag cli-tag-ip" 
-                          data-fingerprint="${fingerprintId}"
-                          onclick="highlightFingerprint('${fingerprintId}', event)"
-                          title="点击高亮相同指纹">${log.operator}</span>
+                          data-fingerprint="${safeFingerprint}"
+                          onclick="highlightFingerprint('${safeFingerprint}', event)"
+                          title="点击高亮相同指纹">${safeOperator}</span>
                     ${log.operator !== 'SYSTEM' ? `
                     <span class="cli-tag cli-tag-ua" 
-                          data-fingerprint="${fingerprintId}"
-                          onclick="highlightFingerprint('${fingerprintId}', event)"
+                          data-fingerprint="${safeFingerprint}"
+                          onclick="highlightFingerprint('${safeFingerprint}', event)"
                           title="点击高亮相同指纹">${uaTag}</span>
                     ` : ''}
-                    <span class="fw-bold">${log.module}</span>
-                    <span class="text-muted">${mainMsg}</span>
+                    <span class="fw-bold">${safeModule}</span>
+                    <span class="text-muted">${safeMainMsg}</span>
                     ${detailsContent ? `
-                        <a href="javascript:void(0)" class="text-primary ms-2" onclick="toggleDetails('${detailsId}')">
+                        <a href="javascript:void(0)" class="text-primary ms-2" onclick="toggleDetails('${safeDetailsId}')">
                             [详情]
                         </a>
                     ` : ''}
                 </div>
             </div>
             ${detailsContent ? `
-                <div class="cli-details collapse" id="${detailsId}">
+                <div class="cli-details collapse" id="${safeDetailsId}">
                     <div class="cli-details-title">
                         <i class="fas fa-info-circle me-1"></i> 详细信息
                     </div>
-                    <pre>${detailsContent}</pre>
+                    <pre>${safeDetailsContent}</pre>
                 </div>
             ` : ''}
         `;
@@ -1827,6 +1849,7 @@ n        /* 标签样式 */
             document.getElementById('smtp-port').value = globalSettings.smtp_port || '465';
             document.getElementById('smtp-user').value = globalSettings.smtp_user || '';
             document.getElementById('smtp-pass').value = globalSettings.smtp_pass || '';
+            document.getElementById('smtp-pass').placeholder = globalSettings.smtp_pass_set ? '已保存，留空保持不变' : '';
             document.getElementById('smtp-encryption').checked = globalSettings.smtp_encryption === 'true';
             document.getElementById('email-sender').value = globalSettings.email_sender_name || '';
             document.getElementById('email-receiver').value = globalSettings.email_receiver || '';
