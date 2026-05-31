@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.3 - 2026-05-31
+
+### 中文
+
+- 存储管理新增低磁盘自动回收开关，默认保持关闭，管理员可在设置中显式开启。
+- 低磁盘清理在删除历史前会先尝试回收 SQLite freelist 空间；如果空间已经恢复到目标值，不再删除历史记录。
+- 自动删除前会检查 SQLite 是否具备安全整理所需空间，无法安全回收时会熔断并写入保护日志，避免再次出现删除记录但数据库文件不缩小的情况。
+- 存储状态新增 SQLite 可回收空间显示，方便判断 `data.db` 文件体积和实际可用空间之间的差异。
+- 设置关于页恢复为原来的项目信息布局，并改为通过“查看更新日志”按钮打开独立更新日志弹窗。
+
+### English
+
+- Added a low-disk auto-reclaim switch in Storage Management. It remains disabled by default and must be explicitly enabled by an administrator.
+- Low-disk cleanup now attempts to reclaim SQLite freelist space before deleting history; if the target free space is restored, no history rows are removed.
+- Automatic deletion now checks whether SQLite can be compacted safely. If compaction is unsafe, pruning is blocked and a protection log is written to avoid deleting rows while the database file stays large.
+- Storage status now shows SQLite reclaimable space so the difference between `data.db` size and reusable internal pages is visible.
+- Restored the Settings/About project information layout and moved release notes behind a dedicated “View changelog” action.
+
 ## 1.4.2 - 2026-05-31
 
 ### 中文

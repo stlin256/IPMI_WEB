@@ -51,7 +51,7 @@ IPMI_WEB 就是为这个场景做的轻量面板。它基于 Flask、SQLite、Ch
 | 风扇控制 | 自动、手动曲线、固定转速、目标温度、校准 | 在噪音和散热之间做可控调节 |
 | 审计日志 | 登录、配置、证书、GPU、低磁盘、系统事件 | 追踪谁在什么时候做了什么 |
 | 设置中心 | 图表选项、存储、告警、报告、邮件、证书、关于 | 管理长期运行参数 |
-| 存储生命周期 | 热数据保留、审计日志压缩、低磁盘自动清理 | 控制数据库体积，避免磁盘被写满 |
+| 存储生命周期 | 热数据保留、审计日志压缩、低磁盘安全回收 | 控制数据库体积，避免磁盘被写满 |
 | 安全 | 防爆破、可信代理、敏感字段脱敏、日志 XSS 防护、HTTPS | 让面板更适合放在代理后运行 |
 
 ### 页面说明
@@ -92,8 +92,16 @@ IPMI_WEB 会长期写入历史数据，因此必须主动控制数据库体积�
 - 常规历史表按设置中的保留天数清理。
 - 审计日志按自然日压缩归档，归档内容仍可在日志页和导出接口中读取。
 - 新写入的压缩数据带格式标记，优先使用高压缩比 LZMA，旧 zlib 数据仍可兼容读取。
-- 磁盘剩余空间低于 800MB 时，会按最早自然日流式丢弃历史数据。
+- 设置 -> 存储管理中可以查看 `data.db` 文件体积、已存储天数、磁盘剩余空间和 SQLite 可回收空间。
+- 低磁盘自动回收默认关闭。只有管理员在存储管理里显式打开后，系统才会在磁盘剩余空间低于 800MB 时执行自动处理。
+- 自动处理会先尝试 SQLite WAL checkpoint 和安全 `VACUUM`，把数据库内部 freelist 真正归还给文件系统；如果空间已恢复，不会删除历史记录。
+- 只有在安全回收仍不足时，才会按最早自然日流式丢弃保护窗口之外的历史数据。
+- 自动删除至少保护最近 7 天，并且会同时尊重当前数据保留期；单次最多处理 1 个自然日，随后进入冷却期。
+- 如果 SQLite 无法安全整理，或删除后文件系统可用空间没有明显增加，系统会熔断后续自动删除并写入保护日志。
 - 普通低磁盘清理写 INFO，不触发红点；只有确实丢弃历史审计日志时才写 WARN 并点亮提醒红点。
+
+> [!NOTE]
+> 如果看到 `data.db` 文件很大，但存储管理里的“SQLite 可回收空间”也很大，通常说明大量页面已经在数据库内部空闲。开启低磁盘自动回收后，在磁盘低于阈值时系统会优先尝试整理数据库文件，而不是先删除更多历史记录。
 
 ### FRP、反向代理和真实 IP
 
@@ -220,7 +228,7 @@ IPMI_WEB is that panel. It combines Flask, SQLite, Chart.js, `ipmitool`, `lm-sen
 | Fan control | Auto, curve, fixed speed, target temperature, calibration | How do I balance noise and cooling? |
 | Audit logs | Login, config, certificates, GPU, storage, system events | Who did what, and when? |
 | Settings | Charts, retention, alerts, reports, email, certificates, about | How do I operate it long term? |
-| Storage | Retention, compressed archives, low-disk pruning | Will the database grow forever? |
+| Storage | Retention, compressed archives, low-disk safe reclaim | Will the database grow forever? |
 | Security | Anti-bruteforce, trusted proxies, masking, XSS hardening, HTTPS | Can I run it behind a proxy safely? |
 
 ### Page guide
@@ -247,8 +255,16 @@ The settings modal opens immediately, then loads storage status, certificate sta
 - Hot history tables are cleaned by the configured retention period.
 - Audit logs are compressed by local natural day and remain readable from the logs page and export API.
 - New compressed payloads use a codec prefix and prefer high-ratio LZMA while retaining legacy zlib compatibility.
-- If free disk space drops below 800MB, the oldest natural days are discarded in bounded batches.
+- Settings -> Storage Management shows the `data.db` file size, stored data age, free disk space, and SQLite reclaimable space.
+- Low-disk auto reclaim is disabled by default. It only runs after an administrator explicitly enables it in Storage Management.
+- When free disk space drops below 800MB, the maintenance path first runs a WAL checkpoint and safe SQLite `VACUUM` to return freelist pages to the filesystem. If this restores the target free space, no history rows are deleted.
+- If safe reclaim is not enough, only complete natural days outside the protection window are discarded.
+- The deletion guard always protects at least the latest 7 days and the configured retention window. One run can process at most one natural day before the cooldown applies.
+- If SQLite cannot be compacted safely, or deleting rows does not noticeably increase filesystem free space, automatic deletion is blocked and a protection audit entry is written.
 - Routine low-disk pruning writes INFO. It only writes WARN and wakes the red dot when historical audit logs are actually discarded.
+
+> [!NOTE]
+> A large `data.db` with a large “SQLite reclaimable space” value usually means many pages are already free inside SQLite. With low-disk auto reclaim enabled, IPMI_WEB tries to shrink the database file before deleting any additional history.
 
 ### English architecture
 

@@ -53,7 +53,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.4.2'
+VERSION = '1.4.3'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -227,6 +227,7 @@ LOW_DISK_PROTECT_DAYS = 7
 LOW_DISK_MIN_FREE_GAIN_BYTES = 16 * 1024 * 1024
 LOW_DISK_PRUNE_COOLDOWN_SECONDS = 6 * 3600
 LOW_DISK_NOTICE_COOLDOWN_SECONDS = 3600
+LOW_DISK_VACUUM_MARGIN_BYTES = 64 * 1024 * 1024
 LOW_DISK_PRUNE_TABLES = (
     'metrics_v2',
     'gpu_metrics',
@@ -235,6 +236,7 @@ LOW_DISK_PRUNE_TABLES = (
     'recording_intervals',
     'audit_logs'
 )
+db_maintenance_lock = threading.RLock()
 
 def _resolve_certificate_files():
     resolved_cert = DEFAULT_CERT_FILE if os.path.exists(DEFAULT_CERT_FILE) else COMBINED_CERT_FILE
@@ -321,6 +323,104 @@ def get_storage_usage_info():
         'disk_total_bytes': total,
         'disk_used_bytes': used,
         'disk_free_bytes': free
+    }
+
+def get_sqlite_space_stats(conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        close_conn = True
+    try:
+        stats = {}
+        for key in ('page_size', 'page_count', 'freelist_count', 'auto_vacuum'):
+            try:
+                row = conn.execute(f'PRAGMA {key}').fetchone()
+                stats[key] = int(row[0]) if row and row[0] is not None else 0
+            except sqlite3.Error:
+                stats[key] = 0
+        stats['reclaimable_bytes'] = stats.get('page_size', 0) * stats.get('freelist_count', 0)
+        return stats
+    finally:
+        if close_conn:
+            conn.close()
+
+def checkpoint_sqlite_wal(conn):
+    try:
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE);')
+    except sqlite3.Error as e:
+        logging.warning(f"SQLite WAL checkpoint failed: {e}")
+
+def reclaim_sqlite_space_after_prune(conn, required_gain=LOW_DISK_MIN_FREE_GAIN_BYTES):
+    """Shrink SQLite after destructive pruning only when the filesystem can do it safely."""
+    before_usage = get_storage_usage_info()
+    before_free = int(before_usage.get('disk_free_bytes') or 0)
+    db_size = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
+    stats_before = get_sqlite_space_stats(conn)
+    reclaimable = int(stats_before.get('reclaimable_bytes') or 0)
+    estimated_compact_size = max(0, db_size - reclaimable)
+    needed_free = max(LOW_DISK_VACUUM_MARGIN_BYTES, estimated_compact_size + LOW_DISK_VACUUM_MARGIN_BYTES)
+
+    checkpoint_sqlite_wal(conn)
+
+    if reclaimable < required_gain:
+        return {
+            'attempted': False,
+            'reason': 'low_reclaimable_bytes',
+            'free_before_bytes': before_free,
+            'free_after_bytes': before_free,
+            'db_size_before_bytes': db_size,
+            'db_size_after_bytes': db_size,
+            'reclaimable_before_bytes': reclaimable,
+            'estimated_compact_size_bytes': estimated_compact_size,
+            'needed_free_bytes': needed_free,
+            'can_vacuum_safely': before_free >= needed_free
+        }
+
+    if before_free < needed_free:
+        return {
+            'attempted': False,
+            'reason': 'insufficient_free_space_for_vacuum',
+            'free_before_bytes': before_free,
+            'free_after_bytes': before_free,
+            'db_size_before_bytes': db_size,
+            'db_size_after_bytes': db_size,
+            'reclaimable_before_bytes': reclaimable,
+            'estimated_compact_size_bytes': estimated_compact_size,
+            'needed_free_bytes': needed_free,
+            'can_vacuum_safely': False
+        }
+
+    started = time.time()
+    try:
+        conn.execute('VACUUM;')
+        checkpoint_sqlite_wal(conn)
+    except sqlite3.Error as e:
+        return {
+            'attempted': True,
+            'success': False,
+            'reason': str(e),
+            'free_before_bytes': before_free,
+            'free_after_bytes': int(get_storage_usage_info().get('disk_free_bytes') or 0),
+            'db_size_before_bytes': db_size,
+            'db_size_after_bytes': os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0,
+            'reclaimable_before_bytes': reclaimable
+        }
+
+    after_usage = get_storage_usage_info()
+    after_free = int(after_usage.get('disk_free_bytes') or 0)
+    after_size = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
+    return {
+        'attempted': True,
+        'success': True,
+        'seconds': round(time.time() - started, 3),
+        'free_before_bytes': before_free,
+        'free_after_bytes': after_free,
+        'free_gain_bytes': after_free - before_free,
+        'db_size_before_bytes': db_size,
+        'db_size_after_bytes': after_size,
+        'db_size_saved_bytes': max(0, db_size - after_size),
+        'reclaimable_before_bytes': reclaimable,
+        'reclaimable_after_bytes': get_sqlite_space_stats(conn).get('reclaimable_bytes', 0)
     }
 
 def _read_uploaded_file(file_storage, label):
@@ -751,8 +851,24 @@ def run_low_disk_history_prune():
     pruned_days = 0
     free_after = free_before
     now_ts = int(time.time())
-    conn = get_db_connection()
+    blocked_without_prune = False
+    space_reclaimed_without_prune = False
+    audit_events = []
+
+    def enqueue_audit(level, module, action, message, details=None, operator=None):
+        audit_events.append({
+            'level': level,
+            'module': module,
+            'action': action,
+            'message': message,
+            'details': details,
+            'operator': operator
+        })
+
+    conn = None
+    db_maintenance_lock.acquire()
     try:
+        conn = get_db_connection()
         auto_prune_enabled = get_config_bool(conn, 'low_disk_auto_prune_enabled', False)
         last_notice_ts = get_config_int(conn, 'low_disk_last_notice_ts', 0)
 
@@ -760,7 +876,7 @@ def run_low_disk_history_prune():
             if now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS:
                 set_config_value(conn, 'low_disk_last_notice_ts', now_ts)
                 conn.commit()
-                write_audit(
+                enqueue_audit(
                     'INFO',
                     'SYSTEM',
                     'LOW_DISK_SPACE_WARNING',
@@ -777,6 +893,62 @@ def run_low_disk_history_prune():
                 'free_before': free_before,
                 'free_after': free_before,
                 'skipped': 'auto_prune_disabled'
+            }
+
+        preflight = reclaim_sqlite_space_after_prune(conn)
+        free_after = int(preflight.get('free_after_bytes', free_before))
+        free_gain_base = free_after
+        if preflight.get('success') and free_after >= LOW_DISK_TARGET_FREE_BYTES:
+            space_reclaimed_without_prune = True
+            enqueue_audit(
+                'INFO',
+                'SYSTEM',
+                'LOW_DISK_SPACE_RECLAIMED',
+                '磁盘剩余空间不足，已通过 SQLite 空间回收恢复可用空间，未删除历史记录',
+                details={
+                    'free_before_bytes': free_before,
+                    'free_after_bytes': free_after,
+                    'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                    'space_reclaim': preflight
+                },
+                operator='SYSTEM'
+            )
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_after,
+                'space_reclaimed': True
+            }
+
+        can_safely_continue = (
+            preflight.get('success')
+            or preflight.get('can_vacuum_safely') is True
+        )
+        if not can_safely_continue:
+            blocked_without_prune = True
+            blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+            set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
+            conn.commit()
+            enqueue_audit(
+                'INFO',
+                'SYSTEM',
+                'LOW_DISK_PRUNE_BLOCKED',
+                '低磁盘清理前无法安全回收 SQLite 空间，已暂停自动删除以保护历史记录',
+                details={
+                    'free_before_bytes': free_before,
+                    'free_after_bytes': free_after,
+                    'min_free_gain_bytes': LOW_DISK_MIN_FREE_GAIN_BYTES,
+                    'blocked_until': blocked_until,
+                    'space_reclaim': preflight
+                },
+                operator='SYSTEM'
+            )
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_after,
+                'skipped': 'unsafe_sqlite_reclaim',
+                'blocked_until': blocked_until
             }
 
         blocked_until = get_config_int(conn, 'low_disk_prune_blocked_until', 0)
@@ -811,18 +983,30 @@ def run_low_disk_history_prune():
 
             day_label = day_label_from_key(day_key)
             deleted = prune_history_day(conn, day_key)
+            delete_errors = {key: value for key, value in deleted.items() if not isinstance(value, int)}
+            if delete_errors:
+                conn.rollback()
+                blocked_without_prune = True
+                blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+                set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
+                conn.commit()
+                enqueue_audit(
+                    'ERROR',
+                    'SYSTEM',
+                    'LOW_DISK_PRUNE_ABORTED',
+                    '低磁盘清理删除阶段发生错误，已回滚并暂停自动删除',
+                    details={
+                        'candidate_day': day_label,
+                        'delete_errors': delete_errors,
+                        'blocked_until': blocked_until
+                    },
+                    operator='SYSTEM'
+                )
+                break
             conn.commit()
 
-            try:
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.execute("PRAGMA incremental_vacuum(200);")
-            except sqlite3.Error as e:
-                logging.warning(f"Low disk prune space reclaim failed: {e}")
-
-            try:
-                free_after = int(get_storage_usage_info().get('disk_free_bytes') or 0)
-            except Exception:
-                free_after = 0
+            reclaim = reclaim_sqlite_space_after_prune(conn)
+            free_after = int(reclaim.get('free_after_bytes', free_before))
 
             pruned_days += 1
             audit_deleted = 0
@@ -837,7 +1021,7 @@ def run_low_disk_history_prune():
                 if audit_deleted > 0
                 else f'磁盘剩余空间不足，已自动丢弃 {day_label} 的历史数据'
             )
-            write_audit(
+            enqueue_audit(
                 audit_level,
                 'SYSTEM',
                 audit_action,
@@ -851,7 +1035,8 @@ def run_low_disk_history_prune():
                     'protect_days': protect_days,
                     'auto_prune_enabled': True,
                     'audit_deleted_rows': audit_deleted,
-                    'deleted': deleted
+                    'deleted': deleted,
+                    'space_reclaim': reclaim
                 },
                 operator='SYSTEM'
             )
@@ -861,11 +1046,11 @@ def run_low_disk_history_prune():
             if free_after >= LOW_DISK_TARGET_FREE_BYTES:
                 break
 
-            if free_after - free_before < LOW_DISK_MIN_FREE_GAIN_BYTES:
+            if free_after - free_gain_base < LOW_DISK_MIN_FREE_GAIN_BYTES:
                 blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
                 set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
                 conn.commit()
-                write_audit(
+                enqueue_audit(
                     'INFO',
                     'SYSTEM',
                     'LOW_DISK_PRUNE_BLOCKED',
@@ -875,28 +1060,37 @@ def run_low_disk_history_prune():
                         'free_before_bytes': free_before,
                         'free_after_bytes': free_after,
                         'min_free_gain_bytes': LOW_DISK_MIN_FREE_GAIN_BYTES,
-                        'blocked_until': blocked_until
+                        'blocked_until': blocked_until,
+                        'space_reclaim': reclaim
                     },
                     operator='SYSTEM'
                 )
                 break
+            free_gain_base = free_after
     finally:
-        conn.close()
+        if conn:
+            conn.close()
+        db_maintenance_lock.release()
+        for event in audit_events:
+            write_audit(**event)
 
-    if pruned_days == 0:
+    if pruned_days == 0 and not blocked_without_prune and not space_reclaimed_without_prune:
         should_notice_empty = True
         try:
-            notice_conn = get_db_connection()
-            last_notice_ts = get_config_int(notice_conn, 'low_disk_last_notice_ts', 0)
-            should_notice_empty = now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS
-            if should_notice_empty:
-                set_config_value(notice_conn, 'low_disk_last_notice_ts', now_ts)
-                notice_conn.commit()
-            notice_conn.close()
+            with db_maintenance_lock:
+                notice_conn = get_db_connection()
+                try:
+                    last_notice_ts = get_config_int(notice_conn, 'low_disk_last_notice_ts', 0)
+                    should_notice_empty = now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS
+                    if should_notice_empty:
+                        set_config_value(notice_conn, 'low_disk_last_notice_ts', now_ts)
+                        notice_conn.commit()
+                finally:
+                    notice_conn.close()
         except Exception:
             should_notice_empty = True
 
-    if pruned_days == 0 and should_notice_empty:
+    if pruned_days == 0 and not blocked_without_prune and not space_reclaimed_without_prune and should_notice_empty:
         write_audit(
             'INFO',
             'SYSTEM',
@@ -981,18 +1175,21 @@ def db_writer_worker():
             sql, params, event = task
             
             # 执行写入
-            conn = get_db_connection()
             try:
-                if isinstance(sql, list): # 支持批量执行
-                    for s, p in zip(sql, params):
-                        conn.execute(s, p)
-                else:
-                    conn.execute(sql, params)
-                conn.commit()
+                with db_maintenance_lock:
+                    conn = get_db_connection()
+                    try:
+                        if isinstance(sql, list): # 支持批量执行
+                            for s, p in zip(sql, params):
+                                conn.execute(s, p)
+                        else:
+                            conn.execute(sql, params)
+                        conn.commit()
+                    finally:
+                        conn.close()
             except Exception as e:
                 logging.error(f"Async DB Write Error: {e} | SQL: {sql}")
             finally:
-                conn.close()
                 if event: event.set()
                 db_write_queue.task_done()
         except Exception as e:
@@ -2743,38 +2940,43 @@ def energy_maintenance_task():
     """维护 energy_hourly 表，补全缺失的小时数据，并处理数据保留期变更"""
     while True:
         conn = None
+        audit_after_maintenance = None
         try:
             now = int(time.time())
             # 当前整点
             current_hour_ts = (now // 3600) * 3600
             
-            conn = get_db_connection()
-            c = conn.cursor()
+            with db_maintenance_lock:
+                conn = get_db_connection()
+                c = conn.cursor()
 
-            # --- 处理数据保留期变更 (3天反悔期) ---
-            c.execute("SELECT value FROM config WHERE key='retention_change_ts'")
-            change_ts_row = c.fetchone()
-            change_ts = int(change_ts_row[0]) if change_ts_row else 0
+                # --- 处理数据保留期变更 (3天反悔期) ---
+                c.execute("SELECT value FROM config WHERE key='retention_change_ts'")
+                change_ts_row = c.fetchone()
+                change_ts = int(change_ts_row[0]) if change_ts_row else 0
 
-            if change_ts > 0 and (now - change_ts) >= (3 * 86400):
-                # 3天到期，正式生效
-                c.execute("SELECT value FROM config WHERE key='pending_retention_days'")
-                pending_row = c.fetchone()
-                if pending_row and int(pending_row[0]) > 0:
-                    new_val = pending_row[0]
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (new_val,))
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
-                    conn.commit()
-                    write_audit('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天', operator='SYSTEM')
-            
-            # [日志体积优化] 定期执行增量空间回收
-            c.execute("PRAGMA incremental_vacuum(50);")
+                if change_ts > 0 and (now - change_ts) >= (3 * 86400):
+                    # 3天到期，正式生效
+                    c.execute("SELECT value FROM config WHERE key='pending_retention_days'")
+                    pending_row = c.fetchone()
+                    if pending_row and int(pending_row[0]) > 0:
+                        new_val = pending_row[0]
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (new_val,))
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
+                        conn.commit()
+                        audit_after_maintenance = ('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天')
 
-            # 历史审计日志按自然日压缩归档，保留近 30 天热表用于快速查询
-            compress_old_audit_logs(conn, now)
-            conn.close()
-            conn = None
+                # [日志体积优化] 定期执行增量空间回收
+                c.execute("PRAGMA incremental_vacuum(50);")
+
+                # 历史审计日志按自然日压缩归档，保留近 30 天热表用于快速查询
+                compress_old_audit_logs(conn, now)
+                conn.close()
+                conn = None
+
+            if audit_after_maintenance:
+                write_audit(*audit_after_maintenance, operator='SYSTEM')
 
             # 磁盘空间低于阈值时，按最早自然日逐批丢弃历史数据并写入 WARN 审计
             run_low_disk_history_prune()
@@ -4152,6 +4354,24 @@ def build_storage_status(cursor=None):
             status['db_size_bytes'] = os.path.getsize(DB_FILE)
         except OSError:
             status['db_size_bytes'] = 0
+        try:
+            sqlite_stats = get_sqlite_space_stats(cursor.connection)
+            status.update({
+                'db_page_size': sqlite_stats.get('page_size', 0),
+                'db_page_count': sqlite_stats.get('page_count', 0),
+                'db_freelist_count': sqlite_stats.get('freelist_count', 0),
+                'db_reclaimable_bytes': sqlite_stats.get('reclaimable_bytes', 0),
+                'db_auto_vacuum': sqlite_stats.get('auto_vacuum', 0)
+            })
+        except Exception as e:
+            logging.warning(f"SQLite space stats read failed: {e}")
+            status.update({
+                'db_page_size': 0,
+                'db_page_count': 0,
+                'db_freelist_count': 0,
+                'db_reclaimable_bytes': 0,
+                'db_auto_vacuum': 0
+            })
 
         try:
             status.update(get_storage_usage_info())
@@ -4215,6 +4435,7 @@ def api_settings():
     if request.method == 'GET':
         keys = ('log_delay_warn', 'log_delay_danger', 'data_retention_days', 
                 'pending_retention_days', 'retention_change_ts', 
+                'low_disk_auto_prune_enabled', 'low_disk_prune_blocked_until',
                 'dashboard_hours_hw', 'dashboard_hours_hist',
                 'email_enabled', 'email_mode', 'smtp_server', 'smtp_port', 
                 'smtp_user', 'smtp_encryption',
@@ -4246,6 +4467,13 @@ def api_settings():
             except:
                 res[k] = 0
             if k == 'data_retention_days' and res[k] == 0: res[k] = 7
+        res['low_disk_auto_prune_enabled'] = (
+            'true' if str(res.get('low_disk_auto_prune_enabled', 'false')).lower() == 'true' else 'false'
+        )
+        try:
+            res['low_disk_prune_blocked_until'] = int(res.get('low_disk_prune_blocked_until', 0))
+        except:
+            res['low_disk_prune_blocked_until'] = 0
         for k in ('dashboard_hours_hw', 'dashboard_hours_hist'):
             try: res[k] = json.loads(res.get(k, '[]'))
             except: res[k] = []
@@ -4326,6 +4554,7 @@ def api_settings():
             mapping = {
                 'log_delay_warn': '采集延迟(警告)',
                 'log_delay_danger': '采集延迟(危险)',
+                'low_disk_auto_prune_enabled': '低磁盘自动回收开关',
                 'dashboard_hours_hw': '看板时效(硬件)',
                 'dashboard_hours_hist': '看板时效(历史)',
                 'email_enabled': '邮件通知开关',
@@ -4360,6 +4589,8 @@ def api_settings():
                         else:
                             db_v = json.dumps(new_v) if isinstance(new_v, list) else str(new_v)
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, db_v))
+                        if key == 'low_disk_auto_prune_enabled':
+                            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('low_disk_prune_blocked_until', '0')")
                         old_display = mask_config_value(key, format_val(old_v))
                         new_display = mask_config_value(key, format_val(new_v))
                         changes.append(f"{label}: {old_display} -> {new_display}")
