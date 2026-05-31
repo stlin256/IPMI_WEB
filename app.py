@@ -52,7 +52,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.22'
+VERSION = '1.3.23'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -126,6 +126,9 @@ app.config.update(
 )
 
 MAX_CERT_UPLOAD_BYTES = 256 * 1024
+AUDIT_ARCHIVE_AFTER_DAYS = 30
+AUDIT_ARCHIVE_MAX_DAYS_PER_RUN = 14
+AUDIT_ARCHIVE_COMPRESSION_LEVEL = 9
 
 def _resolve_certificate_files():
     resolved_cert = DEFAULT_CERT_FILE if os.path.exists(DEFAULT_CERT_FILE) else COMBINED_CERT_FILE
@@ -292,6 +295,212 @@ def restart_current_process():
         os.execv(sys.executable, args)
     except Exception as e:
         logging.error(f"Process restart failed: {e}")
+
+AUDIT_LOG_COLUMNS = ('timestamp', 'level', 'module', 'operator', 'action', 'message', 'details', 'ua')
+
+def audit_day_key(timestamp):
+    return int(datetime.fromtimestamp(int(timestamp)).strftime('%Y%m%d'))
+
+def audit_day_bounds(day_key):
+    day_start = datetime.strptime(str(day_key), '%Y%m%d')
+    start_ts = int(day_start.timestamp())
+    end_ts = int((day_start + timedelta(days=1)).timestamp())
+    return start_ts, end_ts
+
+def audit_row_to_record(row):
+    return {col: row[col] for col in AUDIT_LOG_COLUMNS}
+
+def decode_audit_archive(row):
+    try:
+        raw = zlib.decompress(row['data']).decode('utf-8')
+        records = json.loads(raw)
+        if not isinstance(records, list):
+            return []
+        return records
+    except Exception as e:
+        logging.error(f"Audit archive decode failed for day {row['day']}: {e}")
+        return []
+
+def encode_audit_archive(records):
+    raw = json.dumps(records, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    return raw, zlib.compress(raw, AUDIT_ARCHIVE_COMPRESSION_LEVEL)
+
+def filter_audit_record(record, module=None, level=None, search=None):
+    if module and record.get('module') != module:
+        return False
+    if level and record.get('level') != level:
+        return False
+    if search:
+        needle = str(search).lower()
+        haystack = ' '.join(str(record.get(key, '')) for key in ('message', 'action', 'operator')).lower()
+        if needle not in haystack:
+            return False
+    return True
+
+def parse_audit_details(raw_details):
+    if isinstance(raw_details, dict):
+        return raw_details
+    if not raw_details:
+        return {}
+    try:
+        parsed = json.loads(raw_details)
+        return parsed if isinstance(parsed, dict) else {'value': parsed}
+    except Exception:
+        return {'raw': str(raw_details)}
+
+def format_audit_record(record):
+    ts = int(record.get('timestamp') or 0)
+    return {
+        'timestamp': ts,
+        'time_str': datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') if ts else '',
+        'level': record.get('level') or '',
+        'module': record.get('module') or '',
+        'operator': record.get('operator') or '',
+        'action': record.get('action') or '',
+        'message': record.get('message') or '',
+        'details': parse_audit_details(record.get('details')),
+        'ua': record.get('ua') or ''
+    }
+
+def build_audit_filter_sql(module=None, level=None, search=None):
+    clauses = []
+    params = []
+    if module:
+        clauses.append("module = ?")
+        params.append(module)
+    if level:
+        clauses.append("level = ?")
+        params.append(level)
+    if search:
+        clauses.append("(message LIKE ? OR action LIKE ? OR operator LIKE ?)")
+        wildcard = f"%{search}%"
+        params.extend([wildcard, wildcard, wildcard])
+    return (' AND ' + ' AND '.join(clauses)) if clauses else '', params
+
+def query_audit_archive_records(conn, module=None, level=None, search=None, limit=100, offset=0, include_records=True):
+    c = conn.cursor()
+    c.execute("SELECT * FROM audit_log_archives ORDER BY end_ts DESC")
+    archive_rows = c.fetchall()
+
+    total = 0
+    records = []
+    remaining_offset = max(0, int(offset))
+    remaining_limit = max(0, int(limit))
+    has_filters = bool(module or level or search)
+
+    for archive in archive_rows:
+        archive_count = int(archive['count'] or 0)
+
+        if not has_filters:
+            total += archive_count
+            if not include_records or remaining_limit <= 0:
+                continue
+            if remaining_offset >= archive_count:
+                remaining_offset -= archive_count
+                continue
+            day_records = decode_audit_archive(archive)
+            day_records.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
+        else:
+            day_records = [
+                record for record in decode_audit_archive(archive)
+                if filter_audit_record(record, module, level, search)
+            ]
+            day_records.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
+            total += len(day_records)
+            if not include_records or remaining_limit <= 0:
+                continue
+            if remaining_offset >= len(day_records):
+                remaining_offset -= len(day_records)
+                continue
+
+        if include_records and remaining_limit > 0:
+            chunk = day_records[remaining_offset:remaining_offset + remaining_limit]
+            records.extend(chunk)
+            remaining_limit -= len(chunk)
+            remaining_offset = 0
+
+    return records, total
+
+def compress_old_audit_logs(conn, now_ts=None):
+    now_ts = int(now_ts or time.time())
+    cutoff_ts = now_ts - AUDIT_ARCHIVE_AFTER_DAYS * 86400
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT strftime('%Y%m%d', timestamp, 'unixepoch', 'localtime') AS day
+        FROM audit_logs
+        WHERE timestamp < ?
+        ORDER BY day ASC
+        LIMIT ?
+    """, (cutoff_ts, AUDIT_ARCHIVE_MAX_DAYS_PER_RUN))
+    days = [int(row['day']) for row in c.fetchall() if row['day']]
+
+    archived_days = 0
+    archived_rows = 0
+    saved_bytes = 0
+
+    for day in days:
+        day_start, day_end = audit_day_bounds(day)
+        c.execute(f"""
+            SELECT {', '.join(AUDIT_LOG_COLUMNS)}
+            FROM audit_logs
+            WHERE timestamp >= ? AND timestamp < ? AND timestamp < ?
+            ORDER BY timestamp ASC
+        """, (day_start, day_end, cutoff_ts))
+        rows = c.fetchall()
+        if not rows:
+            continue
+
+        records = [audit_row_to_record(row) for row in rows]
+        c.execute("SELECT * FROM audit_log_archives WHERE day = ?", (day,))
+        existing = c.fetchone()
+        if existing:
+            records = decode_audit_archive(existing) + records
+
+        deduped = {}
+        for record in records:
+            key = tuple(str(record.get(col, '')) for col in AUDIT_LOG_COLUMNS)
+            deduped[key] = {col: record.get(col) for col in AUDIT_LOG_COLUMNS}
+        records = sorted(deduped.values(), key=lambda item: int(item.get('timestamp') or 0))
+        if not records:
+            continue
+
+        raw_blob, compressed_blob = encode_audit_archive(records)
+        start_ts = min(int(record.get('timestamp') or 0) for record in records)
+        end_ts = max(int(record.get('timestamp') or 0) for record in records)
+        c.execute("""
+            INSERT OR REPLACE INTO audit_log_archives
+            (day, start_ts, end_ts, count, raw_size, compressed_size, data, created_ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            day, start_ts, end_ts, len(records), len(raw_blob), len(compressed_blob), compressed_blob, now_ts
+        ))
+        c.execute("DELETE FROM audit_logs WHERE timestamp >= ? AND timestamp < ? AND timestamp < ?", (day_start, day_end, cutoff_ts))
+
+        archived_days += 1
+        archived_rows += len(rows)
+        saved_bytes += max(0, len(raw_blob) - len(compressed_blob))
+
+    if archived_days:
+        conn.commit()
+        logging.info(
+            f"[AUDIT_ARCHIVE] Archived {archived_rows} rows across {archived_days} day(s), "
+            f"estimated saved {saved_bytes} bytes"
+        )
+
+    return {
+        'days': archived_days,
+        'rows': archived_rows,
+        'saved_bytes': saved_bytes
+    }
+
+def archived_audit_has_unread(conn, last_check):
+    c = conn.cursor()
+    c.execute("SELECT * FROM audit_log_archives WHERE end_ts > ? ORDER BY end_ts DESC", (last_check,))
+    for archive in c.fetchall():
+        for record in decode_audit_archive(archive):
+            if int(record.get('timestamp') or 0) > last_check and record.get('level') in ('ERROR', 'SECURITY', 'WARN'):
+                return True
+    return False
 
 # --- 日志配置 ---
 def setup_logging():
@@ -569,6 +778,18 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_ts ON audit_logs(timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_level ON audit_logs(level)')
+
+    # 历史审计日志压缩归档表：按自然日存储 zlib 压缩 JSON，保留日志页与导出能力
+    c.execute('''CREATE TABLE IF NOT EXISTS audit_log_archives
+                 (day INTEGER PRIMARY KEY,
+                  start_ts INTEGER,
+                  end_ts INTEGER,
+                  count INTEGER,
+                  raw_size INTEGER,
+                  compressed_size INTEGER,
+                  data BLOB,
+                  created_ts INTEGER)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_audit_log_archives_range ON audit_log_archives(start_ts, end_ts)')
 
     # 新增延迟记录表
     c.execute('''CREATE TABLE IF NOT EXISTS recording_intervals (timestamp INTEGER, interval REAL)''')
@@ -1933,6 +2154,8 @@ def get_log_unread_status():
         # 查询是否有更新的警告日志（包括异常间隔）
         c.execute("SELECT COUNT(*) FROM audit_logs WHERE timestamp > ? AND (level='ERROR' OR level='SECURITY' OR level='WARN')", (last_check,))
         count = c.fetchone()[0]
+        if count == 0 and archived_audit_has_unread(conn, last_check):
+            count = 1
         conn.close()
         
         return count > 0
@@ -2102,6 +2325,9 @@ def energy_maintenance_task():
             
             # [日志体积优化] 定期执行增量空间回收
             c.execute("PRAGMA incremental_vacuum(50);")
+
+            # 历史审计日志按自然日压缩归档，保留近 30 天热表用于快速查询
+            compress_old_audit_logs(conn, now)
             
             # 1. 查找 metrics_v2 中最早的数据时间
             c.execute("SELECT MIN(timestamp) FROM metrics_v2")
@@ -3146,69 +3372,46 @@ def api_logs():
 @app.route('/api/audit_logs')
 @login_required
 def api_audit_logs():
-    limit = int(request.args.get('limit', 100))
-    offset = int(request.args.get('offset', 0))
+    limit = max(1, min(500, int(request.args.get('limit', 100))))
+    offset = max(0, int(request.args.get('offset', 0)))
     module = request.args.get('module')
     level = request.args.get('level')
     search = request.args.get('search')
     
     conn = get_db_connection()
     c = conn.cursor()
-    
-    query = "SELECT * FROM audit_logs WHERE 1=1"
-    params = []
-    
-    if module:
-        query += " AND module = ?"
-        params.append(module)
-    if level:
-        query += " AND level = ?"
-        params.append(level)
-    if search:
-        query += " AND (message LIKE ? OR action LIKE ? OR operator LIKE ?)"
-        wildcard = f"%{search}%"
-        params.extend([wildcard, wildcard, wildcard])
-        
-    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-    
-    c.execute(query, params)
-    rows = c.fetchall()
-    
-    # Get total count for pagination
-    count_query = "SELECT COUNT(*) FROM audit_logs WHERE 1=1"
-    count_params = []
-    if module:
-        count_query += " AND module = ?"
-        count_params.append(module)
-    if level:
-        count_query += " AND level = ?"
-        count_params.append(level)
-    if search:
-        count_query += " AND (message LIKE ? OR action LIKE ? OR operator LIKE ?)"
-        wildcard = f"%{search}%"
-        count_params.extend([wildcard, wildcard, wildcard])
-        
-    c.execute(count_query, count_params)
-    total = c.fetchone()[0]
+
+    filter_sql, filter_params = build_audit_filter_sql(module, level, search)
+    c.execute(f"SELECT COUNT(*) FROM audit_logs WHERE 1=1{filter_sql}", filter_params)
+    hot_total = int(c.fetchone()[0])
+
+    hot_rows = []
+    if offset < hot_total:
+        hot_limit = min(limit, hot_total - offset)
+        c.execute(
+            f"SELECT * FROM audit_logs WHERE 1=1{filter_sql} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            filter_params + [hot_limit, offset]
+        )
+        hot_rows = c.fetchall()
+
+    remaining = limit - len(hot_rows)
+    archive_offset = max(0, offset - hot_total)
+    archive_records, archive_total = query_audit_archive_records(
+        conn,
+        module=module,
+        level=level,
+        search=search,
+        limit=remaining,
+        offset=archive_offset,
+        include_records=remaining > 0
+    )
     conn.close()
-    
-    logs = []
-    for row in rows:
-        logs.append({
-            'timestamp': row['timestamp'],
-            'time_str': datetime.fromtimestamp(row['timestamp']).strftime('%Y-%m-%d %H:%M:%S'),
-            'level': row['level'],
-            'module': row['module'],
-            'operator': row['operator'],
-            'action': row['action'],
-            'message': row['message'],
-            'details': json.loads(row['details']) if row['details'] else {},
-            'ua': row['ua']
-        })
+
+    logs = [format_audit_record(audit_row_to_record(row)) for row in hot_rows]
+    logs.extend(format_audit_record(record) for record in archive_records)
         
     return jsonify({
-        'total': total,
+        'total': hot_total + archive_total,
         'logs': logs
     })
 
@@ -3477,6 +3680,14 @@ def api_settings():
                     max_ts = row[1] if max_ts is None else max(max_ts, row[1])
             except sqlite3.Error:
                 continue
+        try:
+            c.execute("SELECT MIN(start_ts), MAX(end_ts) FROM audit_log_archives")
+            row = c.fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                min_ts = row[0] if min_ts is None else min(min_ts, row[0])
+                max_ts = row[1] if max_ts is None else max(max_ts, row[1])
+        except sqlite3.Error:
+            pass
         if min_ts is not None and max_ts is not None:
             res['stored_since_ts'] = int(min_ts)
             res['stored_until_ts'] = int(max_ts)
@@ -4089,11 +4300,36 @@ def api_export_data():
         finally:
             local_conn.close()
 
+    def export_audit_logs_task():
+        """导出热表与压缩归档中的完整审计日志。"""
+        local_conn = get_db_connection()
+        try:
+            cur = local_conn.cursor()
+            cur.execute(f"SELECT {', '.join(AUDIT_LOG_COLUMNS)} FROM audit_logs ORDER BY timestamp ASC")
+            records = [audit_row_to_record(row) for row in cur.fetchall()]
+
+            cur.execute("SELECT * FROM audit_log_archives ORDER BY start_ts ASC")
+            for archive in cur.fetchall():
+                records.extend(decode_audit_archive(archive))
+
+            records.sort(key=lambda item: int(item.get('timestamp') or 0))
+            if not records:
+                return None, None
+
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(AUDIT_LOG_COLUMNS)
+            for record in records:
+                writer.writerow([record.get(col, '') for col in AUDIT_LOG_COLUMNS])
+
+            return "audit_logs.csv", output.getvalue()
+        finally:
+            local_conn.close()
+
     tasks = [
         ("SELECT * FROM energy_hourly ORDER BY timestamp ASC", "energy_persistence.csv"),
         ("SELECT * FROM recording_intervals ORDER BY timestamp ASC", "recording_intervals.csv"),
-        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv"),
-        ("SELECT * FROM audit_logs ORDER BY timestamp ASC", "audit_logs.csv")
+        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv")
     ]
 
     memory_file = io.BytesIO()
@@ -4106,6 +4342,8 @@ def api_export_data():
             futures[executor.submit(export_metrics_task)] = "metrics_history.csv"
             # 提交特殊的传感器导出任务
             futures[executor.submit(export_sensors_task)] = "sensors_history.csv"
+            # 提交审计日志任务（包含压缩归档）
+            futures[executor.submit(export_audit_logs_task)] = "audit_logs.csv"
             
             for future in concurrent.futures.as_completed(futures):
                 filename, csv_data = future.result()
