@@ -50,7 +50,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.17'
+VERSION = '1.3.18'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -4800,12 +4800,14 @@ def api_history_gpu():
     conn = get_db_connection()
     c = conn.cursor()
     cutoff = int(time.time() - (hours * 3600))
-    c.execute("SELECT timestamp, temp, util_gpu, util_mem, mem_total, mem_used, power FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC", (cutoff, gpu_index))
+    c.execute("""SELECT timestamp, temp, util_gpu, util_mem, mem_total, mem_used, power, clock_core
+                 FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC""",
+              (cutoff, gpu_index))
     data = c.fetchall()
     conn.close()
     
     if not data:
-        return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []})
+        return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': [], 'clock_core': []})
   
     # 智能降采样
     target_points = 1200
@@ -4824,7 +4826,7 @@ def api_history_gpu():
             curr_ts = sampled_data[i][0]
             # 统一 2min 宽容断点逻辑
             if curr_ts - prev_ts > max(120, step * 5):
-                final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None))
+                final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None))
         final_data.append(sampled_data[i])
   
     return jsonify({
@@ -4833,7 +4835,8 @@ def api_history_gpu():
         'util_gpu': [d[2] for d in final_data],
         'util_mem': [d[3] for d in final_data],
         'mem_used': [d[5] for d in final_data],
-        'power': [d[6] for d in final_data]
+        'power': [d[6] for d in final_data],
+        'clock_core': [d[7] for d in final_data]
     })
 
 @app.route('/api/sensor_history_detail')
