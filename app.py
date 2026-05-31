@@ -11,6 +11,7 @@ import re
 import psutil
 import urllib.request
 import markupsafe
+import ipaddress
 import shutil
 import io
 import zipfile
@@ -49,20 +50,50 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.16'
+VERSION = '1.3.17'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
+TRUSTED_PROXY_NETWORKS = []
+trusted_proxy_config = config['SECURITY'].get('trusted_proxies', [])
+if isinstance(trusted_proxy_config, str):
+    trusted_proxy_config = [trusted_proxy_config]
+for proxy in trusted_proxy_config:
+    try:
+        TRUSTED_PROXY_NETWORKS.append(ipaddress.ip_network(str(proxy), strict=False))
+    except ValueError:
+        print(f"Invalid trusted proxy ignored: {proxy}")
+
+SENSITIVE_CONFIG_KEYS = {'smtp_pass'}
+SENSITIVE_PLACEHOLDER = '********'
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+def ip_in_networks(ip_value, networks):
+    try:
+        ip_obj = ipaddress.ip_address(ip_value)
+    except (ValueError, TypeError):
+        return False
+    return any(ip_obj in network for network in networks)
+
+def is_request_from_trusted_proxy():
+    return ip_in_networks(request.remote_addr, TRUSTED_PROXY_NETWORKS)
+
+def mask_config_value(key, value):
+    if key in SENSITIVE_CONFIG_KEYS:
+        return SENSITIVE_PLACEHOLDER if value not in (None, '', '-', 'None') else '-'
+    return value
 
 # 强制 HTTPS 跳转逻辑
 @app.before_request
 def before_request():
     if HAS_CERT:
         # 检查是否为 https 或者是否有代理头
-        is_https = request.is_secure or request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+        is_https = request.is_secure or (
+            is_request_from_trusted_proxy() and
+            request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+        )
         if not is_https:
             url = request.url.replace('http://', 'https://', 1)
             return redirect(url, code=301)
@@ -238,6 +269,7 @@ def init_db():
     c.execute('PRAGMA journal_mode=WAL;')
     # [日志体积优化] 开启增量自动清理，配合定时任务回收空间
     c.execute('PRAGMA auto_vacuum = INCREMENTAL;')
+    c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
 
     # 1.3.6 迁移逻辑：将 server_name 迁移至数据库
     c.execute("SELECT value FROM config WHERE key='software_version'")
@@ -274,9 +306,7 @@ def init_db():
             c.execute("ALTER TABLE metrics_v2 ADD COLUMN cpu_pkg_power_json TEXT")
     except Exception as e:
         print(f"Migration Error (metrics_v2 cpu power columns): {e}")
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
-    
+
     # 新增 GPU 历史数据表
     c.execute('''CREATE TABLE IF NOT EXISTS gpu_metrics
                  (timestamp INTEGER, gpu_index INTEGER, gpu_name TEXT, temp REAL, 
@@ -692,8 +722,13 @@ def discover_rapl_package_sources():
 
 # --- 辅助函数 ---
 def get_client_ip():
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    if is_request_from_trusted_proxy() and request.headers.get('X-Forwarded-For'):
+        forwarded_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+        try:
+            ipaddress.ip_address(forwarded_ip)
+            return forwarded_ip
+        except ValueError:
+            pass
     return request.remote_addr
 
 def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f6feb'):
@@ -2662,20 +2697,18 @@ def login():
     
     # 从 session 获取一次性的错误消息 (PRG 模式)
     session_error = session.pop('login_error', None)
-    
+
     # 延迟/封禁判定 (冷却中): 取消 10s 上限，改为最高 300s 渐进递增
+    cooling_down = False
+    remaining = 0
     if not is_whitelisted and fail_count >= 3:
-        # 算法：从第 3 次开始，每次失败增加 30 秒等待，封顶 300s (5 分钟)
         required_delay = min(300, (fail_count - 2) * 30)
-        
         if now - last_attempt < required_delay:
-            conn.close()
+            cooling_down = True
             remaining = required_delay - (now - last_attempt)
-            err = session_error or "密码错误次数过多，请稍后重试。"
-            return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
 
     if request.method == 'POST':
-        is_correct = (request.form['password'] == LOGIN_PASSWORD)
+        is_correct = (request.form.get('password', '') == LOGIN_PASSWORD)
         
         if is_correct:
             # 记录最后访问域名
@@ -2694,6 +2727,11 @@ def login():
             write_audit('INFO', 'AUTH', 'LOGIN_SUCCESS', '用户登录成功', details={'domain': domain}, operator=ip)
             return redirect(url_for('hardware_page'))
         else:
+            if cooling_down:
+                conn.close()
+                err = session_error or "密码错误次数过多，请稍后重试。"
+                return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
+
             # 密码错误：执行正常的阶梯式惩罚
             fail_count += 1
             wait_current = 0
@@ -2717,6 +2755,11 @@ def login():
             # PRG 模式重定向
             session['login_error'] = "密码错误次数过多，请稍后重试。"
             return redirect(url_for('login'))
+
+    if cooling_down:
+        conn.close()
+        err = session_error or "密码错误次数过多，请稍后重试。"
+        return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
     
     conn.close()
     return render_template('login.html', server_name=SERVER_NAME)
@@ -2994,8 +3037,8 @@ def api_config_precheck():
             diffs.append({
                 'type': 'setting',
                 'key': k,
-                'old': get_show_val(old_norm),
-                'new': get_show_val(new_norm),
+                'old': mask_config_value(k, get_show_val(old_norm)),
+                'new': mask_config_value(k, get_show_val(new_norm)),
                 'changed': changed
             })
 
@@ -3142,13 +3185,17 @@ def api_settings():
                 'pending_retention_days', 'retention_change_ts', 
                 'dashboard_hours_hw', 'dashboard_hours_hist',
                 'email_enabled', 'email_mode', 'smtp_server', 'smtp_port', 
-                'smtp_user', 'smtp_pass', 'smtp_encryption',
+                'smtp_user', 'smtp_encryption',
                 'email_sender_name', 'email_receiver',
                 'summary_enabled', 'summary_daily_enabled', 'summary_daily_time',
                 'summary_weekly_enabled', 'summary_weekly_day', 'summary_weekly_time',
                 'summary_custom_enabled', 'summary_custom_hours', 'server_name')
         c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
         res = {row['key']: row['value'] for row in c.fetchall()}
+        c.execute("SELECT value FROM config WHERE key='smtp_pass'")
+        smtp_pass_row = c.fetchone()
+        res['smtp_pass'] = ''
+        res['smtp_pass_set'] = bool(smtp_pass_row and smtp_pass_row['value'])
         conn.close()
         
         # 格式化处理
@@ -3278,6 +3325,8 @@ def api_settings():
             for key, label in mapping.items():
                 if key in data:
                     new_v = data[key]
+                    if key in SENSITIVE_CONFIG_KEYS and str(new_v) == '' and current_configs.get(key):
+                        continue
                     if is_changed(key, new_v):
                         old_v = current_configs.get(key)
                         # 核心修正：如果是自定义小时数，确保保存为带小数的字符串，而不是 int
@@ -3286,7 +3335,9 @@ def api_settings():
                         else:
                             db_v = json.dumps(new_v) if isinstance(new_v, list) else str(new_v)
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, db_v))
-                        changes.append(f"{label}: {format_val(old_v)} -> {format_val(new_v)}")
+                        old_display = mask_config_value(key, format_val(old_v))
+                        new_display = mask_config_value(key, format_val(new_v))
+                        changes.append(f"{label}: {old_display} -> {new_display}")
 
             # 告警规则变更检测
             if 'alert_rules' in data and isinstance(data['alert_rules'], list):
@@ -3426,6 +3477,13 @@ def api_test_email():
             user = data.get('smtp_user')
             password = data.get('smtp_pass')
             use_ssl = data.get('smtp_encryption') == True or data.get('smtp_encryption') == 'true'
+            if not password:
+                conn_pwd = get_db_connection()
+                try:
+                    row = conn_pwd.execute("SELECT value FROM config WHERE key='smtp_pass'").fetchone()
+                    password = row['value'] if row and row['value'] else ''
+                finally:
+                    conn_pwd.close()
 
             if not all([server, user, password]):
                 return jsonify({'status': 'error', 'message': '请填写完整的 SMTP 配置项'})
@@ -3532,6 +3590,8 @@ def api_config_export():
     
     settings = {}
     for row in config_rows:
+        if row['key'] in SENSITIVE_CONFIG_KEYS:
+            continue
         try:
             # 尝试解析 JSON 值，如果不是 JSON 则按字符串存储
             settings[row['key']] = json.loads(row['value'])
@@ -3588,6 +3648,8 @@ def api_config_import():
         
         # 遍历设置并更新
         for key, value in settings.items():
+            if key in SENSITIVE_CONFIG_KEYS and value in ('', SENSITIVE_PLACEHOLDER):
+                continue
             # 获取旧值用于对比
             c.execute("SELECT value FROM config WHERE key=?", (key,))
             old_row = c.fetchone()
@@ -3598,7 +3660,7 @@ def api_config_import():
             
             # 简单对比 (字符串层面)
             if old_val != new_val_str:
-                changes.append(f"{key}: {old_val} -> {new_val_str}")
+                changes.append(f"{key}: {mask_config_value(key, old_val)} -> {mask_config_value(key, new_val_str)}")
                 c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, new_val_str))
         
         conn.commit()
