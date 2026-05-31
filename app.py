@@ -52,7 +52,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.20'
+VERSION = '1.3.21'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -3447,6 +3447,27 @@ def api_settings():
         smtp_pass_row = c.fetchone()
         res['smtp_pass'] = ''
         res['smtp_pass_set'] = bool(smtp_pass_row and smtp_pass_row['value'])
+
+        # 统计数据库内历史数据覆盖的自然天数，供存储管理展示
+        min_ts = None
+        max_ts = None
+        for table in ('metrics_v2', 'gpu_metrics', 'sensor_history', 'energy_hourly', 'audit_logs'):
+            try:
+                c.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM {table}")
+                row = c.fetchone()
+                if row and row[0] is not None and row[1] is not None:
+                    min_ts = row[0] if min_ts is None else min(min_ts, row[0])
+                    max_ts = row[1] if max_ts is None else max(max_ts, row[1])
+            except sqlite3.Error:
+                continue
+        if min_ts is not None and max_ts is not None:
+            res['stored_since_ts'] = int(min_ts)
+            res['stored_until_ts'] = int(max_ts)
+            res['stored_days'] = max(1, math.ceil((max_ts - min_ts + 1) / 86400))
+        else:
+            res['stored_since_ts'] = 0
+            res['stored_until_ts'] = 0
+            res['stored_days'] = 0
         conn.close()
         
         # 格式化处理

@@ -604,6 +604,8 @@ n        /* 标签样式 */
                                     <div id="retention-status"></div>
                                     <div class="text-muted small">
                                         <i class="fas fa-hdd me-1"></i>数据库占用: <span id="db-size-val" class="text-light fw-bold">--</span>
+                                        <span class="mx-2 text-secondary">|</span>
+                                        <i class="fas fa-calendar-alt me-1"></i>已存储: <span id="stored-days-val" class="text-light fw-bold">--</span>
                                     </div>
                                 </div>
                             </div>
@@ -1812,6 +1814,8 @@ n        /* 标签样式 */
             };
             const el = document.getElementById('db-size-val');
             if (el) el.innerText = formatBytes(data.db_size_bytes || 0);
+            const daysEl = document.getElementById('stored-days-val');
+            if (daysEl) daysEl.innerText = data.stored_days ? `${data.stored_days} 天` : '--';
         } catch (e) {}
     }
 
@@ -2030,6 +2034,7 @@ n        /* 标签样式 */
                 return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
             };
             document.getElementById('db-size-val').innerText = formatBytes(globalSettings.db_size_bytes || 0);
+            document.getElementById('stored-days-val').innerText = globalSettings.stored_days ? `${globalSettings.stored_days} 天` : '--';
 
             // 动态渲染勾选框 (优化视觉：激活状态使用 primary)
             const renderChecks = (containerId, currentArr) => {
