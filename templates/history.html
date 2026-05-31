@@ -550,6 +550,16 @@
             // 如果基础数据加载完了，loadInsights 内部会判断是否需要重新请求
             loadInsights();
         });
+        collapseEl.addEventListener('shown.bs.collapse', () => {
+            requestAnimationFrame(() => {
+                Object.values(charts).forEach(c => {
+                    if (c && c.options.group_id === 'insights_group') {
+                        c.resize();
+                        c.update('none');
+                    }
+                });
+            });
+        });
 
         // 注册插件
         Chart.register(crosshairPlugin);
@@ -765,7 +775,7 @@
 
     let lastInsightsHours = -1;
 
-    function loadInsights() {
+    function loadInsights(silent = false) {
         const rangeEl = document.querySelector('input[name="timeRange"]:checked');
         const hours = rangeEl ? parseInt(rangeEl.value) : 1;
         
@@ -776,30 +786,32 @@
         if (insightsAbortController) insightsAbortController.abort();
         insightsAbortController = new AbortController();
 
-        // 为 Insights 区域的四个图表卡片分别添加骨架屏覆盖
-        const insightCardSelectors = [
-            '#chartPowerDist',
-            '#chartLoadDist',
-            '#chartVRAMEff',
-            '#chartTempDist'
-        ];
+        if (!silent) {
+            // 为 Insights 区域的四个图表卡片分别添加骨架屏覆盖
+            const insightCardSelectors = [
+                '#chartPowerDist',
+                '#chartLoadDist',
+                '#chartVRAMEff',
+                '#chartTempDist'
+            ];
 
-        insightCardSelectors.forEach(selector => {
-            const canvas = document.querySelector(selector);
-            if (canvas) {
-                const card = canvas.closest('.card');
-                if (card) {
-                    card.classList.add('position-relative');
-                    if (!card.querySelector('.insights-mask')) {
-                        const mask = document.createElement('div');
-                        mask.className = 'skeleton rounded-3 position-absolute top-0 start-0 w-100 h-100 insights-mask';
-                        mask.style.backgroundColor = 'var(--bg-card)';
-                        mask.style.zIndex = '10';
-                        card.appendChild(mask);
+            insightCardSelectors.forEach(selector => {
+                const canvas = document.querySelector(selector);
+                if (canvas) {
+                    const card = canvas.closest('.card');
+                    if (card) {
+                        card.classList.add('position-relative');
+                        if (!card.querySelector('.insights-mask')) {
+                            const mask = document.createElement('div');
+                            mask.className = 'skeleton rounded-3 position-absolute top-0 start-0 w-100 h-100 insights-mask';
+                            mask.style.backgroundColor = 'var(--bg-card)';
+                            mask.style.zIndex = '10';
+                            card.appendChild(mask);
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
 
         fetch(`/api/insights?hours=${hours}`, { signal: insightsAbortController.signal }).then(r => r.json()).then(data => {
             rawData.analysis = data;
@@ -877,16 +889,10 @@
             
             updateChart();
 
-            // 2. 如果不展开，那就是先处理图表，加载后再处理上面的 (如果展开了就不需要在这里再次触发了)
             if (!isInsightsShown && document.getElementById('collapseInsights').classList.contains('show')) {
-                // 这种情况属于加载一半点开了，或者在加载完瞬间点开了
                 loadInsights();
             } else if (!isInsightsShown) {
-                // 这里其实可以不主动加载，直到用户点开。
-                // 但按要求：如果不展开，“加载后再处理上面的”，可能意味着即使没展开也要在后台静默加载？
-                // 重新阅读要求：“如果不展开...那就是先处理下面的图表，加载后再处理上面的”
-                // 这可能意味着即便没展开，加载完图表后也应该去加载 insights 数据，以便点开时立刻显示。
-                loadInsights();
+                loadInsights(true);
             }
         }).catch(e => {
             if (e.name === 'AbortError') return;

@@ -50,7 +50,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.17'
+VERSION = '1.3.18'
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -3872,200 +3872,343 @@ def api_history():
                 'disk_w': [safe_round(d[9], 1) for d in final_data]}
     })
 
+def parse_hours_arg(default=24, max_hours=24 * 365):
+    try:
+        hours = int(float(request.args.get('hours', default)))
+    except (TypeError, ValueError):
+        hours = default
+    return max(1, min(max_hours, hours))
+
+def history_bucket_seconds(hours, target_points=1200):
+    return max(1, int(math.ceil((hours * 3600) / float(target_points))))
+
+def empty_history_custom_response():
+    return {
+        'times': [],
+        'cpu_temp': [], 'fan_rpm': [],
+        'power': [], 'cpu_power': [], 'cpu_pkg_power': {},
+        'cpu_load': [], 'mem_load': [],
+        'net_in': [], 'net_out': [], 'disk_r': [], 'disk_w': [],
+        'gpu': {'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []},
+        'stats': {}
+    }
+
+def calculate_hourly_energy_range(start_hour_ts, end_hour_ts):
+    """Aggregate complete-hour energy in one SQLite pass for uncached history ranges."""
+    if end_hour_ts <= start_hour_ts:
+        return {}
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("""WITH raw AS (
+                    SELECT timestamp,
+                           power_watts,
+                           CAST((timestamp - ?) / 3600 AS INTEGER) AS bucket
+                    FROM metrics_v2
+                    WHERE timestamp >= ? AND timestamp < ?
+                 ),
+                 pairs AS (
+                    SELECT bucket,
+                           timestamp AS t1,
+                           power_watts AS p1,
+                           LEAD(timestamp) OVER (PARTITION BY bucket ORDER BY timestamp) AS t2,
+                           LEAD(power_watts) OVER (PARTITION BY bucket ORDER BY timestamp) AS p2
+                    FROM raw
+                 ),
+                 agg AS (
+                    SELECT bucket,
+                           COUNT(*) AS samples,
+                           SUM(CASE WHEN t2 IS NOT NULL AND p1 IS NOT NULL AND p2 IS NOT NULL
+                                      AND t2 > t1 AND t2 - t1 <= 120
+                                    THEN ((p1 + p2) / 2.0) * (t2 - t1)
+                                    ELSE 0 END) AS energy_ws,
+                           SUM(CASE WHEN t2 IS NOT NULL AND p1 IS NOT NULL AND p2 IS NOT NULL
+                                      AND t2 > t1 AND t2 - t1 <= 120
+                                    THEN t2 - t1
+                                    ELSE 0 END) AS integrated_seconds
+                    FROM pairs
+                    GROUP BY bucket
+                 )
+                 SELECT ? + bucket * 3600 AS timestamp,
+                        samples,
+                        CASE WHEN integrated_seconds > 3600 * 0.8
+                             THEN (energy_ws / integrated_seconds * 3600) / 3600.0
+                             ELSE energy_ws / 3600.0
+                        END AS energy_wh
+                 FROM agg
+                 WHERE samples > 0""",
+              (start_hour_ts, start_hour_ts, end_hour_ts, start_hour_ts))
+    rows = c.fetchall()
+    conn.close()
+
+    return {
+        int(row['timestamp']): (
+            float(row['energy_wh'] or 0),
+            int(row['samples'] or 0)
+        )
+        for row in rows
+    }
+
+def calculate_energy_consumption_fast(start_ts, end_ts):
+    """Calculate energy with hourly persistence for long ranges and raw data only at edges."""
+    start_ts = int(start_ts)
+    end_ts = int(end_ts)
+    if end_ts <= start_ts:
+        return 0.0, 0
+
+    # Raw integration remains cheap for short ranges and preserves exactness.
+    if end_ts - start_ts <= 6 * 3600:
+        return calculate_energy_consumption(start_ts, end_ts)
+
+    first_full_hour = ((start_ts + 3599) // 3600) * 3600
+    last_full_hour = (end_ts // 3600) * 3600
+    total_wh = 0.0
+    total_samples = 0
+
+    if first_full_hour > start_ts:
+        edge_end = min(first_full_hour, end_ts)
+        edge_wh, edge_samples = calculate_energy_consumption(start_ts, edge_end)
+        total_wh += edge_wh
+        total_samples += edge_samples
+
+    if last_full_hour > first_full_hour:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("""SELECT timestamp, energy_wh, samples
+                     FROM energy_hourly WHERE timestamp >= ? AND timestamp < ?""",
+                  (first_full_hour, last_full_hour))
+        cached_by_hour = {int(row['timestamp']): row for row in c.fetchall()}
+        conn.close()
+
+        missing_hours = []
+        for hour_ts in range(first_full_hour, last_full_hour, 3600):
+            cached = cached_by_hour.get(hour_ts)
+            if cached:
+                total_wh += float(cached['energy_wh'] or 0)
+                total_samples += int(cached['samples'] or 0)
+            else:
+                missing_hours.append(hour_ts)
+
+        if missing_hours:
+            computed_by_hour = calculate_hourly_energy_range(min(missing_hours), max(missing_hours) + 3600)
+            conn = get_db_connection()
+            c = conn.cursor()
+            for hour_ts in missing_hours:
+                hour_wh, hour_samples = computed_by_hour.get(hour_ts, (0.0, 0))
+                if hour_samples > 0:
+                    total_wh += hour_wh
+                    total_samples += hour_samples
+                    try:
+                        c.execute("""INSERT OR IGNORE INTO energy_hourly (timestamp, energy_wh, samples)
+                                     VALUES (?, ?, ?)""", (hour_ts, hour_wh, hour_samples))
+                    except sqlite3.Error:
+                        pass
+            conn.commit()
+            conn.close()
+
+    tail_start = max(first_full_hour, last_full_hour)
+    if end_ts > tail_start:
+        tail_wh, tail_samples = calculate_energy_consumption(tail_start, end_ts)
+        total_wh += tail_wh
+        total_samples += tail_samples
+
+    return total_wh, total_samples
+
 # --- 自定义历史数据 智能降采样 ---
 @app.route('/api/history_custom')
 @login_required
 def api_history_custom():
-    hours = int(request.args.get('hours', 24))
+    hours = parse_hours_arg(default=24)
+    now_ts = int(time.time())
+    cutoff = now_ts - (hours * 3600)
+    bucket_size = history_bucket_seconds(hours)
+    time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
+
     conn = get_db_connection()
     c = conn.cursor()
-    cutoff = int(time.time() - (hours * 3600))
-    
-    # 系统指标（包含 CPU 功耗与分路功耗 JSON）
-    c.execute("""SELECT timestamp, cpu_temp, fan_rpm, power_watts, cpu_power_w, cpu_pkg_power_json,
-                        cpu_usage, mem_usage, net_recv_speed, net_sent_speed, disk_read_speed, disk_write_speed
-                 FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC""", (cutoff,))
-    raw_data = c.fetchall()
-    
-    # GPU 按秒聚合（多卡合并）
-    c.execute("""SELECT timestamp, AVG(temp) AS temp, AVG(util_gpu) AS util_gpu, AVG(util_mem) AS util_mem,
-                        SUM(mem_used) AS mem_used, SUM(power) AS power_total
-                 FROM gpu_metrics WHERE timestamp > ?
-                 GROUP BY timestamp ORDER BY timestamp ASC""", (cutoff,))
-    gpu_raw = c.fetchall()
-    conn.close()
-    
-    if not raw_data:
-        return jsonify({
-            'times': [],
-            'cpu_temp': [], 'fan_rpm': [],
-            'power': [], 'cpu_power': [], 'cpu_pkg_power': {},
-            'cpu_load': [], 'mem_load': [],
-            'net_in': [], 'net_out': [], 'disk_r': [], 'disk_w': [],
-            'gpu': {'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []},
-            'stats': {}
-        })
 
-    # 计算全局统计信息（抽样前）
-    cpu_temps = [d[1] for d in raw_data if d[1] is not None]
-    cpu_loads = [d[6] for d in raw_data if d[6] is not None]
-    net_ins = [d[8] for d in raw_data if d[8] is not None]
-    disk_rs = [d[10] for d in raw_data if d[10] is not None]
-    
+    c.execute("""SELECT COUNT(*) AS data_points,
+                        MIN(timestamp) AS min_ts,
+                        MAX(timestamp) AS max_ts,
+                        MAX(cpu_temp) AS max_temp,
+                        AVG(cpu_usage) AS avg_load,
+                        MAX(net_recv_speed) AS max_net,
+                        MAX(disk_read_speed) AS max_disk
+                 FROM metrics_v2 WHERE timestamp > ?""", (cutoff,))
+    stats_row = c.fetchone()
+    if not stats_row or int(stats_row['data_points'] or 0) == 0:
+        conn.close()
+        return jsonify(empty_history_custom_response())
+
     stats = {
-        'max_temp': round(max(cpu_temps), 1) if cpu_temps else 0,
-        'avg_load': round(sum(cpu_loads) / len(cpu_loads), 1) if cpu_loads else 0,
-        'max_net': round(max(net_ins), 1) if net_ins else 0,
-        'max_disk': round(max(disk_rs), 1) if disk_rs else 0
+        'max_temp': round(float(stats_row['max_temp']), 1) if stats_row['max_temp'] is not None else 0,
+        'avg_load': round(float(stats_row['avg_load']), 1) if stats_row['avg_load'] is not None else 0,
+        'max_net': round(float(stats_row['max_net']), 1) if stats_row['max_net'] is not None else 0,
+        'max_disk': round(float(stats_row['max_disk']), 1) if stats_row['max_disk'] is not None else 0
     }
-  
-    # [关键修复] LTTB 降采样思路简化：在 1s 精度下，步进采样需配合局部极值保留
-    # 目标：限制在 1200 个点以内（1s精度下稍微多留一些点以保证曲线平滑）
-    target_points = 1200
-    step = max(1, len(raw_data) // target_points)
-    
-    # 如果步长较大，我们不仅取起始点，还应确保这一段内的极值不被丢失（简单做法是取每段的第一个点）
-    sampled_data = raw_data[::step]
-  
-    # 时间格式优化：如果是 1H 视图，显示到秒
-    time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
-  
-    # [优化断点显示] 更加宽容的断点检测
-    # 核心思路：步进采样本身就会拉大点距。只有当两点间距远大于步长 *且* 大于一个绝对阈值（10分钟）时，才判定为关机/断电
+
+    # Group in SQLite first so every history range returns a bounded number of points.
+    c.execute("""WITH bucketed AS (
+                    SELECT CAST((timestamp - ?) / ? AS INTEGER) AS bucket,
+                           MIN(timestamp) AS first_ts,
+                           MAX(timestamp) AS last_ts,
+                           AVG(timestamp) AS avg_ts,
+                           AVG(cpu_temp) AS cpu_temp,
+                           AVG(fan_rpm) AS fan_rpm,
+                           AVG(power_watts) AS power_watts,
+                           AVG(cpu_power_w) AS cpu_power_w,
+                           AVG(cpu_usage) AS cpu_usage,
+                           AVG(mem_usage) AS mem_usage,
+                           AVG(net_recv_speed) AS net_recv_speed,
+                           AVG(net_sent_speed) AS net_sent_speed,
+                           AVG(disk_read_speed) AS disk_read_speed,
+                           AVG(disk_write_speed) AS disk_write_speed
+                    FROM metrics_v2
+                    WHERE timestamp > ?
+                    GROUP BY bucket
+                 )
+                 SELECT b.*,
+                        (SELECT m.cpu_pkg_power_json
+                         FROM metrics_v2 m
+                         WHERE m.timestamp >= ? + b.bucket * ?
+                           AND m.timestamp < ? + (b.bucket + 1) * ?
+                           AND m.cpu_pkg_power_json IS NOT NULL
+                           AND m.cpu_pkg_power_json != ''
+                         ORDER BY m.timestamp DESC
+                         LIMIT 1) AS cpu_pkg_power_json
+                 FROM bucketed b
+                 ORDER BY b.bucket ASC""",
+              (cutoff, bucket_size, cutoff, cutoff, bucket_size, cutoff, bucket_size))
+    metric_rows = [dict(row) for row in c.fetchall()]
+
+    c.execute("""WITH per_ts AS (
+                    SELECT timestamp,
+                           AVG(temp) AS temp,
+                           AVG(util_gpu) AS util_gpu,
+                           AVG(util_mem) AS util_mem,
+                           SUM(mem_used) AS mem_used,
+                           SUM(power) AS power_total
+                    FROM gpu_metrics
+                    WHERE timestamp > ?
+                    GROUP BY timestamp
+                 )
+                 SELECT CAST((timestamp - ?) / ? AS INTEGER) AS bucket,
+                        AVG(temp) AS temp,
+                        AVG(util_gpu) AS util_gpu,
+                        AVG(util_mem) AS util_mem,
+                        AVG(mem_used) AS mem_used,
+                        AVG(power_total) AS power_total
+                 FROM per_ts
+                 GROUP BY bucket
+                 ORDER BY bucket ASC""", (cutoff, cutoff, bucket_size))
+    gpu_by_bucket = {row['bucket']: dict(row) for row in c.fetchall()}
+
+    current_hour_ts = (now_ts // 3600) * 3600
+    c.execute("SELECT MIN(timestamp) FROM energy_hourly")
+    abs_min_row = c.fetchone()
+    c.execute("SELECT MIN(timestamp) FROM metrics_v2")
+    metrics_min_row = c.fetchone()
+    min_candidates = []
+    if abs_min_row and abs_min_row[0] is not None:
+        min_candidates.append(int(abs_min_row[0]))
+    if metrics_min_row and metrics_min_row[0] is not None:
+        min_candidates.append(int(metrics_min_row[0]))
+    abs_min_ts = min(min_candidates) if min_candidates else current_hour_ts
+    conn.close()
+
+    if not metric_rows:
+        response = empty_history_custom_response()
+        response['stats'] = stats
+        return jsonify(response)
+
     final_data = []
-    
-    # 绝对断裂阈值 (秒) - 设定为 2 分钟，只有较长时间失联才断开，解决 CPU 满载漏点问题
-    ABSOLUTE_GAP_LIMIT = 120 
-    
-    for i in range(len(sampled_data)):
-        if i > 0:
-            prev_ts = sampled_data[i-1][0]
-            curr_ts = sampled_data[i][0]
-            
-            # 判断逻辑：不仅要超过 step 的倍数，还要超过 ABSOLUTE_GAP_LIMIT
-            # 这样在 7D 视图下 (step 较大)，普通的小抖动会被 step 本身覆盖，不会误判
-            if curr_ts - prev_ts > max(ABSOLUTE_GAP_LIMIT, step * 10):
-                # 插入一个 null 数据点，时间戳取中间，各字段设为 None
-                # 前端 Chart.js 会识别并断开连线
-                final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None, None, None, None, None))
-        
-        final_data.append(sampled_data[i])
+    prev_row = None
+    gap_threshold = max(120, bucket_size * 2)
+    for row in metric_rows:
+        row['timestamp'] = int(row['avg_ts'] or row['first_ts'] or row['last_ts'])
+        if prev_row and (
+            row['bucket'] - prev_row['bucket'] > 1 or
+            row['first_ts'] - prev_row['last_ts'] > gap_threshold
+        ):
+            final_data.append({
+                'timestamp': int((prev_row['last_ts'] + row['first_ts']) // 2),
+                'bucket': None,
+                'cpu_temp': None, 'fan_rpm': None, 'power_watts': None,
+                'cpu_power_w': None, 'cpu_pkg_power_json': None,
+                'cpu_usage': None, 'mem_usage': None,
+                'net_recv_speed': None, 'net_sent_speed': None,
+                'disk_read_speed': None, 'disk_write_speed': None,
+                'gpu': None
+            })
+        row['gpu'] = gpu_by_bucket.get(row['bucket'])
+        final_data.append(row)
+        prev_row = row
 
     # 识别 CPU package 维度
     cpu_pkg_keys = set()
-    for d in raw_data:
-        cpu_pkg_keys.update(parse_cpu_pkg_power_json(d[5]).keys())
+    for d in final_data:
+        cpu_pkg_keys.update(parse_cpu_pkg_power_json(d.get('cpu_pkg_power_json')).keys())
     cpu_pkg_keys = sort_pkg_keys(cpu_pkg_keys)
     cpu_pkg_series = {k: [] for k in cpu_pkg_keys}
 
-    # 对齐 GPU 数据到系统数据时间轴
     aligned_gpu = {
         'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []
     }
-    
-    last_gpu_idx = 0
-    gpu_len = len(gpu_raw)
-    
+
     for d in final_data:
-        ts = d[0]
-        # 如果是断点占位符
-        if d[1] is None:
+        if d['cpu_temp'] is None:
             for k in aligned_gpu:
                 aligned_gpu[k].append(None)
             for pkg in cpu_pkg_keys:
                 cpu_pkg_series[pkg].append(None)
             continue
 
-        pkg_map = parse_cpu_pkg_power_json(d[5])
+        pkg_map = parse_cpu_pkg_power_json(d.get('cpu_pkg_power_json'))
         for pkg in cpu_pkg_keys:
             v = pkg_map.get(pkg)
             cpu_pkg_series[pkg].append(round(v, 3) if v is not None else None)
-            
-        # 寻找最近的 GPU 数据点 (允许前后 2s 的误差)
-        found = False
-        # 简单的双指针优化查找
-        while last_gpu_idx < gpu_len and gpu_raw[last_gpu_idx][0] < ts - 2:
-            last_gpu_idx += 1
-            
-        if last_gpu_idx < gpu_len and abs(gpu_raw[last_gpu_idx][0] - ts) <= 2:
-            g = gpu_raw[last_gpu_idx]
-            aligned_gpu['temp'].append(g[1])
-            aligned_gpu['util_gpu'].append(g[2])
-            aligned_gpu['util_mem'].append(g[3])
-            aligned_gpu['mem_used'].append(g[4])
-            aligned_gpu['power'].append(g[5])
-            found = True
-        
-        if not found:
-            for k in aligned_gpu: aligned_gpu[k].append(None)
 
-    # 耗电量统计 (Wh)
-    # 1. 区间耗电: 直接利用当前已查出的原始功率数据 (raw_data) 进行实时积分，保证 1H/6H 等视图的精确性
-    # 因为 raw_data 本身就是 cutoff 之后的数据
-    interval_energy_wh = 0.0
-    if len(raw_data) >= 2:
-        # 复用计算逻辑，但直接针对本次查询出的 raw_data
-        temp_ws = 0.0
-        gap_limit = 120
-        for i in range(len(raw_data) - 1):
-            t1, _, _, p1, _, _, _, _, _, _, _, _ = raw_data[i]
-            t2, _, _, p2, _, _, _, _, _, _, _, _ = raw_data[i+1]
-            dt = t2 - t1
-            if 0 < dt <= gap_limit:
-                temp_ws += (p1 + p2) / 2.0 * dt
-        
-        # 边界补齐逻辑
-        actual_dur = raw_data[-1][0] - raw_data[0][0]
-        req_dur = int(time.time()) - cutoff
-        if req_dur > 0 and actual_dur > req_dur * 0.8:
-            interval_energy_wh = (temp_ws / actual_dur * req_dur) / 3600.0
+        g = d.get('gpu')
+        if g:
+            aligned_gpu['temp'].append(g['temp'])
+            aligned_gpu['util_gpu'].append(g['util_gpu'])
+            aligned_gpu['util_mem'].append(g['util_mem'])
+            aligned_gpu['mem_used'].append(g['mem_used'])
+            aligned_gpu['power'].append(g['power_total'])
         else:
-            interval_energy_wh = temp_ws / 3600.0
+            for k in aligned_gpu:
+                aligned_gpu[k].append(None)
 
-    # 2. 累计耗电 (支持自定义起始时间)
-    current_hour_ts = (int(time.time()) // 3600) * 3600
-    conn = get_db_connection()
-    c = conn.cursor()
-    
-    # 获取最早的记录时间
-    c.execute("SELECT MIN(timestamp) FROM energy_hourly")
-    abs_min_row = c.fetchone()
-    abs_min_ts = abs_min_row[0] if abs_min_row and abs_min_row[0] is not None else current_hour_ts
-    
-    energy_start_ts = int(request.args.get('energy_start', 0))
+    try:
+        energy_start_ts = int(request.args.get('energy_start', 0))
+    except (TypeError, ValueError):
+        energy_start_ts = 0
     if energy_start_ts == 0:
         energy_start_ts = abs_min_ts
+    energy_start_ts = min(max(energy_start_ts, abs_min_ts), now_ts)
 
-    c.execute("SELECT SUM(energy_wh) FROM energy_hourly WHERE timestamp >= ?", (energy_start_ts,))
-    row = c.fetchone()
-    total_energy_wh = row[0] if row and row[0] is not None else 0.0
-    # 加上最新的
-    if current_hour_ts >= energy_start_ts:
-        latest_energy_all, _ = calculate_energy_consumption(max(energy_start_ts, current_hour_ts), int(time.time()))
-        total_energy_wh += latest_energy_all
+    interval_energy_wh, _ = calculate_energy_consumption_fast(cutoff, now_ts)
+    total_energy_wh, _ = calculate_energy_consumption_fast(energy_start_ts, now_ts)
     
-    conn.close()
-    
-    # 转换为 kWh
     stats['energy_interval'] = round(interval_energy_wh / 1000.0, 3)
     stats['energy_total'] = round(total_energy_wh / 1000.0, 3)
     stats['energy_start_date'] = datetime.fromtimestamp(energy_start_ts).strftime('%Y-%m-%d')
     stats['energy_earliest_date'] = datetime.fromtimestamp(abs_min_ts).strftime('%Y-%m-%d')
 
     return jsonify({
-        'times': [datetime.fromtimestamp(d[0]).strftime(time_fmt) for d in final_data],
-        'cpu_temp': [round(d[1],1) if d[1] is not None else None for d in final_data],
-        'fan_rpm': [d[2] for d in final_data],
-        'power': [d[3] for d in final_data],
-        'cpu_power': [round(d[4], 3) if d[4] is not None else None for d in final_data],
+        'times': [datetime.fromtimestamp(d['timestamp']).strftime(time_fmt) for d in final_data],
+        'cpu_temp': [round(d['cpu_temp'], 1) if d['cpu_temp'] is not None else None for d in final_data],
+        'fan_rpm': [round(d['fan_rpm']) if d['fan_rpm'] is not None else None for d in final_data],
+        'power': [round(d['power_watts'], 1) if d['power_watts'] is not None else None for d in final_data],
+        'cpu_power': [round(d['cpu_power_w'], 3) if d['cpu_power_w'] is not None else None for d in final_data],
         'cpu_pkg_power': cpu_pkg_series,
-        'cpu_load': [safe_round(d[6], 1) for d in final_data],
-        'mem_load': [safe_round(d[7], 1) for d in final_data],
-        'net_in': [safe_round(d[8], 1) for d in final_data],
-        'net_out': [safe_round(d[9], 1) for d in final_data],
-        'disk_r': [safe_round(d[10], 1) for d in final_data],
-        'disk_w': [safe_round(d[11], 1) for d in final_data],
-        'gpu': aligned_gpu, # 直接包含对齐后的 GPU 数据
+        'cpu_load': [safe_round(d['cpu_usage'], 1) for d in final_data],
+        'mem_load': [safe_round(d['mem_usage'], 1) for d in final_data],
+        'net_in': [safe_round(d['net_recv_speed'], 1) for d in final_data],
+        'net_out': [safe_round(d['net_sent_speed'], 1) for d in final_data],
+        'disk_r': [safe_round(d['disk_read_speed'], 1) for d in final_data],
+        'disk_w': [safe_round(d['disk_write_speed'], 1) for d in final_data],
+        'gpu': aligned_gpu,
         'stats': stats
     })
 
@@ -4073,20 +4216,11 @@ def api_history_custom():
 @app.route('/api/insights')
 @login_required
 def api_insights():
-    hours = int(request.args.get('hours', 24))
+    hours = parse_hours_arg(default=24)
+    cutoff = int(time.time() - (hours * 3600))
     conn = get_db_connection()
     c = conn.cursor()
-    cutoff = int(time.time() - (hours * 3600))
-    
-    # 获取全量原始数据进行精准分析
-    c.execute("SELECT timestamp, cpu_temp, power_watts, cpu_power_w, cpu_usage FROM metrics_v2 WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
-    raw_data = c.fetchall()
-    
-    c.execute("""SELECT timestamp, AVG(temp) AS temp, AVG(util_gpu) AS util_gpu, AVG(util_mem) AS util_mem, SUM(power) AS power_total
-                 FROM gpu_metrics WHERE timestamp > ? GROUP BY timestamp ORDER BY timestamp ASC""", (cutoff,))
-    gpu_raw = c.fetchall()
-    conn.close()
-    
+
     analysis = {
         'sys_power_avg': 0, 'cpu_power_avg': 0, 'gpu_power_avg': 0, 'others_power_avg': 0,
         'cpu_temp_labels': [], 'cpu_temp_dist': [], 
@@ -4095,109 +4229,141 @@ def api_insights():
         'gpu_load_dist': [0]*5,
         'vram_efficiency': []
     }
-    
-    raw_total_points = len(raw_data)
+
+    c.execute("""SELECT COUNT(*) AS cnt,
+                        AVG(power_watts) AS sys_power_avg,
+                        AVG(cpu_power_w) AS cpu_power_avg,
+                        COUNT(cpu_power_w) AS cpu_power_samples,
+                        MIN(cpu_temp) AS min_cpu_temp,
+                        MAX(cpu_temp) AS max_cpu_temp,
+                        SUM(CASE WHEN cpu_usage < 10 THEN 1 ELSE 0 END) AS cpu_load_0,
+                        SUM(CASE WHEN cpu_usage >= 10 AND cpu_usage < 30 THEN 1 ELSE 0 END) AS cpu_load_1,
+                        SUM(CASE WHEN cpu_usage >= 30 AND cpu_usage < 60 THEN 1 ELSE 0 END) AS cpu_load_2,
+                        SUM(CASE WHEN cpu_usage >= 60 AND cpu_usage < 90 THEN 1 ELSE 0 END) AS cpu_load_3,
+                        SUM(CASE WHEN cpu_usage >= 90 THEN 1 ELSE 0 END) AS cpu_load_4
+                 FROM metrics_v2 WHERE timestamp > ?""", (cutoff,))
+    sys_stats = c.fetchone()
+    raw_total_points = int(sys_stats['cnt'] or 0) if sys_stats else 0
     if raw_total_points == 0:
+        conn.close()
         return jsonify(analysis)
 
-    # 温度精度优化：1度步长，自动寻找范围
-    all_cpu_temps = [d[1] for d in raw_data if d[1] is not None]
-    all_gpu_temps = [g[1] for g in gpu_raw if g[1] is not None]
-    
-    min_t = int(min(all_cpu_temps + all_gpu_temps + [30]))
-    max_t = int(max(all_cpu_temps + all_gpu_temps + [80]))
-    
+    c.execute("""SELECT CAST(ROUND(cpu_temp) AS INTEGER) AS temp_bucket, COUNT(*) AS cnt
+                 FROM metrics_v2
+                 WHERE timestamp > ? AND cpu_temp IS NOT NULL
+                 GROUP BY temp_bucket
+                 ORDER BY temp_bucket ASC""", (cutoff,))
+    cpu_temp_rows = c.fetchall()
+    cpu_temp_counts = {int(row['temp_bucket']): int(row['cnt']) for row in cpu_temp_rows if row['temp_bucket'] is not None}
+
+    c.execute("""WITH per_ts AS (
+                    SELECT timestamp,
+                           AVG(temp) AS temp,
+                           AVG(util_gpu) AS util_gpu,
+                           AVG(util_mem) AS util_mem,
+                           SUM(power) AS power_total
+                    FROM gpu_metrics
+                    WHERE timestamp > ?
+                    GROUP BY timestamp
+                 )
+                 SELECT COUNT(*) AS cnt,
+                        AVG(power_total) AS gpu_power_avg,
+                        MIN(temp) AS min_gpu_temp,
+                        MAX(temp) AS max_gpu_temp,
+                        SUM(CASE WHEN util_gpu < 10 THEN 1 ELSE 0 END) AS gpu_load_0,
+                        SUM(CASE WHEN util_gpu >= 10 AND util_gpu < 30 THEN 1 ELSE 0 END) AS gpu_load_1,
+                        SUM(CASE WHEN util_gpu >= 30 AND util_gpu < 60 THEN 1 ELSE 0 END) AS gpu_load_2,
+                        SUM(CASE WHEN util_gpu >= 60 AND util_gpu < 90 THEN 1 ELSE 0 END) AS gpu_load_3,
+                        SUM(CASE WHEN util_gpu >= 90 THEN 1 ELSE 0 END) AS gpu_load_4
+                 FROM per_ts""", (cutoff,))
+    gpu_stats = c.fetchone()
+    gpu_total_points = int(gpu_stats['cnt'] or 0) if gpu_stats else 0
+
+    c.execute("""WITH per_ts AS (
+                    SELECT timestamp, AVG(temp) AS temp
+                    FROM gpu_metrics
+                    WHERE timestamp > ?
+                    GROUP BY timestamp
+                 )
+                 SELECT CAST(ROUND(temp) AS INTEGER) AS temp_bucket, COUNT(*) AS cnt
+                 FROM per_ts
+                 WHERE temp IS NOT NULL
+                 GROUP BY temp_bucket
+                 ORDER BY temp_bucket ASC""", (cutoff,))
+    gpu_temp_rows = c.fetchall()
+    gpu_temp_counts = {int(row['temp_bucket']): int(row['cnt']) for row in gpu_temp_rows if row['temp_bucket'] is not None}
+
+    c.execute("""WITH per_ts AS (
+                    SELECT timestamp,
+                           AVG(util_gpu) AS util_gpu,
+                           AVG(util_mem) AS util_mem
+                    FROM gpu_metrics
+                    WHERE timestamp > ?
+                    GROUP BY timestamp
+                 )
+                 SELECT CAST(util_gpu * 100 / 100.1 AS INTEGER) AS gx,
+                        CAST(util_mem * 100 / 100.1 AS INTEGER) AS gy,
+                        COUNT(*) AS weight
+                 FROM per_ts
+                 WHERE util_gpu IS NOT NULL AND util_mem IS NOT NULL
+                 GROUP BY gx, gy""", (cutoff,))
+    vram_grid_rows = c.fetchall()
+    conn.close()
+
+    min_candidates = [30]
+    max_candidates = [80]
+    if sys_stats['min_cpu_temp'] is not None: min_candidates.append(float(sys_stats['min_cpu_temp']))
+    if sys_stats['max_cpu_temp'] is not None: max_candidates.append(float(sys_stats['max_cpu_temp']))
+    if gpu_stats and gpu_stats['min_gpu_temp'] is not None: min_candidates.append(float(gpu_stats['min_gpu_temp']))
+    if gpu_stats and gpu_stats['max_gpu_temp'] is not None: max_candidates.append(float(gpu_stats['max_gpu_temp']))
+
+    min_t = int(min(min_candidates))
+    max_t = int(max(max_candidates))
     temp_labels = list(range(min_t, max_t + 1))
     analysis['cpu_temp_labels'] = [f"{t}°C" for t in temp_labels]
-    cpu_temp_counts = {t: 0 for t in temp_labels}
-    gpu_temp_counts = {t: 0 for t in temp_labels}
-    
-    cpu_load_counts = [0]*5
-    gpu_load_counts = [0]*5
-    sys_pwr_sum = 0.0
-    gpu_pwr_sum = 0.0
-    cpu_pwr_sum = 0.0
-    others_pwr_sum = 0.0
-    
-    # 散点图空间聚类预处理 (100x100 网格，精确到 1%)
+
+    cpu_load_counts = [
+        int(sys_stats[f'cpu_load_{i}'] or 0)
+        for i in range(5)
+    ]
+    gpu_load_counts = [
+        int(gpu_stats[f'gpu_load_{i}'] or 0) if gpu_stats else 0
+        for i in range(5)
+    ]
+
     grid_size = 100
-    vram_eff_grid = {}
-    
-    gpu_raw_map = {g[0]: g for g in gpu_raw}
-    
-    for d in raw_data:
-        ts, t, p_sys, p_cpu, l = d
-        if t is not None:
-            it = int(round(t))
-            if it in cpu_temp_counts: cpu_temp_counts[it] += 1
-        if l is not None:
-            if l < 10: cpu_load_counts[0] += 1
-            elif l < 30: cpu_load_counts[1] += 1
-            elif l < 60: cpu_load_counts[2] += 1
-            elif l < 90: cpu_load_counts[3] += 1
-            else: cpu_load_counts[4] += 1
-        
-        g = gpu_raw_map.get(ts)
-        gp = None
-        if g:
-            gt, gl, gm, gp = g[1], g[2], g[3], g[4]
-            if gt is not None:
-                igt = int(round(gt))
-                if igt in gpu_temp_counts: gpu_temp_counts[igt] += 1
-            if gl is not None:
-                if gl < 10: gpu_load_counts[0] += 1
-                elif gl < 30: gpu_load_counts[1] += 1
-                elif gl < 60: gpu_load_counts[2] += 1
-                elif gl < 90: gpu_load_counts[3] += 1
-                else: gpu_load_counts[4] += 1
-            if gl is not None and gm is not None:
-                gx = int(gl * grid_size / 100.1)
-                gy = int(gm * grid_size / 100.1)
-                vram_eff_grid[(gx, gy)] = vram_eff_grid.get((gx, gy), 0) + 1
-        # 安全转换：先检查是否为有效数值，避免 "nan" 或无效字符串导致 TypeError
-        def safe_float(val, default=0.0):
-            if val is None:
-                return default
-            try:
-                f = float(val)
-                if math.isnan(f) or math.isinf(f):
-                    return default
-                return f
-            except (ValueError, TypeError):
-                return default
-        
-        sys_p = safe_float(p_sys)
-        gpu_p = safe_float(gp) if g else 0.0
-        cpu_p = safe_float(p_cpu) if p_cpu is not None else max(0.0, sys_p - gpu_p)
-        others_p = max(0.0, sys_p - cpu_p - gpu_p)
-
-        sys_pwr_sum += sys_p
-        cpu_pwr_sum += cpu_p
-        others_pwr_sum += others_p
-        gpu_pwr_sum += gpu_p
-
-    max_weight = max(vram_eff_grid.values()) if vram_eff_grid else 1
-    for (gx, gy), weight in vram_eff_grid.items():
+    max_weight = max([int(row['weight'] or 0) for row in vram_grid_rows], default=1)
+    for row in vram_grid_rows:
+        gx = int(row['gx'] or 0)
+        gy = int(row['gy'] or 0)
+        weight = int(row['weight'] or 0)
         analysis['vram_efficiency'].append({
             'x': round(gx * 100 / grid_size, 1), 'y': round(gy * 100 / grid_size, 1),
             'r': round(2 + (weight / max_weight) * 8, 1)
         })
 
-    gpu_total_points = sum(gpu_temp_counts.values()) 
-    analysis['cpu_temp_dist'] = [round(cpu_temp_counts[t] / raw_total_points * 100, 2) for t in temp_labels]
+    analysis['cpu_temp_dist'] = [round(cpu_temp_counts.get(t, 0) / raw_total_points * 100, 2) for t in temp_labels]
     analysis['cpu_load_dist'] = [round(c / raw_total_points * 100, 2) for c in cpu_load_counts]
     
     if gpu_total_points > 0:
-        analysis['gpu_temp_dist'] = [round(gpu_temp_counts[t] / gpu_total_points * 100, 2) for t in temp_labels]
+        analysis['gpu_temp_dist'] = [round(gpu_temp_counts.get(t, 0) / gpu_total_points * 100, 2) for t in temp_labels]
         analysis['gpu_load_dist'] = [round(c / gpu_total_points * 100, 2) for c in gpu_load_counts]
     else:
         analysis['gpu_temp_dist'] = [0] * len(temp_labels)
         analysis['gpu_load_dist'] = [0] * 5
-    
-    analysis['sys_power_avg'] = round(sys_pwr_sum / raw_total_points, 1)
-    analysis['cpu_power_avg'] = round(cpu_pwr_sum / raw_total_points, 1)
-    analysis['others_power_avg'] = round(others_pwr_sum / raw_total_points, 1)
-    analysis['gpu_power_avg'] = round(gpu_pwr_sum / raw_total_points, 1)
+
+    sys_power_avg = float(sys_stats['sys_power_avg'] or 0)
+    gpu_power_avg = float(gpu_stats['gpu_power_avg'] or 0) if gpu_stats else 0.0
+    if int(sys_stats['cpu_power_samples'] or 0) > 0:
+        cpu_power_avg = float(sys_stats['cpu_power_avg'] or 0)
+    else:
+        cpu_power_avg = max(0.0, sys_power_avg - gpu_power_avg)
+    others_power_avg = max(0.0, sys_power_avg - cpu_power_avg - gpu_power_avg)
+
+    analysis['sys_power_avg'] = round(sys_power_avg, 1)
+    analysis['cpu_power_avg'] = round(cpu_power_avg, 1)
+    analysis['others_power_avg'] = round(others_power_avg, 1)
+    analysis['gpu_power_avg'] = round(gpu_power_avg, 1)
 
     return jsonify(analysis)
 
