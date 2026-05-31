@@ -375,6 +375,30 @@
     </div>
 </div>
 
+<!-- Version Update Notice Modal -->
+<div class="modal fade" id="updateNoticeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-content-dark shadow-lg">
+            <div class="modal-header modal-header-tint border-bottom border-secondary">
+                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sparkles me-2"></i>IPMI_WEB Updated</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <pre id="update-notice-logo" class="text-primary mb-4" style="font-family: 'SF Mono', Consolas, monospace; font-size: 10px; line-height: 1.1; white-space: pre; overflow-x: auto;"></pre>
+                <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3 mb-3">
+                    <span class="text-muted small">当前版本</span>
+                    <span class="badge bg-primary rounded-pill font-monospace" id="update-notice-version">V --</span>
+                </div>
+                <div id="update-notice-plain" class="text-muted small mb-0">版本已更新。</div>
+                <ul id="update-notice-notes" class="small text-light mb-0 ps-3 d-none"></ul>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-primary px-4 fw-bold" data-bs-dismiss="modal">知道了</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast 容器 -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
     <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
@@ -399,6 +423,8 @@
     let targetTempDebounceTimer = null;
     let lastSavedFixedTarget = null;
     let lastSavedTargetTemp = null;
+    let updateNoticeModal = null;
+    let updateNoticePendingAck = false;
 
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
@@ -659,6 +685,50 @@
         toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
         const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
         toast.show();
+    }
+
+    async function acknowledgeUpdateNotice() {
+        if (!updateNoticePendingAck) return;
+        updateNoticePendingAck = false;
+        try {
+            await fetch('/api/update_notice', { method: 'POST' });
+        } catch (e) {
+            console.error('Failed to acknowledge update notice:', e);
+        }
+    }
+
+    async function checkUpdateNotice() {
+        try {
+            const res = await fetch('/api/update_notice');
+            const data = await res.json();
+            if (!data.show) return;
+
+            document.getElementById('update-notice-logo').innerText = data.logo || '';
+            document.getElementById('update-notice-version').innerText = `V ${data.version}`;
+
+            const notesEl = document.getElementById('update-notice-notes');
+            const plainEl = document.getElementById('update-notice-plain');
+            const notes = Array.isArray(data.notes) ? data.notes.filter(Boolean) : [];
+            if (notes.length > 0) {
+                plainEl.classList.add('d-none');
+                notesEl.classList.remove('d-none');
+                notesEl.innerHTML = notes.map(note => `<li>${note}</li>`).join('');
+            } else {
+                notesEl.classList.add('d-none');
+                notesEl.innerHTML = '';
+                plainEl.classList.remove('d-none');
+            }
+
+            updateNoticePendingAck = true;
+            if (!updateNoticeModal) {
+                const modalEl = document.getElementById('updateNoticeModal');
+                modalEl.addEventListener('hidden.bs.modal', acknowledgeUpdateNotice);
+                updateNoticeModal = new bootstrap.Modal(modalEl);
+            }
+            updateNoticeModal.show();
+        } catch (e) {
+            console.error('Update notice failed:', e);
+        }
     }
 
     function refreshData() {
@@ -1187,6 +1257,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
         await loadDashboardOptions();
         init();
+        checkUpdateNotice();
         checkLogStatus();
         setInterval(checkLogStatus, 5000);
     });

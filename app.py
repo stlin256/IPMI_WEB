@@ -50,7 +50,12 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.18'
+VERSION = '1.3.19'
+IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
+  /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
+ _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
+/___//_/   /_/  /_//___/   |__/|__//___//____/ """
+UPDATE_NOTES = {}
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -280,6 +285,7 @@ def init_db():
     if db_ver_row is None:
         # 全新安装或旧版本
         c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('software_version', ?)", (VERSION,))
+        c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('update_notice_ack_version', ?)", (VERSION,))
         c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', ?)", (config['SERVER'].get('server_name', 'MY_SERVER'),))
     elif db_ver < '1.3.6':
         # 版本升级迁移
@@ -288,6 +294,9 @@ def init_db():
         current_name = config['SERVER'].get('server_name', 'MY_SERVER')
         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('server_name', ?)", (current_name,))
         print(f"Migration: server_name '{current_name}' migrated to database.")
+    if db_ver_row is not None and db_ver != VERSION:
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('previous_software_version', ?)", (db_ver,))
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('software_version', ?)", (VERSION,))
 
     c.execute('''CREATE TABLE IF NOT EXISTS metrics_v2 
                  (timestamp INTEGER, cpu_temp REAL, fan_rpm INTEGER, power_watts INTEGER,
@@ -2797,6 +2806,33 @@ def logs_page():
 @login_required
 def api_version():
     return jsonify({'version': VERSION})
+
+@app.route('/api/update_notice', methods=['GET', 'POST'])
+@login_required
+def api_update_notice():
+    conn = get_db_connection()
+    c = conn.cursor()
+    if request.method == 'POST':
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('update_notice_ack_version', ?)", (VERSION,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'ok'})
+
+    c.execute("SELECT key, value FROM config WHERE key IN ('update_notice_ack_version', 'previous_software_version')")
+    cfg = {row['key']: row['value'] for row in c.fetchall()}
+    conn.close()
+
+    ack_version = cfg.get('update_notice_ack_version', '')
+    notes = UPDATE_NOTES.get(VERSION, [])
+    if isinstance(notes, str):
+        notes = [notes] if notes.strip() else []
+    return jsonify({
+        'show': ack_version != VERSION,
+        'version': VERSION,
+        'previous_version': cfg.get('previous_software_version', ''),
+        'logo': IPMI_ASCII_LOGO,
+        'notes': notes
+    })
 
 @app.route('/api/log_status')
 @login_required
