@@ -22,6 +22,8 @@ import platform
 import smtplib
 import base64
 import concurrent.futures
+import ssl
+import sys
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from email.mime.text import MIMEText
@@ -50,7 +52,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.19'
+VERSION = '1.3.20'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -105,11 +107,14 @@ def before_request():
 
 # 检测 HTTPS 证书
 cert_dir = 'cert'
-cert_file = os.path.join(cert_dir, 'server.crt')
-key_file = os.path.join(cert_dir, 'server.key')
+DEFAULT_CERT_FILE = os.path.join(cert_dir, 'server.crt')
+DEFAULT_KEY_FILE = os.path.join(cert_dir, 'server.key')
+COMBINED_CERT_FILE = os.path.join(cert_dir, 'server.pem')
+cert_file = DEFAULT_CERT_FILE
+key_file = DEFAULT_KEY_FILE
 # 同时也检查 pem 扩展名
-if not os.path.exists(cert_file): cert_file = os.path.join(cert_dir, 'server.pem')
-if not os.path.exists(key_file): key_file = os.path.join(cert_dir, 'server.pem') # 有时证书和私钥在一个文件
+if not os.path.exists(cert_file): cert_file = COMBINED_CERT_FILE
+if not os.path.exists(key_file): key_file = COMBINED_CERT_FILE # 有时证书和私钥在一个文件
 
 HAS_CERT = os.path.exists(cert_file) and os.path.exists(key_file)
 
@@ -119,6 +124,157 @@ app.config.update(
     SESSION_COOKIE_SECURE=HAS_CERT,
     SESSION_COOKIE_HTTPONLY=True
 )
+
+MAX_CERT_UPLOAD_BYTES = 256 * 1024
+
+def _resolve_certificate_files():
+    resolved_cert = DEFAULT_CERT_FILE if os.path.exists(DEFAULT_CERT_FILE) else COMBINED_CERT_FILE
+    resolved_key = DEFAULT_KEY_FILE if os.path.exists(DEFAULT_KEY_FILE) else COMBINED_CERT_FILE
+    return resolved_cert, resolved_key
+
+def _decode_certificate_info(path):
+    try:
+        decoded = ssl._ssl._test_decode_cert(path)
+        not_after = decoded.get('notAfter')
+        expires_ts = ssl.cert_time_to_seconds(not_after) if not_after else None
+        subject = decoded.get('subject', ())
+        issuer = decoded.get('issuer', ())
+        return {
+            'valid': True,
+            'expires_at': expires_ts,
+            'expires_at_str': datetime.fromtimestamp(expires_ts).strftime('%Y-%m-%d %H:%M:%S') if expires_ts else '',
+            'days_left': math.floor((expires_ts - time.time()) / 86400) if expires_ts else None,
+            'subject': _flatten_cert_name(subject),
+            'issuer': _flatten_cert_name(issuer),
+            'error': ''
+        }
+    except Exception as e:
+        return {
+            'valid': False,
+            'expires_at': None,
+            'expires_at_str': '',
+            'days_left': None,
+            'subject': '',
+            'issuer': '',
+            'error': str(e)
+        }
+
+def _flatten_cert_name(parts):
+    values = []
+    for group in parts or []:
+        for key, value in group:
+            values.append(f"{key}={value}")
+    return ', '.join(values)
+
+def get_certificate_status():
+    active_cert, active_key = _resolve_certificate_files()
+    cert_exists = os.path.exists(active_cert)
+    key_exists = os.path.exists(active_key)
+    info = _decode_certificate_info(active_cert) if cert_exists else {
+        'valid': False,
+        'expires_at': None,
+        'expires_at_str': '',
+        'days_left': None,
+        'subject': '',
+        'issuer': '',
+        'error': '证书文件不存在'
+    }
+    return {
+        'installed': cert_exists and key_exists,
+        'cert_exists': cert_exists,
+        'key_exists': key_exists,
+        'cert_path': active_cert,
+        'key_path': active_key,
+        'https_active': HAS_CERT,
+        **info
+    }
+
+def _read_uploaded_file(file_storage, label):
+    if not file_storage or not file_storage.filename:
+        raise ValueError(f'请上传{label}文件')
+    data = file_storage.read(MAX_CERT_UPLOAD_BYTES + 1)
+    if not data:
+        raise ValueError(f'{label}文件为空')
+    if len(data) > MAX_CERT_UPLOAD_BYTES:
+        raise ValueError(f'{label}文件过大，最大支持 256KB')
+    try:
+        data.decode('utf-8')
+    except UnicodeDecodeError:
+        raise ValueError(f'{label}必须是 PEM 文本文件')
+    return data
+
+def _validate_certificate_bytes(data):
+    text = data.decode('utf-8', errors='ignore')
+    if 'BEGIN CERTIFICATE' not in text or 'END CERTIFICATE' not in text:
+        raise ValueError('证书文件必须包含 PEM 格式的 CERTIFICATE 内容')
+    os.makedirs(cert_dir, exist_ok=True)
+    temp_path = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.crt')
+    try:
+        with open(temp_path, 'wb') as f:
+            f.write(data)
+        info = _decode_certificate_info(temp_path)
+        if not info['valid']:
+            raise ValueError(f'证书解析失败: {info["error"]}')
+        return info
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+def _validate_private_key_bytes(data):
+    text = data.decode('utf-8', errors='ignore')
+    key_markers = (
+        'BEGIN PRIVATE KEY',
+        'BEGIN RSA PRIVATE KEY',
+        'BEGIN EC PRIVATE KEY',
+        'BEGIN ENCRYPTED PRIVATE KEY'
+    )
+    if not any(marker in text for marker in key_markers):
+        raise ValueError('私钥文件必须包含 PEM 格式的 PRIVATE KEY 内容')
+
+def _validate_certificate_pair(cert_data, key_data):
+    os.makedirs(cert_dir, exist_ok=True)
+    temp_cert = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.crt')
+    temp_key = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.key')
+    try:
+        with open(temp_cert, 'wb') as f:
+            f.write(cert_data)
+        with open(temp_key, 'wb') as f:
+            f.write(key_data)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(temp_cert, temp_key)
+    except Exception as e:
+        raise ValueError(f'证书和私钥不匹配或私钥无法加载: {e}')
+    finally:
+        for path in (temp_cert, temp_key):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+def _atomic_write_bytes(path, data, mode=None):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp_path = f'{path}.tmp'
+    with open(temp_path, 'wb') as f:
+        f.write(data)
+    os.replace(temp_path, path)
+    if mode is not None:
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            pass
+
+def restart_current_process():
+    try:
+        logging.warning("Restarting IPMI_WEB process by user request")
+        if getattr(sys, 'frozen', False):
+            args = [sys.executable] + sys.argv[1:]
+        else:
+            args = [sys.executable] + sys.argv
+        os.execv(sys.executable, args)
+    except Exception as e:
+        logging.error(f"Process restart failed: {e}")
 
 # --- 日志配置 ---
 def setup_logging():
@@ -2833,6 +2989,65 @@ def api_update_notice():
         'logo': IPMI_ASCII_LOGO,
         'notes': notes
     })
+
+@app.route('/api/certificate', methods=['GET', 'POST'])
+@login_required
+def api_certificate():
+    if request.method == 'GET':
+        return jsonify(get_certificate_status())
+
+    try:
+        cert_upload = request.files.get('cert_file')
+        key_upload = request.files.get('key_file')
+        cert_data = _read_uploaded_file(cert_upload, '证书')
+        key_data = _read_uploaded_file(key_upload, '私钥')
+
+        cert_info = _validate_certificate_bytes(cert_data)
+        _validate_private_key_bytes(key_data)
+        _validate_certificate_pair(cert_data, key_data)
+
+        _atomic_write_bytes(DEFAULT_CERT_FILE, cert_data, 0o644)
+        _atomic_write_bytes(DEFAULT_KEY_FILE, key_data, 0o600)
+
+        write_audit(
+            'WARN',
+            'CONFIG',
+            'CERT_UPLOAD',
+            'HTTPS 证书已更新，重启服务后生效',
+            details={
+                'expires_at': cert_info.get('expires_at_str'),
+                'days_left': cert_info.get('days_left'),
+                'cert_path': DEFAULT_CERT_FILE,
+                'key_path': DEFAULT_KEY_FILE
+            },
+            operator=get_client_ip()
+        )
+        return jsonify({
+            'status': 'success',
+            'message': '证书已保存，重启服务后生效',
+            'certificate': get_certificate_status()
+        })
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logging.exception('Certificate upload failed')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/service/restart', methods=['POST'])
+@login_required
+def api_service_restart():
+    try:
+        write_audit(
+            'WARN',
+            'SYSTEM',
+            'SERVICE_RESTART',
+            '用户请求重启 IPMI_WEB 服务',
+            operator=get_client_ip()
+        )
+        threading.Timer(0.8, restart_current_process).start()
+        return jsonify({'status': 'restarting'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/log_status')
 @login_required

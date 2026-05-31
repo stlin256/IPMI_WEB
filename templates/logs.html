@@ -479,8 +479,8 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-danger shadow-lg">
                 <div class="modal-body p-4 text-center">
-                    <i class="fas fa-exclamation-circle text-danger fs-1 mb-3"></i>
-                    <h5 class="fw-bold">确认删除此规则？</h5>
+                    <i class="fas fa-exclamation-circle text-danger fs-1 mb-3" id="confirm-icon"></i>
+                    <h5 class="fw-bold" id="confirm-title">确认删除此规则？</h5>
                     <p class="text-muted small mb-4" id="confirm-msg">删除后将无法恢复</p>
                     <div class="d-flex gap-2">
                         <button class="btn btn-secondary flex-grow-1" data-bs-dismiss="modal">取消</button>
@@ -534,6 +534,9 @@ n        /* 标签样式 */
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-email" type="button">
                                 <i class="fas fa-envelope me-2"></i> 邮件通知
+                            </button>
+                            <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-certificate" type="button">
+                                <i class="fas fa-certificate me-2"></i> 证书管理
                             </button>
                             <button class="nav-link text-start py-3 mb-1 mt-auto border-top border-secondary border-opacity-25 rounded-0" data-bs-toggle="pill" data-bs-target="#tab-about" type="button">
                                 <i class="fas fa-info-circle me-2"></i> 关于项目
@@ -798,6 +801,54 @@ n        /* 标签样式 */
                                     <i id="test-email-spinner" class="fas fa-spinner fa-spin d-none"></i>
                                 </button>
                             </div>
+                        </div>
+
+                        <!-- 证书管理 Tab -->
+                        <div class="tab-pane fade" id="tab-certificate">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h6 class="text-primary mb-0 fw-bold">HTTPS 证书</h6>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadCertificateStatus()">
+                                    <i class="fas fa-sync-alt me-1"></i>刷新
+                                </button>
+                            </div>
+
+                            <div class="bg-black bg-opacity-25 border border-secondary border-opacity-25 rounded p-3 mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-muted small">当前状态</span>
+                                    <span id="cert-status-badge" class="badge bg-secondary">--</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-muted small">证书到期</span>
+                                    <span id="cert-expiry-val" class="text-light small font-monospace">--</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-muted small">剩余时间</span>
+                                    <span id="cert-days-val" class="text-light small">--</span>
+                                </div>
+                                <div class="small text-muted text-break mt-3">
+                                    <div>证书: <span id="cert-path-val" class="font-monospace text-muted-plus">--</span></div>
+                                    <div>私钥: <span id="key-path-val" class="font-monospace text-muted-plus">--</span></div>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">PEM / CRT 证书文件</label>
+                                    <input type="file" id="cert-file-input" class="form-control bg-dark border-secondary text-light" accept=".pem,.crt,.cer">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">KEY 私钥文件</label>
+                                    <input type="file" id="key-file-input" class="form-control bg-dark border-secondary text-light" accept=".key,.pem">
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary fw-bold" id="btn-upload-cert" onclick="uploadCertificate()">
+                                    <span id="upload-cert-text">上传并替换证书</span>
+                                    <i id="upload-cert-spinner" class="fas fa-spinner fa-spin d-none"></i>
+                                </button>
+                            </div>
+                            <div id="cert-error-msg" class="alert alert-danger d-none small py-2 mt-3 mb-0"></div>
                         </div>
 
                         <!-- 关于页面 Tab -->
@@ -1764,15 +1815,131 @@ n        /* 标签样式 */
         } catch (e) {}
     }
 
-    function showConfirmModal(msg, onConfirm) {
+    function showConfirmModal(msg, onConfirm, options = {}) {
         if (!confirmModal) confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+        const modalContent = document.querySelector('#confirmModal .modal-content');
+        const icon = document.getElementById('confirm-icon');
+        const title = document.getElementById('confirm-title');
         document.getElementById('confirm-msg').innerText = msg;
         const btn = document.getElementById('confirm-execute-btn');
+        modalContent.className = `modal-content bg-dark ${options.borderClass || 'border-danger'} shadow-lg`;
+        icon.className = `${options.iconClass || 'fas fa-exclamation-circle text-danger'} fs-1 mb-3`;
+        title.innerText = options.title || '确认操作';
+        btn.className = `btn ${options.confirmClass || 'btn-danger'} flex-grow-1 fw-bold`;
+        btn.innerText = options.confirmText || '确认';
         btn.onclick = () => {
             onConfirm();
             confirmModal.hide();
         };
         confirmModal.show();
+    }
+
+    async function loadCertificateStatus() {
+        const badge = document.getElementById('cert-status-badge');
+        const expiry = document.getElementById('cert-expiry-val');
+        const days = document.getElementById('cert-days-val');
+        const certPath = document.getElementById('cert-path-val');
+        const keyPath = document.getElementById('key-path-val');
+        if (!badge) return;
+
+        try {
+            const res = await fetch('/api/certificate');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '读取证书状态失败');
+
+            badge.className = 'badge';
+            if (data.installed && data.valid) {
+                const daysLeft = Number(data.days_left);
+                if (!Number.isNaN(daysLeft) && daysLeft <= 14) {
+                    badge.classList.add('bg-warning', 'text-dark');
+                    badge.innerText = '即将到期';
+                } else {
+                    badge.classList.add('bg-success');
+                    badge.innerText = data.https_active ? '已启用' : '已安装';
+                }
+            } else if (data.cert_exists || data.key_exists) {
+                badge.classList.add('bg-danger');
+                badge.innerText = '配置不完整';
+            } else {
+                badge.classList.add('bg-secondary');
+                badge.innerText = '未安装';
+            }
+
+            expiry.innerText = data.expires_at_str || '--';
+            days.innerText = data.days_left === null || data.days_left === undefined ? '--' : `${data.days_left} 天`;
+            certPath.innerText = data.cert_path || '--';
+            keyPath.innerText = data.key_path || '--';
+        } catch (e) {
+            badge.className = 'badge bg-danger';
+            badge.innerText = '读取失败';
+            const errEl = document.getElementById('cert-error-msg');
+            if (errEl) {
+                errEl.innerText = e.message;
+                errEl.classList.remove('d-none');
+            }
+        }
+    }
+
+    async function uploadCertificate() {
+        const certInput = document.getElementById('cert-file-input');
+        const keyInput = document.getElementById('key-file-input');
+        const btn = document.getElementById('btn-upload-cert');
+        const text = document.getElementById('upload-cert-text');
+        const spinner = document.getElementById('upload-cert-spinner');
+        const errEl = document.getElementById('cert-error-msg');
+
+        errEl.classList.add('d-none');
+        if (!certInput.files.length || !keyInput.files.length) {
+            errEl.innerText = '请同时选择证书文件和私钥文件';
+            errEl.classList.remove('d-none');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('cert_file', certInput.files[0]);
+        formData.append('key_file', keyInput.files[0]);
+
+        try {
+            btn.disabled = true;
+            text.classList.add('d-none');
+            spinner.classList.remove('d-none');
+
+            const res = await fetch('/api/certificate', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '证书上传失败');
+
+            certInput.value = '';
+            keyInput.value = '';
+            await loadCertificateStatus();
+            showConfirmModal('证书已保存。需要重启服务后，新证书才会被 HTTPS 服务加载。是否立即重启？', restartService, {
+                title: '重启服务以应用证书？',
+                iconClass: 'fas fa-sync-alt text-warning',
+                borderClass: 'border-warning',
+                confirmClass: 'btn-warning',
+                confirmText: '立即重启'
+            });
+        } catch (e) {
+            errEl.innerText = e.message;
+            errEl.classList.remove('d-none');
+        } finally {
+            btn.disabled = false;
+            text.classList.remove('d-none');
+            spinner.classList.add('d-none');
+        }
+    }
+
+    async function restartService() {
+        try {
+            const res = await fetch('/api/service/restart', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '重启请求失败');
+            showToast('服务正在重启，请稍后刷新页面');
+        } catch (e) {
+            showToast('重启失败: ' + e.message, true);
+        }
     }
 
     const DASHBOARD_PRESETS = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720];
@@ -1880,6 +2047,7 @@ n        /* 标签样式 */
             };
             renderChecks('check-hw-hours', globalSettings.dashboard_hours_hw);
             renderChecks('check-hist-hours', globalSettings.dashboard_hours_hist);
+            await loadCertificateStatus();
 
             // 为所有设置输入框添加变更监听
             const settingInputs = document.querySelectorAll('#settingsModal input, #settingsModal select');
