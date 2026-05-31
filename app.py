@@ -53,7 +53,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.4.1'
+VERSION = '1.4.2'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -222,7 +222,11 @@ COMPRESSED_CODEC_ZLIB = b'ZL1'
 COMPRESSED_CODEC_LZMA = b'XZ1'
 LOW_DISK_FREE_THRESHOLD_BYTES = 800 * 1024 * 1024
 LOW_DISK_TARGET_FREE_BYTES = 900 * 1024 * 1024
-LOW_DISK_MAX_PRUNE_DAYS_PER_RUN = 7
+LOW_DISK_MAX_PRUNE_DAYS_PER_RUN = 1
+LOW_DISK_PROTECT_DAYS = 7
+LOW_DISK_MIN_FREE_GAIN_BYTES = 16 * 1024 * 1024
+LOW_DISK_PRUNE_COOLDOWN_SECONDS = 6 * 3600
+LOW_DISK_NOTICE_COOLDOWN_SECONDS = 3600
 LOW_DISK_PRUNE_TABLES = (
     'metrics_v2',
     'gpu_metrics',
@@ -652,7 +656,7 @@ def day_bounds_from_key(day_key):
 def day_label_from_key(day_key):
     return datetime.strptime(str(day_key), '%Y%m%d').strftime('%Y-%m-%d')
 
-def get_earliest_history_day(conn):
+def get_earliest_history_day(conn, max_day_key=None):
     c = conn.cursor()
     earliest_day = None
 
@@ -663,6 +667,8 @@ def get_earliest_history_day(conn):
         try:
             day = day_key_from_timestamp(ts_value)
         except (TypeError, ValueError, OSError):
+            return
+        if max_day_key is not None and day > max_day_key:
             return
         earliest_day = day if earliest_day is None else min(earliest_day, day)
 
@@ -680,11 +686,34 @@ def get_earliest_history_day(conn):
         row = c.fetchone()
         if row and row[0] is not None:
             day = int(row[0])
-            earliest_day = day if earliest_day is None else min(earliest_day, day)
+            if max_day_key is None or day <= max_day_key:
+                earliest_day = day if earliest_day is None else min(earliest_day, day)
     except sqlite3.Error as e:
         logging.warning(f"Low disk prune scan failed for audit_log_archives: {e}")
 
     return earliest_day
+
+def get_config_value(conn, key, default=None):
+    try:
+        row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
+        return row['value'] if row else default
+    except sqlite3.Error:
+        return default
+
+def set_config_value(conn, key, value):
+    conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, str(value)))
+
+def get_config_bool(conn, key, default=False):
+    value = get_config_value(conn, key, None)
+    if value is None:
+        return default
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+def get_config_int(conn, key, default=0):
+    try:
+        return int(float(get_config_value(conn, key, default)))
+    except (TypeError, ValueError):
+        return default
 
 def prune_history_day(conn, day_key):
     day_start, day_end = day_bounds_from_key(day_key)
@@ -721,10 +750,62 @@ def run_low_disk_history_prune():
 
     pruned_days = 0
     free_after = free_before
+    now_ts = int(time.time())
     conn = get_db_connection()
     try:
+        auto_prune_enabled = get_config_bool(conn, 'low_disk_auto_prune_enabled', False)
+        last_notice_ts = get_config_int(conn, 'low_disk_last_notice_ts', 0)
+
+        if not auto_prune_enabled:
+            if now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS:
+                set_config_value(conn, 'low_disk_last_notice_ts', now_ts)
+                conn.commit()
+                write_audit(
+                    'INFO',
+                    'SYSTEM',
+                    'LOW_DISK_SPACE_WARNING',
+                    '磁盘剩余空间不足，自动删除历史数据已禁用，未删除任何记录',
+                    details={
+                        'free_before_bytes': free_before,
+                        'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
+                        'auto_prune_enabled': False
+                    },
+                    operator='SYSTEM'
+                )
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_before,
+                'skipped': 'auto_prune_disabled'
+            }
+
+        blocked_until = get_config_int(conn, 'low_disk_prune_blocked_until', 0)
+        if blocked_until > now_ts:
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_before,
+                'skipped': 'blocked_after_no_space_gain',
+                'blocked_until': blocked_until
+            }
+
+        last_prune_ts = get_config_int(conn, 'low_disk_last_prune_ts', 0)
+        if now_ts - last_prune_ts < LOW_DISK_PRUNE_COOLDOWN_SECONDS:
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_before,
+                'skipped': 'cooldown',
+                'next_allowed_ts': last_prune_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+            }
+
+        retention_days = max(1, get_config_int(conn, 'data_retention_days', RETENTION_DAYS))
+        protect_days = max(LOW_DISK_PROTECT_DAYS, retention_days)
+        max_prune_ts = now_ts - protect_days * 86400
+        max_day_key = day_key_from_timestamp(max_prune_ts - 86400)
+
         for _ in range(LOW_DISK_MAX_PRUNE_DAYS_PER_RUN):
-            day_key = get_earliest_history_day(conn)
+            day_key = get_earliest_history_day(conn, max_day_key=max_day_key)
             if day_key is None:
                 break
 
@@ -733,8 +814,8 @@ def run_low_disk_history_prune():
             conn.commit()
 
             try:
-                conn.execute("PRAGMA incremental_vacuum(200);")
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.execute("PRAGMA incremental_vacuum(200);")
             except sqlite3.Error as e:
                 logging.warning(f"Low disk prune space reclaim failed: {e}")
 
@@ -767,27 +848,65 @@ def run_low_disk_history_prune():
                     'free_after_bytes': free_after,
                     'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
                     'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                    'protect_days': protect_days,
+                    'auto_prune_enabled': True,
                     'audit_deleted_rows': audit_deleted,
                     'deleted': deleted
                 },
                 operator='SYSTEM'
             )
+            set_config_value(conn, 'low_disk_last_prune_ts', now_ts)
+            conn.commit()
 
             if free_after >= LOW_DISK_TARGET_FREE_BYTES:
+                break
+
+            if free_after - free_before < LOW_DISK_MIN_FREE_GAIN_BYTES:
+                blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+                set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
+                conn.commit()
+                write_audit(
+                    'INFO',
+                    'SYSTEM',
+                    'LOW_DISK_PRUNE_BLOCKED',
+                    '低磁盘清理后文件系统可用空间未明显增加，已暂停后续自动删除以保护历史记录',
+                    details={
+                        'day': day_label,
+                        'free_before_bytes': free_before,
+                        'free_after_bytes': free_after,
+                        'min_free_gain_bytes': LOW_DISK_MIN_FREE_GAIN_BYTES,
+                        'blocked_until': blocked_until
+                    },
+                    operator='SYSTEM'
+                )
                 break
     finally:
         conn.close()
 
     if pruned_days == 0:
+        should_notice_empty = True
+        try:
+            notice_conn = get_db_connection()
+            last_notice_ts = get_config_int(notice_conn, 'low_disk_last_notice_ts', 0)
+            should_notice_empty = now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS
+            if should_notice_empty:
+                set_config_value(notice_conn, 'low_disk_last_notice_ts', now_ts)
+                notice_conn.commit()
+            notice_conn.close()
+        except Exception:
+            should_notice_empty = True
+
+    if pruned_days == 0 and should_notice_empty:
         write_audit(
             'INFO',
             'SYSTEM',
             'LOW_DISK_PRUNE_EMPTY',
-            '磁盘剩余空间不足，但没有可丢弃的历史数据',
+            '磁盘剩余空间不足，但没有超过保护窗口的可丢弃历史数据',
             details={
                 'free_before_bytes': free_before,
                 'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
-                'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES
+                'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                'protect_days': LOW_DISK_PROTECT_DAYS
             },
             operator='SYSTEM'
         )
@@ -1124,6 +1243,10 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('data_retention_days', '7')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('pending_retention_days', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_auto_prune_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_last_notice_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_last_prune_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_prune_blocked_until', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hw', '[1, 24]')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hist', '[1, 6, 24, 72, 168]')")
 

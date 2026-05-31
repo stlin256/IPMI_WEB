@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.2 - 2026-05-31
+
+### 中文
+
+- 紧急修复低磁盘保护逻辑：默认禁用破坏性的自动历史删除，磁盘空间不足时只写限流告警，不再删除任何记录。
+- 即使显式开启低磁盘自动清理，也必须保留至少最近 7 天和当前保留期内的数据，且只删除完整落在保护窗口之外的旧自然日。
+- 低磁盘自动清理单次最多删除 1 天，并增加 6 小时冷却，避免 SQLite 文件未收缩时连续删除库内历史记录。
+- 如果删除后文件系统可用空间没有明显增加，会自动熔断后续删除并写入保护日志。
+
+### English
+
+- Emergency fix for low-disk protection: destructive automatic history deletion is disabled by default; low disk space now only writes rate-limited warnings and deletes no records.
+- Even when low-disk auto pruning is explicitly enabled, at least the last 7 days and the configured retention window are protected, and only fully expired natural days can be removed.
+- Low-disk auto pruning is capped to one day per run with a 6-hour cooldown to avoid repeated database-row deletion when SQLite files do not shrink immediately.
+- If deletion does not noticeably increase filesystem free space, further pruning is automatically blocked and a protection log is written.
+
 ## 1.4.1 - 2026-05-31
 
 ### 中文
