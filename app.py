@@ -52,7 +52,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.23'
+VERSION = '1.3.24'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -129,6 +129,17 @@ MAX_CERT_UPLOAD_BYTES = 256 * 1024
 AUDIT_ARCHIVE_AFTER_DAYS = 30
 AUDIT_ARCHIVE_MAX_DAYS_PER_RUN = 14
 AUDIT_ARCHIVE_COMPRESSION_LEVEL = 9
+LOW_DISK_FREE_THRESHOLD_BYTES = 800 * 1024 * 1024
+LOW_DISK_TARGET_FREE_BYTES = 900 * 1024 * 1024
+LOW_DISK_MAX_PRUNE_DAYS_PER_RUN = 7
+LOW_DISK_PRUNE_TABLES = (
+    'metrics_v2',
+    'gpu_metrics',
+    'sensor_history',
+    'energy_hourly',
+    'recording_intervals',
+    'audit_logs'
+)
 
 def _resolve_certificate_files():
     resolved_cert = DEFAULT_CERT_FILE if os.path.exists(DEFAULT_CERT_FILE) else COMBINED_CERT_FILE
@@ -501,6 +512,151 @@ def archived_audit_has_unread(conn, last_check):
             if int(record.get('timestamp') or 0) > last_check and record.get('level') in ('ERROR', 'SECURITY', 'WARN'):
                 return True
     return False
+
+def day_key_from_timestamp(timestamp):
+    return int(datetime.fromtimestamp(int(timestamp)).strftime('%Y%m%d'))
+
+def day_bounds_from_key(day_key):
+    day_start = datetime.strptime(str(day_key), '%Y%m%d')
+    start_ts = int(day_start.timestamp())
+    end_ts = int((day_start + timedelta(days=1)).timestamp())
+    return start_ts, end_ts
+
+def day_label_from_key(day_key):
+    return datetime.strptime(str(day_key), '%Y%m%d').strftime('%Y-%m-%d')
+
+def get_earliest_history_day(conn):
+    c = conn.cursor()
+    earliest_day = None
+
+    def consider_ts(ts_value):
+        nonlocal earliest_day
+        if ts_value is None:
+            return
+        try:
+            day = day_key_from_timestamp(ts_value)
+        except (TypeError, ValueError, OSError):
+            return
+        earliest_day = day if earliest_day is None else min(earliest_day, day)
+
+    for table in LOW_DISK_PRUNE_TABLES:
+        try:
+            c.execute(f"SELECT MIN(timestamp) FROM {table}")
+            row = c.fetchone()
+            if row:
+                consider_ts(row[0])
+        except sqlite3.Error as e:
+            logging.warning(f"Low disk prune scan failed for {table}: {e}")
+
+    try:
+        c.execute("SELECT MIN(day) FROM audit_log_archives")
+        row = c.fetchone()
+        if row and row[0] is not None:
+            day = int(row[0])
+            earliest_day = day if earliest_day is None else min(earliest_day, day)
+    except sqlite3.Error as e:
+        logging.warning(f"Low disk prune scan failed for audit_log_archives: {e}")
+
+    return earliest_day
+
+def prune_history_day(conn, day_key):
+    day_start, day_end = day_bounds_from_key(day_key)
+    c = conn.cursor()
+    deleted = {}
+
+    for table in LOW_DISK_PRUNE_TABLES:
+        try:
+            c.execute(f"DELETE FROM {table} WHERE timestamp >= ? AND timestamp < ?", (day_start, day_end))
+            deleted[table] = c.rowcount if c.rowcount is not None else 0
+        except sqlite3.Error as e:
+            logging.warning(f"Low disk prune delete failed for {table}: {e}")
+            deleted[table] = f"error: {e}"
+
+    try:
+        c.execute("DELETE FROM audit_log_archives WHERE day = ?", (day_key,))
+        deleted['audit_log_archives'] = c.rowcount if c.rowcount is not None else 0
+    except sqlite3.Error as e:
+        logging.warning(f"Low disk prune delete failed for audit_log_archives: {e}")
+        deleted['audit_log_archives'] = f"error: {e}"
+
+    return deleted
+
+def run_low_disk_history_prune():
+    try:
+        storage_before = get_storage_usage_info()
+    except Exception as e:
+        logging.warning(f"Low disk prune skipped, disk usage unavailable: {e}")
+        return {'pruned_days': 0, 'error': str(e)}
+
+    free_before = int(storage_before.get('disk_free_bytes') or 0)
+    if free_before >= LOW_DISK_FREE_THRESHOLD_BYTES:
+        return {'pruned_days': 0, 'free_before': free_before}
+
+    pruned_days = 0
+    free_after = free_before
+    conn = get_db_connection()
+    try:
+        for _ in range(LOW_DISK_MAX_PRUNE_DAYS_PER_RUN):
+            day_key = get_earliest_history_day(conn)
+            if day_key is None:
+                break
+
+            day_label = day_label_from_key(day_key)
+            deleted = prune_history_day(conn, day_key)
+            conn.commit()
+
+            try:
+                conn.execute("PRAGMA incremental_vacuum(200);")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            except sqlite3.Error as e:
+                logging.warning(f"Low disk prune space reclaim failed: {e}")
+
+            try:
+                free_after = int(get_storage_usage_info().get('disk_free_bytes') or 0)
+            except Exception:
+                free_after = 0
+
+            pruned_days += 1
+            write_audit(
+                'WARN',
+                'SYSTEM',
+                'LOW_DISK_PRUNE',
+                f'磁盘剩余空间不足，已自动丢弃 {day_label} 的历史数据',
+                details={
+                    'day': day_label,
+                    'free_before_bytes': free_before,
+                    'free_after_bytes': free_after,
+                    'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
+                    'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                    'deleted': deleted
+                },
+                operator='SYSTEM'
+            )
+
+            if free_after >= LOW_DISK_TARGET_FREE_BYTES:
+                break
+    finally:
+        conn.close()
+
+    if pruned_days == 0:
+        write_audit(
+            'WARN',
+            'SYSTEM',
+            'LOW_DISK_PRUNE_EMPTY',
+            '磁盘剩余空间不足，但没有可丢弃的历史数据',
+            details={
+                'free_before_bytes': free_before,
+                'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
+                'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES
+            },
+            operator='SYSTEM'
+        )
+
+    return {
+        'pruned_days': pruned_days,
+        'free_before': free_before,
+        'free_after': free_after
+    }
 
 # --- 日志配置 ---
 def setup_logging():
@@ -2298,6 +2454,7 @@ def calculate_energy_consumption(start_ts, end_ts):
 def energy_maintenance_task():
     """维护 energy_hourly 表，补全缺失的小时数据，并处理数据保留期变更"""
     while True:
+        conn = None
         try:
             now = int(time.time())
             # 当前整点
@@ -2328,6 +2485,14 @@ def energy_maintenance_task():
 
             # 历史审计日志按自然日压缩归档，保留近 30 天热表用于快速查询
             compress_old_audit_logs(conn, now)
+            conn.close()
+            conn = None
+
+            # 磁盘空间低于阈值时，按最早自然日逐批丢弃历史数据并写入 WARN 审计
+            run_low_disk_history_prune()
+
+            conn = get_db_connection()
+            c = conn.cursor()
             
             # 1. 查找 metrics_v2 中最早的数据时间
             c.execute("SELECT MIN(timestamp) FROM metrics_v2")
@@ -2356,6 +2521,11 @@ def energy_maintenance_task():
             conn.close()
         except Exception as e:
             print(f"Energy Maintenance Error: {e}")
+            try:
+                if conn:
+                    conn.close()
+            except:
+                pass
         
         # 每 10 分钟检查一次（主要是为了跨过整点时能触发上一小时的计算）
         time.sleep(600)
