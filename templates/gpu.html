@@ -324,6 +324,15 @@
                         borderWidth: 1,
                         pointRadius: 0,
                         tension: 0.4
+                    },
+                    {
+                        label: 'Core Clock MHz',
+                        data: data.clock_core,
+                        borderColor: '#f0883e',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.4,
+                        yAxisID: 'yClock'
                     }
                 ];
 
@@ -345,7 +354,8 @@
                             plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
                             scales: {
                                 x: { display: false },
-                                y: { display: true, min: 0, max: 100, grid: { color: '#30363d' }, ticks: { display: false } }
+                                y: { display: true, min: 0, max: 100, grid: { color: '#30363d' }, ticks: { display: false } },
+                                yClock: { display: false, position: 'right', min: 0, grid: { drawOnChartArea: false } }
                             }
                         }
                     });

@@ -421,7 +421,7 @@
     // --- 动态看板选项处理 ---
     async function loadDashboardOptions() {
         try {
-            const res = await fetch('/api/settings');
+            const res = await fetch('/api/dashboard_options');
             const settings = await res.json();
             const container = document.getElementById('tr-container');
             if (container && settings.dashboard_hours_hist) {

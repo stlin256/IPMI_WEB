@@ -1,141 +1,387 @@
-**此版本readme是在较早时候创建的，与当前版本的实际内容有较大差异**
-
-**如需了解项目最新情况，可访问DeepWiki**
-
-
-# IPMI 硬件监控与风扇控制面板  [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/IPMI_WEB)
-
-这是一个轻量级的、基于 Web 的仪表板，用于通过 IPMI 监控服务器硬件状态并控制风扇速度。它使用 Python Flask 作为后端，并调用 `ipmitool` 和 `sensors` 等系统命令来收集数据。
-
-本仪表板已在本人的**DELL PowerEdge R730xd**上部署并正常使用，其他型号服务器/PC也可部署。
-
-![alt text](/img/image.jpeg)
-![alt text](/img/image-1.jpeg)
-![alt text](/img/image-2.jpeg)
-![alt text](/img/image-3.jpeg)
+# IPMI_WEB
 
 <p align="center">
-  <img src="img/phone-1.jpg" width="24%" />
-  <img src="img/phone-2.jpg" width="24%" />
-  <img src="img/phone-3.jpg" width="24%" />
-  <img src="img/phone-4.jpg" width="24%" />
-  
+  <a href="https://deepwiki.com/stlin256/IPMI_WEB">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
+  </a>
 </p>
-
-## 主要功能
-
-- **硬件状态监控**: 实时显示 CPU 温度、功耗、风扇转速 (RPM) 以及所有可用的 IPMI 传感器数据。
-- **系统资源监控**: 实时图表展示 CPU 使用率、内存使用情况、网络吞吐量和磁盘 I/O。
-- **GPU 深度监控**:
-    *   **分布式采集**: 通过轻量级 Agent 支持监控直通给虚拟机的显卡（支持多显卡并列展示）。
-    *   **实时性能指标**: 实时显示 GPU 负载、显存占用、实时功耗、核心/显存频率、风扇转速以及 ECC 错误计数。
-    *   **状态可视化**: 集成实时波形图展示 GPU 核心负载与显存趋势，并根据温度区间（<50°C 绿色, 50-70°C 黄色, >70°C 红色）动态着色提醒。
-- **智能风扇控制**:
-    - **自动模式**: 将风扇控制权交还给主板 IPMI 控制器。
-    - **手动曲线模式**: 用户可以自定义温度-风扇转速百分比响应曲线。
-    - **固定转速模式**: 支持一键锁定风扇至指定转速，不受温度波动影响，适用于特定负载场景。
-- **风扇校准**: 内置校准程序，可自动测试并生成 PWM 占空比到实际风扇 RPM 的映射关系，从而实现更精确的转速控制。
-- **历史数据图表**: 
-    *   **多维对比**: 支持查看 1H, 6H, 24H, 3D, 7D 等不同时间跨度的性能指标。
-    *   **准星同步**: 多个图表间的光标准星同步，方便跨维度（如温度、功耗、负载）进行关联分析。
-    *   **智能降采样**: 采用数据降采样算法，确保在分析长达 7 天的历史曲线时依然保持极高的响应速度。
-    *   **电力消耗统计**: 支持区间耗电与累计耗电量（kWh）的实时精确统计，数据每小时自动降采样永久保存，支持自定义统计起始日期。
-    *   **数据容错修复**: 自动识别并修复 IPMI 采集过程中的 0 值异常点，确保历史曲线与功耗统计的准确性。
-    *   **一键数据导出**: 支持将全量历史监控数据与电力持久化记录导出为标准 CSV 格式（ZIP 打包下载），方便离线分析。
-    *   **Insights 深度聚合分析**: 
-        - **100% 全量聚合**: 分析引擎直接基于秒级原始数据点进行统计，确保分析结果绝对精准。
-        - **异构计算能效分析**: 提供 CPU 与 GPU 的平均功耗配比。
-        - **负载与温度强度分布**: 高精度统计设备在不同负载区间及温度段的时间占比。
-        - **显存效率分析**: 采用后端 2D 聚类算法预处理，以气泡图形式展示 GPU 利用率与显存占用的关联分布。
-        - **极速性能**: 通过后端数据预处理，支持长达 7 天的大跨度历史分析且交互丝滑流畅。
-- **全端适配**: 专门针对移动端浏览器优化，支持触控操作、横向滑动标签页及响应式布局，随时随地掌握服务器状态。
-- **安全与性能**:
-    - **高强度防爆破**: 系统集成渐进式防御机制。失败 3 次起触发强制响应延迟，惩罚时长随失败次数稳步递增（最高达 300s）。
-    - **人性化宽恕机制**: 合法用户即便在遭受爆破导致 IP/指纹被限制期间，只要输入正确密码，仅需 3s 固定延迟即可快速进入系统，并自动清除错误计数。
-    - **智能指纹识别**: 针对内网穿透（如 frp）等复杂网络环境，系统自动识别并结合 `IP + User-Agent` 进行细粒度指纹校验。确保爆破者被精准隔离，不影响正常用户的访问体验。
-    - **可视化审计日志**: 点击导航栏左侧服务器名称可进入专用的"审计日志"页面。
-        - **实时监控**: 自动刷新展示最新的登录尝试记录。
-        - **智能指纹归类**: 点击任意 IP 或设备标签（Tag），高亮显示所有相同指纹的记录，快速关联同一来源的所有行为。
-        - **安全信息展示**: 登录失败时显示连续失败次数与当前罚时（秒），帮助管理员判断是否为恶意爆破。
-        - **详细历史展开**: 点击 `[详情]` 可查看完整的 User-Agent 与系统原始日志信息。
-        - **24H 采集延迟监控**: 顶部集成实时延迟图表，直观展示过去 24 小时的 IPMI 数据采集性能（绿色<1.5s，黄色<5s，红色>5s）。
-    - **实时安全提醒**: 所有页面集成"新日志红点提醒"机制，确保管理员第一时间掌握潜在的安全风险。
-    - **深度安全防护**: 采用 PRG (Post-Redirect-Get) 模式杜绝刷新页面导致的重复提交；支持识别 `X-Forwarded-For` 真实 IP；后端执行固定时长延迟以抹平处理耗时（Timing Attack 防护）；针对日志审计集成 **XSS 过滤**确保 UA 安全；启用 **CSRF 跨站防护**（SameSite Cookie 策略）保护管理 API。
-    - **读写优化**: 数据库采用 WAL (Write-Ahead Logging) 模式，确保在大规模历史数据存储与实时访问时的极致流畅。
-    - **自动 HTTPS**: 系统自动检测 `cert/` 目录。若存在 `server.crt` 和 `server.key`，将自动启用安全加密连接。
 
 <p align="center">
-  <img src="img/login_error.png" width="40%" />
-  <img src="img/login_log.png" width="30%" />
+  <b>A lightweight self-hosted panel for IPMI hardware monitoring, fan control, GPU telemetry, historical charts, audit logs, certificates, and storage lifecycle management.</b>
 </p>
 
-## 技术栈
+<p align="center">
+  <a href="#中文文档">中文文档</a> |
+  <a href="#english-documentation">English Documentation</a> |
+  <a href="#古早截图--ancient-screenshots">Screenshots</a> |
+  <a href="#changelog">Changelog</a>
+</p>
 
-- **后端**: Flask
-- **数据采集**: `ipmitool`, `lm-sensors` , `psutil`
-- **数据库**: SQLite
-- **前端**: HTML, JavaScript 
+> [!IMPORTANT]
+> 本 README 中的截图来自远古时期的早期版本，只用于帮助理解项目最初形态。当前版本的界面、性能、安全、存储和证书管理能力已经明显变化。
+>
+> Screenshots in this README are from an ancient early build. They are kept as historical UI references only; the current application has changed substantially.
 
-## 如何运行
+---
 
-1.  **安装依赖**:
-    ```bash
-    # 确保系统已安装 ipmitool 和 lm-sensors
-    sudo apt-get update
-    sudo apt-get install ipmitool lm-sensors
-    
-    # 安装 Python 依赖
-    pip install Flask psutil
-    ```
+## 中文文档
 
-2.  **配置应用**:
-    首次运行前，请先配置应用。
-    ```bash
-    # 从模板复制配置文件
-    cp config.json.example config.json
-    ```
-    然后，使用文本编辑器打开 `config.json` 并根据您的环境修改其中的值，特别是 `login_password`。
+### 项目背景
 
-3.  **运行应用**:
-    ```bash
-    python app.py
-    ```
-    应用首次运行时，会自动创建并初始化 SQLite 数据库。
+IPMI_WEB 最初是为作者自己的 **DELL PowerEdge R730xd** 搭建的。二手企业级服务器便宜、稳定、扩展性强，但默认风扇策略常常偏保守，放在家庭实验室、办公室或低噪声环境中会比较吵。很多时候我们并不想完全替代 iDRAC/iLO/BMC，只是希望在日常使用时有一个更顺手的 Web 面板：实时看温度、功耗和风扇，必要时调风扇策略，长周期分析历史曲线，并在登录异常、证书变化、磁盘不足或清理历史日志时留下审计记录。
 
-4.  **访问**:
-    在浏览器中打开 `http://<your-server-ip>:<port>` (端口在 `config.json` 中定义)。
-    - **密码**: 您在 `config.json` 中设置的密码。
+IPMI_WEB 就是为这个场景做的轻量面板。它基于 Flask、SQLite、Chart.js、`ipmitool`、`lm-sensors`、`psutil` 和可选的 GPU Agent，将硬件状态、系统资源、GPU 指标、历史图表、能耗、证书、设置、审计日志和存储管理整合在一个浏览器界面中。
 
-5.  **配置 HTTPS (可选)**:
-    若需启用 HTTPS，请在根目录下创建 `cert` 文件夹，并放入证书文件：
-    - `cert/server.crt`
-    - `cert/server.key`
-    
-    系统启动时若检测到上述文件，将自动切换至 HTTPS 模式。
+### 适合的使用场景
 
-## GPU 监控配置 (可选)
+- 家庭实验室、NAS、虚拟化宿主机、工作站和二手企业级服务器。
+- 希望通过浏览器查看硬件状态，而不是反复 SSH 执行命令的用户。
+- 需要在噪音和散热之间找平衡的服务器玩家。
+- 需要查看 1H、6H、24H、7D、30D 甚至更长周期历史曲线的运维场景。
+- 使用 GPU 直通、远程 GPU Agent、FRP、反向代理、HTTPS 证书和审计日志的进阶部署。
 
-如果您的显卡直通给了虚拟机，请按以下步骤操作：
+### 功能总览
 
-1.  **在 GPU 机器/虚拟机上运行 Agent**:
-    将 `gpu_agent.py` 拷贝至目标机器，确保安装了 NVIDIA 驱动且能使用 `nvidia-smi`。
-    ```bash
-    # 运行采集端 (默认端口 9999)
-    python gpu_agent.py
-    ```
-2.  **在 Web 界面进行连接**:
-    - 进入 **GPU** 页面，点击右上角的 **配置** 按钮。
-    - 输入目标机器的 IP 地址和端口。
-    - 开启“启用 GPU 监控”开关并保存。
+| 模块 | 主要能力 | 解决的问题 |
+| --- | --- | --- |
+| 硬件首页 | CPU 温度、功耗、风扇 RPM、传感器、风扇模式 | 服务器现在是否健康，风扇是否合理 |
+| 资源页 | CPU、内存、网络、磁盘 I/O 实时趋势 | 当前系统负载来自哪里 |
+| 历史页 | 多时间范围曲线、能耗统计、Insights 后台分析 | 长周期观察温度、功耗、负载和采集稳定性 |
+| GPU 页 | 多卡温度、利用率、显存、功耗、核心频率、显存频率、ECC | 判断 GPU 是否降频、过热或受功耗限制 |
+| 风扇控制 | 自动、手动曲线、固定转速、目标温度、校准 | 在噪音和散热之间做可控调节 |
+| 审计日志 | 登录、配置、证书、GPU、低磁盘、系统事件 | 追踪谁在什么时候做了什么 |
+| 设置中心 | 图表选项、存储、告警、报告、邮件、证书、关于 | 管理长期运行参数 |
+| 存储生命周期 | 热数据保留、审计日志压缩、低磁盘安全回收 | 控制数据库体积，避免磁盘被写满 |
+| 安全 | 防爆破、可信代理、敏感字段脱敏、日志 XSS 防护、HTTPS | 让面板更适合放在代理后运行 |
 
-系统将自动启动后台线程进行数据同步。
+### 页面说明
 
-## 配置
+#### 硬件首页
 
-所有配置项现在都在 `config.json` 文件中进行管理。
+硬件首页是日常巡检入口。后台线程会定期读取 IPMI 与 Linux 传感器，把最新温度、功耗、风扇转速和传感器状态写入内存缓存，并将历史点批量写入 SQLite。页面会优先加载轻量状态接口，历史小图也会使用聚合后的 `/api/history_custom?energy=0`，避免打开首页时被能耗统计阻塞。
 
-- `DATABASE.path`: 数据库文件的路径。
-- `DATABASE.retention_days`: 历史数据的保留天数。
-- `SERVER.port`: Web 服务的端口。
-- `SERVER.server_name`: 显示在页面标题和导航栏的服务器名称。
-- `SECURITY.login_password`: 登录页面的密码。
+#### 历史页
+
+历史页用于长周期分析。后端会在 SQLite 中先按时间桶聚合，再返回有限数量的图表点，因此 30 Days 这类长周期不需要把所有秒级原始数据直接传到浏览器。折叠的 Insights 会在主图加载后后台静默加载，展开时尽量做到立即显示。
+
+#### GPU 页
+
+GPU 监控通过可选的 `gpu_agent.py` 采集远端或虚拟机内的 NVIDIA 指标。页面展示温度、核心利用率、显存利用率、显存占用、功耗、功耗墙、核心频率、显存频率、风扇和 ECC 错误。当前版本的 GPU 历史曲线包含核心频率曲线，便于排查降频、功耗墙、散热瓶颈和负载不饱和。
+
+#### 设置与审计
+
+日志页同时承担审计和设置入口。设置弹窗会先并行加载轻量配置和告警规则，存储状态、证书状态和更新日志再后台加载，从而减少点击设置按钮后的等待。证书上传会先在后端校验证书格式、有效期和私钥匹配关系，无效则拒绝保存并使用项目内渲染弹窗提示；有效时统一覆盖服务证书文件，并询问是否重启服务。
+
+### 图表读法
+
+| 图表 | 字段 | 观察重点 |
+| --- | --- | --- |
+| CPU 温度 | 当前、平均、最高温度 | 是否持续高温，风扇策略是否有效 |
+| 风扇转速 | RPM、控制模式 | 是否随温度变化，是否异常掉速 |
+| 功耗 | 系统功耗、CPU 功耗、GPU 功耗 | 空闲基线、峰值、任务能耗 |
+| 资源 | CPU、内存、网络、磁盘 I/O | 负载来源和瓶颈 |
+| GPU | 温度、利用率、显存、功耗、核心频率、显存频率 | 降频、过热、功耗墙、显存压力 |
+| 能耗 | 小时 Wh、区间 kWh、累计 kWh | 长周期电费估算和任务成本 |
+| 采集延迟 | 循环间隔、异常 gap | BMC/IPMI 是否卡顿，采集线程是否稳定 |
+| Insights | 负载分布、温度分布、能效、GPU 气泡图 | 从大量历史点中看结构性趋势 |
+
+### 存储与压缩策略
+
+IPMI_WEB 会长期写入历史数据，因此必须主动控制数据库体积。当前策略包括：
+
+- 常规历史表按设置中的保留天数清理。
+- 审计日志按自然日压缩归档，归档内容仍可在日志页和导出接口中读取。
+- 新写入的压缩数据带格式标记，优先使用高压缩比 LZMA，旧 zlib 数据仍可兼容读取。
+- 设置 -> 存储管理中可以查看 `data.db` 文件体积、已存储天数、磁盘剩余空间和 SQLite 可回收空间。
+- 低磁盘自动回收默认关闭。只有管理员在存储管理里显式打开后，系统才会在磁盘剩余空间低于 800MB 时执行自动处理。
+- 自动处理会先尝试 SQLite WAL checkpoint 和安全 `VACUUM`，把数据库内部 freelist 真正归还给文件系统；如果空间已恢复，不会删除历史记录。
+- 只有在安全回收仍不足时，才会按最早自然日流式丢弃保护窗口之外的历史数据。
+- 自动删除至少保护最近 7 天，并且会同时尊重当前数据保留期；单次最多处理 1 个自然日，随后进入冷却期。
+- 如果 SQLite 无法安全整理，或删除后文件系统可用空间没有明显增加，系统会熔断后续自动删除并写入保护日志。
+- 普通低磁盘清理写 INFO，不触发红点；只有确实丢弃历史审计日志时才写 WARN 并点亮提醒红点。
+
+> [!NOTE]
+> 如果看到 `data.db` 文件很大，但存储管理里的“SQLite 可回收空间”也很大，通常说明大量页面已经在数据库内部空闲。开启低磁盘自动回收后，在磁盘低于阈值时系统会优先尝试整理数据库文件，而不是先删除更多历史记录。
+
+### FRP、反向代理和真实 IP
+
+如果通过 FRP、Nginx、Caddy 或其他反向代理访问，请正确配置 `trusted_proxies`。系统只会在直接来源属于可信代理网段时读取 `X-Forwarded-For` 和 `X-Forwarded-Proto`。
+
+```json
+{
+  "SECURITY": {
+    "login_password": "change_me",
+    "trusted_proxies": ["127.0.0.1/32", "10.0.0.0/8"]
+  }
+}
+```
+
+如果 FRP 让所有访问都显示为 `127.0.0.1`，可以把本机代理地址加入 `trusted_proxies`，但前提是代理会正确设置并清洗转发头。不要在公网直连服务时盲目信任任意 `X-Forwarded-For`。
+
+### 中文架构图
+
+```mermaid
+flowchart LR
+    Browser["浏览器 / 手机浏览器"] --> Flask["Flask Web 应用"]
+    Flask --> Cache["内存最新状态缓存"]
+    Flask --> DB[("SQLite + WAL")]
+    Flask --> Cert["证书文件\ncert/server.crt + cert/server.key"]
+
+    HW["硬件采集线程"] --> IPMI["ipmitool / BMC / IPMI 传感器"]
+    HW --> Sensors["lm-sensors / psutil"]
+    HW --> Cache
+    HW --> DB
+
+    GPUWorker["GPU 采集线程"] --> Agent["gpu_agent.py\n远端主机 / 虚拟机"]
+    Agent --> SMI["nvidia-smi"]
+    GPUWorker --> Cache
+    GPUWorker --> DB
+
+    Energy["维护线程"] --> Archive["审计日志自然日压缩归档"]
+    Energy --> Prune["低磁盘按最早自然日清理"]
+    Archive --> DB
+    Prune --> DB
+
+    Scheduler["报告调度器"] --> Mail["SMTP / MTA 邮件"]
+```
+
+```mermaid
+flowchart TD
+    Collect["采集硬件、系统、GPU 指标"] --> Buffer["内存缓冲"]
+    Buffer --> Writer["异步批量写入"]
+    Writer --> Hot[("热表")]
+    Hot --> API["后端聚合 / 降采样 API"]
+    API --> Charts["浏览器图表"]
+
+    Hot --> Retention["保留期清理"]
+    Hot --> AuditArchive["审计日志自然日归档"]
+    AuditArchive --> Compressed[("压缩归档")]
+    Compressed --> Logs["日志页 / 导出"]
+
+    Hot --> LowDisk{"剩余空间 < 800MB?"}
+    Compressed --> LowDisk
+    LowDisk -->|是| Drop["丢弃最早自然日"]
+    Drop --> Audit{"是否删除审计日志?"}
+    Audit -->|是| Warn["WARN 审计 + 红点"]
+    Audit -->|否| Info["INFO 审计"]
+```
+
+### 快速开始
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ipmitool lm-sensors
+
+python -m venv .venv
+source .venv/bin/activate
+pip install Flask psutil
+
+cp config.json.example config.json
+python app.py
+```
+
+浏览器访问：
+
+```text
+http://your-server-ip:90
+```
+
+启用 HTTPS 时放置：
+
+```text
+cert/server.crt
+cert/server.key
+```
+
+GPU Agent 可选运行：
+
+```bash
+python gpu_agent.py
+```
+
+---
+
+## English Documentation
+
+### Background
+
+IPMI_WEB was originally built for the author's **DELL PowerEdge R730xd**. Second-hand enterprise servers are reliable and expandable, but their default fan policies can be far too aggressive for a home lab, office, or quiet rack. In many cases, you do not want to replace iDRAC, iLO, IPMI, or the BMC. You just want a practical daily panel: inspect temperature, power, fan RPM, long-range charts, certificates, storage health, and audit events from a browser.
+
+IPMI_WEB is that panel. It combines Flask, SQLite, Chart.js, `ipmitool`, `lm-sensors`, `psutil`, and an optional GPU Agent into one self-hosted monitoring and control surface.
+
+### Who should use it
+
+- Home lab, NAS, virtualization host, workstation, and used enterprise server users.
+- Operators who prefer browser-based hardware visibility over repeated SSH commands.
+- Users who need quieter fan behavior while keeping enough safety visibility.
+- People who need 1H, 6H, 24H, 7D, 30D, and longer historical charts.
+- Advanced deployments with GPU passthrough, remote GPU agents, FRP, reverse proxies, HTTPS, and audit logs.
+
+### Feature map
+
+| Area | Capability | Question it answers |
+| --- | --- | --- |
+| Hardware | CPU temperature, power, fan RPM, sensors, fan mode | Is the server healthy right now? |
+| Resources | CPU, memory, network, disk I/O | What is causing current load? |
+| History | Multi-range charts, energy, Insights | What happened over time? |
+| GPU | Temperature, utilization, memory, power, clocks, ECC | Is the GPU throttling or constrained? |
+| Fan control | Auto, curve, fixed speed, target temperature, calibration | How do I balance noise and cooling? |
+| Audit logs | Login, config, certificates, GPU, storage, system events | Who did what, and when? |
+| Settings | Charts, retention, alerts, reports, email, certificates, about | How do I operate it long term? |
+| Storage | Retention, compressed archives, low-disk safe reclaim | Will the database grow forever? |
+| Security | Anti-bruteforce, trusted proxies, masking, XSS hardening, HTTPS | Can I run it behind a proxy safely? |
+
+### Page guide
+
+The hardware page loads fast status data first and requests history without energy calculation for the small homepage chart. The history page uses backend SQL aggregation to keep responses bounded even for 30-day views. Insights can be preloaded quietly after the main chart so expanding it feels faster without blocking the first render.
+
+The settings modal opens immediately, then loads storage status, certificate status, and release notes in the background. Certificate uploads are validated before saving; invalid files are rejected and shown with the app's rendered modal instead of a browser-native alert.
+
+### Chart guide
+
+| Chart | Fields | What to look for |
+| --- | --- | --- |
+| CPU temperature | Current, average, max | Spikes, sustained heat, cooling response |
+| Fan RPM | RPM and control mode | Whether fan speed follows temperature |
+| Power | System, CPU, GPU power | Idle baseline, peaks, energy cost |
+| Resources | CPU, memory, network, disk I/O | Workload source and bottlenecks |
+| GPU | Temperature, utilization, memory, power, core clock, memory clock | Throttling, power caps, thermal limits |
+| Energy | Hourly Wh and range kWh | Electricity estimate and workload cost |
+| Delay | Loop interval and gaps | IPMI/BMC stalls or collector instability |
+| Insights | Load distribution, temperature distribution, efficiency, GPU bubbles | Long-range behavior from raw samples |
+
+### Storage model
+
+- Hot history tables are cleaned by the configured retention period.
+- Audit logs are compressed by local natural day and remain readable from the logs page and export API.
+- New compressed payloads use a codec prefix and prefer high-ratio LZMA while retaining legacy zlib compatibility.
+- Settings -> Storage Management shows the `data.db` file size, stored data age, free disk space, and SQLite reclaimable space.
+- Low-disk auto reclaim is disabled by default. It only runs after an administrator explicitly enables it in Storage Management.
+- When free disk space drops below 800MB, the maintenance path first runs a WAL checkpoint and safe SQLite `VACUUM` to return freelist pages to the filesystem. If this restores the target free space, no history rows are deleted.
+- If safe reclaim is not enough, only complete natural days outside the protection window are discarded.
+- The deletion guard always protects at least the latest 7 days and the configured retention window. One run can process at most one natural day before the cooldown applies.
+- If SQLite cannot be compacted safely, or deleting rows does not noticeably increase filesystem free space, automatic deletion is blocked and a protection audit entry is written.
+- Routine low-disk pruning writes INFO. It only writes WARN and wakes the red dot when historical audit logs are actually discarded.
+
+> [!NOTE]
+> A large `data.db` with a large “SQLite reclaimable space” value usually means many pages are already free inside SQLite. With low-disk auto reclaim enabled, IPMI_WEB tries to shrink the database file before deleting any additional history.
+
+### English architecture
+
+```mermaid
+flowchart LR
+    Browser["Browser / Mobile Browser"] --> Flask["Flask Web App"]
+    Flask --> Cache["Latest Status Cache"]
+    Flask --> DB[("SQLite + WAL")]
+    Flask --> Cert["Certificate Files"]
+
+    HW["Hardware Fetcher"] --> IPMI["ipmitool / BMC"]
+    HW --> Sensors["lm-sensors / psutil"]
+    HW --> Cache
+    HW --> DB
+
+    GPUWorker["GPU Worker"] --> GPUAgent["gpu_agent.py"]
+    GPUAgent --> SMI["nvidia-smi"]
+    GPUWorker --> Cache
+    GPUWorker --> DB
+
+    Maintenance["Maintenance Thread"] --> Archive["Daily Audit Archives"]
+    Maintenance --> Prune["Low Disk Prune"]
+    Archive --> DB
+    Prune --> DB
+```
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant P as Trusted Proxy / FRP
+    participant A as Flask App
+    participant DB as SQLite
+
+    U->>P: HTTPS request
+    P->>A: Forwarded request
+    A->>A: Trust forwarded headers only for trusted proxies
+    U->>A: Login password
+    A->>DB: Read/update login_attempts
+    alt Wrong password
+        A->>DB: Write SECURITY audit log
+        A-->>U: Delay / reject
+    else Correct password
+        A->>DB: Clear failed counter
+        A-->>U: Session cookie
+    end
+    A->>DB: Settings, charts, logs, exports
+```
+
+### Quick start
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ipmitool lm-sensors
+
+python -m venv .venv
+source .venv/bin/activate
+pip install Flask psutil
+
+cp config.json.example config.json
+python app.py
+```
+
+Open:
+
+```text
+http://your-server-ip:90
+```
+
+Optional HTTPS:
+
+```text
+cert/server.crt
+cert/server.key
+```
+
+Optional GPU Agent:
+
+```bash
+python gpu_agent.py
+```
+
+---
+
+## 古早截图 / Ancient Screenshots
+
+这些截图是远古时期的早期界面截图，仅作历史参考。They are ancient screenshots and do not fully represent the current UI.
+
+<p align="center">
+  <img src="img/image.jpeg" width="48%" alt="Ancient dashboard screenshot 1" />
+  <img src="img/image-1.jpeg" width="48%" alt="Ancient dashboard screenshot 2" />
+</p>
+
+<p align="center">
+  <img src="img/image-2.jpeg" width="48%" alt="Ancient dashboard screenshot 3" />
+  <img src="img/image-3.jpeg" width="48%" alt="Ancient dashboard screenshot 4" />
+</p>
+
+<p align="center">
+  <img src="img/phone-1.jpg" width="23%" alt="Ancient mobile screenshot 1" />
+  <img src="img/phone-2.jpg" width="23%" alt="Ancient mobile screenshot 2" />
+  <img src="img/phone-3.jpg" width="23%" alt="Ancient mobile screenshot 3" />
+  <img src="img/phone-4.jpg" width="23%" alt="Ancient mobile screenshot 4" />
+</p>
+
+<p align="center">
+  <img src="img/login_error.png" width="45%" alt="Ancient login error screenshot" />
+  <img src="img/login_log.png" width="45%" alt="Ancient audit log screenshot" />
+</p>
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
+## Safety Notes
+
+Fan control and IPMI raw commands can affect hardware cooling. Test carefully on your own hardware and keep a fallback path to BMC/iDRAC/iLO or physical access.
+
+风扇控制和 IPMI raw 命令会影响硬件散热。请先在自己的硬件上验证温度和风扇行为，并保留 BMC/iDRAC/iLO 或物理访问作为回退方案。

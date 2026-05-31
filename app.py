@@ -1,6 +1,7 @@
 import os
 import json
 import zlib
+import lzma
 import time
 import math
 import pathlib
@@ -22,6 +23,8 @@ import platform
 import smtplib
 import base64
 import concurrent.futures
+import ssl
+import sys
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from email.mime.text import MIMEText
@@ -50,7 +53,99 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.18'
+VERSION = '1.4.3'
+IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
+  /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
+ _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
+/___//_/   /_/  /_//___/   |__/|__//___//____/ """
+CHANGELOG_FILE = 'CHANGELOG.md'
+_CHANGELOG_CACHE = {'mtime': None, 'notes': []}
+
+def normalize_changelog_language(label):
+    text = str(label or '').strip().lower()
+    if text in ('中文', 'zh', 'zh-cn', 'chinese'):
+        return 'zh-CN', '中文'
+    if text in ('英文', 'english', 'en', 'en-us'):
+        return 'en', 'English'
+    return text or 'default', str(label or 'Notes').strip() or 'Notes'
+
+def parse_changelog():
+    path = os.path.abspath(CHANGELOG_FILE)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return []
+
+    if _CHANGELOG_CACHE['mtime'] == mtime:
+        return _CHANGELOG_CACHE['notes']
+
+    version_re = re.compile(r'^##\s+([0-9]+(?:\.[0-9]+){1,3})(?:\s*-\s*(.+))?\s*$')
+    lang_re = re.compile(r'^###\s+(.+?)\s*$')
+    entries = []
+    current = None
+    current_lang = None
+
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for raw_line in f:
+                line = raw_line.rstrip()
+                version_match = version_re.match(line)
+                if version_match:
+                    current = {
+                        'version': version_match.group(1),
+                        'date': (version_match.group(2) or '').strip(),
+                        'notes_by_lang': {},
+                        'language_labels': {}
+                    }
+                    entries.append(current)
+                    current_lang = None
+                    continue
+
+                if current is None:
+                    continue
+
+                lang_match = lang_re.match(line)
+                if lang_match:
+                    current_lang, lang_label = normalize_changelog_language(lang_match.group(1))
+                    current['notes_by_lang'].setdefault(current_lang, [])
+                    current['language_labels'][current_lang] = lang_label
+                    continue
+
+                stripped = line.strip()
+                if stripped.startswith('- '):
+                    if current_lang is None:
+                        current_lang, lang_label = 'default', 'Notes'
+                        current['notes_by_lang'].setdefault(current_lang, [])
+                        current['language_labels'][current_lang] = lang_label
+                    current['notes_by_lang'][current_lang].append(stripped[2:].strip())
+    except OSError as e:
+        logging.warning(f"Failed to parse changelog: {e}")
+        return []
+
+    for entry in entries:
+        flat_items = []
+        for lang in ('zh-CN', 'en'):
+            flat_items.extend(entry['notes_by_lang'].get(lang, []))
+        for lang, items in entry['notes_by_lang'].items():
+            if lang not in ('zh-CN', 'en'):
+                flat_items.extend(items)
+        entry['items'] = flat_items
+
+    _CHANGELOG_CACHE['mtime'] = mtime
+    _CHANGELOG_CACHE['notes'] = entries
+    return entries
+
+def get_release_note(version):
+    for entry in parse_changelog():
+        if entry.get('version') == version:
+            return entry
+    return {
+        'version': version,
+        'date': '',
+        'notes_by_lang': {},
+        'language_labels': {},
+        'items': []
+    }
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
@@ -100,11 +195,14 @@ def before_request():
 
 # 检测 HTTPS 证书
 cert_dir = 'cert'
-cert_file = os.path.join(cert_dir, 'server.crt')
-key_file = os.path.join(cert_dir, 'server.key')
+DEFAULT_CERT_FILE = os.path.join(cert_dir, 'server.crt')
+DEFAULT_KEY_FILE = os.path.join(cert_dir, 'server.key')
+COMBINED_CERT_FILE = os.path.join(cert_dir, 'server.pem')
+cert_file = DEFAULT_CERT_FILE
+key_file = DEFAULT_KEY_FILE
 # 同时也检查 pem 扩展名
-if not os.path.exists(cert_file): cert_file = os.path.join(cert_dir, 'server.pem')
-if not os.path.exists(key_file): key_file = os.path.join(cert_dir, 'server.pem') # 有时证书和私钥在一个文件
+if not os.path.exists(cert_file): cert_file = COMBINED_CERT_FILE
+if not os.path.exists(key_file): key_file = COMBINED_CERT_FILE # 有时证书和私钥在一个文件
 
 HAS_CERT = os.path.exists(cert_file) and os.path.exists(key_file)
 
@@ -115,25 +213,948 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True
 )
 
+MAX_CERT_UPLOAD_BYTES = 256 * 1024
+AUDIT_ARCHIVE_AFTER_DAYS = 1
+AUDIT_ARCHIVE_MAX_DAYS_PER_RUN = 14
+AUDIT_ARCHIVE_COMPRESSION_LEVEL = 9
+SENSOR_HISTORY_COMPRESSION_LEVEL = 9
+COMPRESSED_CODEC_ZLIB = b'ZL1'
+COMPRESSED_CODEC_LZMA = b'XZ1'
+LOW_DISK_FREE_THRESHOLD_BYTES = 800 * 1024 * 1024
+LOW_DISK_TARGET_FREE_BYTES = 900 * 1024 * 1024
+LOW_DISK_MAX_PRUNE_DAYS_PER_RUN = 1
+LOW_DISK_PROTECT_DAYS = 7
+LOW_DISK_MIN_FREE_GAIN_BYTES = 16 * 1024 * 1024
+LOW_DISK_PRUNE_COOLDOWN_SECONDS = 6 * 3600
+LOW_DISK_NOTICE_COOLDOWN_SECONDS = 3600
+LOW_DISK_VACUUM_MARGIN_BYTES = 64 * 1024 * 1024
+LOW_DISK_PRUNE_TABLES = (
+    'metrics_v2',
+    'gpu_metrics',
+    'sensor_history',
+    'energy_hourly',
+    'recording_intervals',
+    'audit_logs'
+)
+db_maintenance_lock = threading.RLock()
+
+def _resolve_certificate_files():
+    resolved_cert = DEFAULT_CERT_FILE if os.path.exists(DEFAULT_CERT_FILE) else COMBINED_CERT_FILE
+    resolved_key = DEFAULT_KEY_FILE if os.path.exists(DEFAULT_KEY_FILE) else COMBINED_CERT_FILE
+    return resolved_cert, resolved_key
+
+def _decode_certificate_info(path):
+    try:
+        decoded = ssl._ssl._test_decode_cert(path)
+        not_before = decoded.get('notBefore')
+        not_after = decoded.get('notAfter')
+        starts_ts = ssl.cert_time_to_seconds(not_before) if not_before else None
+        expires_ts = ssl.cert_time_to_seconds(not_after) if not_after else None
+        subject = decoded.get('subject', ())
+        issuer = decoded.get('issuer', ())
+        return {
+            'valid': True,
+            'starts_at': starts_ts,
+            'starts_at_str': datetime.fromtimestamp(starts_ts).strftime('%Y-%m-%d %H:%M:%S') if starts_ts else '',
+            'expires_at': expires_ts,
+            'expires_at_str': datetime.fromtimestamp(expires_ts).strftime('%Y-%m-%d %H:%M:%S') if expires_ts else '',
+            'days_left': math.floor((expires_ts - time.time()) / 86400) if expires_ts else None,
+            'subject': _flatten_cert_name(subject),
+            'issuer': _flatten_cert_name(issuer),
+            'error': ''
+        }
+    except Exception as e:
+        return {
+            'valid': False,
+            'starts_at': None,
+            'starts_at_str': '',
+            'expires_at': None,
+            'expires_at_str': '',
+            'days_left': None,
+            'subject': '',
+            'issuer': '',
+            'error': str(e)
+        }
+
+def _flatten_cert_name(parts):
+    values = []
+    for group in parts or []:
+        for key, value in group:
+            values.append(f"{key}={value}")
+    return ', '.join(values)
+
+def get_certificate_status():
+    active_cert, active_key = _resolve_certificate_files()
+    cert_exists = os.path.exists(active_cert)
+    key_exists = os.path.exists(active_key)
+    info = _decode_certificate_info(active_cert) if cert_exists else {
+        'valid': False,
+        'starts_at': None,
+        'starts_at_str': '',
+        'expires_at': None,
+        'expires_at_str': '',
+        'days_left': None,
+        'subject': '',
+        'issuer': '',
+        'error': '证书文件不存在'
+    }
+    return {
+        'installed': cert_exists and key_exists,
+        'cert_exists': cert_exists,
+        'key_exists': key_exists,
+        'cert_path': active_cert,
+        'key_path': active_key,
+        'https_active': HAS_CERT,
+        **info
+    }
+
+def get_storage_usage_info():
+    db_path = os.path.abspath(DB_FILE)
+    usage_path = os.path.dirname(db_path) or os.getcwd()
+    while usage_path and not os.path.exists(usage_path):
+        parent = os.path.dirname(usage_path)
+        if parent == usage_path:
+            usage_path = os.getcwd()
+            break
+        usage_path = parent
+    total, used, free = shutil.disk_usage(usage_path)
+    return {
+        'disk_path': usage_path,
+        'disk_total_bytes': total,
+        'disk_used_bytes': used,
+        'disk_free_bytes': free
+    }
+
+def get_sqlite_space_stats(conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        close_conn = True
+    try:
+        stats = {}
+        for key in ('page_size', 'page_count', 'freelist_count', 'auto_vacuum'):
+            try:
+                row = conn.execute(f'PRAGMA {key}').fetchone()
+                stats[key] = int(row[0]) if row and row[0] is not None else 0
+            except sqlite3.Error:
+                stats[key] = 0
+        stats['reclaimable_bytes'] = stats.get('page_size', 0) * stats.get('freelist_count', 0)
+        return stats
+    finally:
+        if close_conn:
+            conn.close()
+
+def checkpoint_sqlite_wal(conn):
+    try:
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE);')
+    except sqlite3.Error as e:
+        logging.warning(f"SQLite WAL checkpoint failed: {e}")
+
+def reclaim_sqlite_space_after_prune(conn, required_gain=LOW_DISK_MIN_FREE_GAIN_BYTES):
+    """Shrink SQLite after destructive pruning only when the filesystem can do it safely."""
+    before_usage = get_storage_usage_info()
+    before_free = int(before_usage.get('disk_free_bytes') or 0)
+    db_size = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
+    stats_before = get_sqlite_space_stats(conn)
+    reclaimable = int(stats_before.get('reclaimable_bytes') or 0)
+    estimated_compact_size = max(0, db_size - reclaimable)
+    needed_free = max(LOW_DISK_VACUUM_MARGIN_BYTES, estimated_compact_size + LOW_DISK_VACUUM_MARGIN_BYTES)
+
+    checkpoint_sqlite_wal(conn)
+
+    if reclaimable < required_gain:
+        return {
+            'attempted': False,
+            'reason': 'low_reclaimable_bytes',
+            'free_before_bytes': before_free,
+            'free_after_bytes': before_free,
+            'db_size_before_bytes': db_size,
+            'db_size_after_bytes': db_size,
+            'reclaimable_before_bytes': reclaimable,
+            'estimated_compact_size_bytes': estimated_compact_size,
+            'needed_free_bytes': needed_free,
+            'can_vacuum_safely': before_free >= needed_free
+        }
+
+    if before_free < needed_free:
+        return {
+            'attempted': False,
+            'reason': 'insufficient_free_space_for_vacuum',
+            'free_before_bytes': before_free,
+            'free_after_bytes': before_free,
+            'db_size_before_bytes': db_size,
+            'db_size_after_bytes': db_size,
+            'reclaimable_before_bytes': reclaimable,
+            'estimated_compact_size_bytes': estimated_compact_size,
+            'needed_free_bytes': needed_free,
+            'can_vacuum_safely': False
+        }
+
+    started = time.time()
+    try:
+        conn.execute('VACUUM;')
+        checkpoint_sqlite_wal(conn)
+    except sqlite3.Error as e:
+        return {
+            'attempted': True,
+            'success': False,
+            'reason': str(e),
+            'free_before_bytes': before_free,
+            'free_after_bytes': int(get_storage_usage_info().get('disk_free_bytes') or 0),
+            'db_size_before_bytes': db_size,
+            'db_size_after_bytes': os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0,
+            'reclaimable_before_bytes': reclaimable
+        }
+
+    after_usage = get_storage_usage_info()
+    after_free = int(after_usage.get('disk_free_bytes') or 0)
+    after_size = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
+    return {
+        'attempted': True,
+        'success': True,
+        'seconds': round(time.time() - started, 3),
+        'free_before_bytes': before_free,
+        'free_after_bytes': after_free,
+        'free_gain_bytes': after_free - before_free,
+        'db_size_before_bytes': db_size,
+        'db_size_after_bytes': after_size,
+        'db_size_saved_bytes': max(0, db_size - after_size),
+        'reclaimable_before_bytes': reclaimable,
+        'reclaimable_after_bytes': get_sqlite_space_stats(conn).get('reclaimable_bytes', 0)
+    }
+
+def _read_uploaded_file(file_storage, label):
+    if not file_storage or not file_storage.filename:
+        raise ValueError(f'请上传{label}文件')
+    data = file_storage.read(MAX_CERT_UPLOAD_BYTES + 1)
+    if not data:
+        raise ValueError(f'{label}文件为空')
+    if len(data) > MAX_CERT_UPLOAD_BYTES:
+        raise ValueError(f'{label}文件过大，最大支持 256KB')
+    try:
+        data.decode('utf-8')
+    except UnicodeDecodeError:
+        raise ValueError(f'{label}必须是 PEM 文本文件')
+    return data
+
+def _validate_certificate_bytes(data):
+    text = data.decode('utf-8', errors='ignore')
+    if 'BEGIN CERTIFICATE' not in text or 'END CERTIFICATE' not in text:
+        raise ValueError('证书文件必须包含 PEM 格式的 CERTIFICATE 内容')
+    os.makedirs(cert_dir, exist_ok=True)
+    temp_path = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.crt')
+    try:
+        with open(temp_path, 'wb') as f:
+            f.write(data)
+        info = _decode_certificate_info(temp_path)
+        if not info['valid']:
+            raise ValueError(f'证书解析失败: {info["error"]}')
+        now = time.time()
+        starts_ts = info.get('starts_at')
+        expires_ts = info.get('expires_at')
+        if not expires_ts:
+            raise ValueError('证书缺少有效期，已拒绝保存')
+        if starts_ts and starts_ts > now:
+            raise ValueError(f'证书尚未生效，生效时间: {info.get("starts_at_str") or starts_ts}')
+        if expires_ts <= now:
+            raise ValueError(f'证书已过期，过期时间: {info.get("expires_at_str") or expires_ts}')
+        return info
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+def _validate_private_key_bytes(data):
+    text = data.decode('utf-8', errors='ignore')
+    key_markers = (
+        'BEGIN PRIVATE KEY',
+        'BEGIN RSA PRIVATE KEY',
+        'BEGIN EC PRIVATE KEY',
+        'BEGIN ENCRYPTED PRIVATE KEY'
+    )
+    if not any(marker in text for marker in key_markers):
+        raise ValueError('私钥文件必须包含 PEM 格式的 PRIVATE KEY 内容')
+
+def _validate_certificate_pair(cert_data, key_data):
+    os.makedirs(cert_dir, exist_ok=True)
+    temp_cert = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.crt')
+    temp_key = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.key')
+    try:
+        with open(temp_cert, 'wb') as f:
+            f.write(cert_data)
+        with open(temp_key, 'wb') as f:
+            f.write(key_data)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(temp_cert, temp_key)
+    except Exception as e:
+        raise ValueError(f'证书和私钥不匹配或私钥无法加载: {e}')
+    finally:
+        for path in (temp_cert, temp_key):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+def _atomic_write_bytes(path, data, mode=None):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp_path = f'{path}.tmp'
+    with open(temp_path, 'wb') as f:
+        f.write(data)
+    os.replace(temp_path, path)
+    if mode is not None:
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            pass
+
+def restart_current_process():
+    try:
+        logging.warning("Restarting IPMI_WEB process by user request")
+        if getattr(sys, 'frozen', False):
+            args = [sys.executable] + sys.argv[1:]
+        else:
+            args = [sys.executable] + sys.argv
+        os.execv(sys.executable, args)
+    except Exception as e:
+        logging.error(f"Process restart failed: {e}")
+
+AUDIT_LOG_COLUMNS = ('timestamp', 'level', 'module', 'operator', 'action', 'message', 'details', 'ua')
+
+def compress_payload(raw, compression_level=AUDIT_ARCHIVE_COMPRESSION_LEVEL):
+    """Compress bytes with the smaller of legacy zlib and high-ratio LZMA, with a codec prefix."""
+    zlib_blob = zlib.compress(raw, compression_level)
+    try:
+        lzma_blob = lzma.compress(raw, preset=max(0, min(9, int(compression_level))))
+        if len(lzma_blob) < len(zlib_blob):
+            return COMPRESSED_CODEC_LZMA + lzma_blob
+    except Exception as e:
+        logging.warning(f"LZMA compression failed, falling back to zlib: {e}")
+    return COMPRESSED_CODEC_ZLIB + zlib_blob
+
+def decompress_payload(blob):
+    data = bytes(blob or b'')
+    if data.startswith(COMPRESSED_CODEC_LZMA):
+        return lzma.decompress(data[len(COMPRESSED_CODEC_LZMA):])
+    if data.startswith(COMPRESSED_CODEC_ZLIB):
+        return zlib.decompress(data[len(COMPRESSED_CODEC_ZLIB):])
+    return zlib.decompress(data)
+
+def audit_day_key(timestamp):
+    return int(datetime.fromtimestamp(int(timestamp)).strftime('%Y%m%d'))
+
+def audit_day_bounds(day_key):
+    day_start = datetime.strptime(str(day_key), '%Y%m%d')
+    start_ts = int(day_start.timestamp())
+    end_ts = int((day_start + timedelta(days=1)).timestamp())
+    return start_ts, end_ts
+
+def audit_row_to_record(row):
+    return {col: row[col] for col in AUDIT_LOG_COLUMNS}
+
+def decode_audit_archive(row):
+    try:
+        raw = decompress_payload(row['data']).decode('utf-8')
+        records = json.loads(raw)
+        if not isinstance(records, list):
+            return []
+        return records
+    except Exception as e:
+        logging.error(f"Audit archive decode failed for day {row['day']}: {e}")
+        return []
+
+def encode_audit_archive(records):
+    raw = json.dumps(records, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    return raw, compress_payload(raw)
+
+def filter_audit_record(record, module=None, level=None, search=None):
+    if module and record.get('module') != module:
+        return False
+    if level and record.get('level') != level:
+        return False
+    if search:
+        needle = str(search).lower()
+        haystack = ' '.join(str(record.get(key, '')) for key in ('message', 'action', 'operator')).lower()
+        if needle not in haystack:
+            return False
+    return True
+
+def parse_audit_details(raw_details):
+    if isinstance(raw_details, dict):
+        return raw_details
+    if not raw_details:
+        return {}
+    try:
+        parsed = json.loads(raw_details)
+        return parsed if isinstance(parsed, dict) else {'value': parsed}
+    except Exception:
+        return {'raw': str(raw_details)}
+
+def format_audit_record(record):
+    ts = int(record.get('timestamp') or 0)
+    return {
+        'timestamp': ts,
+        'time_str': datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') if ts else '',
+        'level': record.get('level') or '',
+        'module': record.get('module') or '',
+        'operator': record.get('operator') or '',
+        'action': record.get('action') or '',
+        'message': record.get('message') or '',
+        'details': parse_audit_details(record.get('details')),
+        'ua': record.get('ua') or ''
+    }
+
+def build_audit_filter_sql(module=None, level=None, search=None):
+    clauses = []
+    params = []
+    if module:
+        clauses.append("module = ?")
+        params.append(module)
+    if level:
+        clauses.append("level = ?")
+        params.append(level)
+    if search:
+        clauses.append("(message LIKE ? OR action LIKE ? OR operator LIKE ?)")
+        wildcard = f"%{search}%"
+        params.extend([wildcard, wildcard, wildcard])
+    return (' AND ' + ' AND '.join(clauses)) if clauses else '', params
+
+def query_audit_archive_records(conn, module=None, level=None, search=None, limit=100, offset=0, include_records=True):
+    c = conn.cursor()
+    c.execute("SELECT * FROM audit_log_archives ORDER BY end_ts DESC")
+    archive_rows = c.fetchall()
+
+    total = 0
+    records = []
+    remaining_offset = max(0, int(offset))
+    remaining_limit = max(0, int(limit))
+    has_filters = bool(module or level or search)
+
+    for archive in archive_rows:
+        archive_count = int(archive['count'] or 0)
+
+        if not has_filters:
+            total += archive_count
+            if not include_records or remaining_limit <= 0:
+                continue
+            if remaining_offset >= archive_count:
+                remaining_offset -= archive_count
+                continue
+            day_records = decode_audit_archive(archive)
+            day_records.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
+        else:
+            day_records = [
+                record for record in decode_audit_archive(archive)
+                if filter_audit_record(record, module, level, search)
+            ]
+            day_records.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
+            total += len(day_records)
+            if not include_records or remaining_limit <= 0:
+                continue
+            if remaining_offset >= len(day_records):
+                remaining_offset -= len(day_records)
+                continue
+
+        if include_records and remaining_limit > 0:
+            chunk = day_records[remaining_offset:remaining_offset + remaining_limit]
+            records.extend(chunk)
+            remaining_limit -= len(chunk)
+            remaining_offset = 0
+
+    return records, total
+
+def compress_old_audit_logs(conn, now_ts=None):
+    now_ts = int(now_ts or time.time())
+    cutoff_ts = now_ts - AUDIT_ARCHIVE_AFTER_DAYS * 86400
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT strftime('%Y%m%d', timestamp, 'unixepoch', 'localtime') AS day
+        FROM audit_logs
+        WHERE timestamp < ?
+        ORDER BY day ASC
+        LIMIT ?
+    """, (cutoff_ts, AUDIT_ARCHIVE_MAX_DAYS_PER_RUN))
+    days = [int(row['day']) for row in c.fetchall() if row['day']]
+
+    archived_days = 0
+    archived_rows = 0
+    saved_bytes = 0
+
+    for day in days:
+        day_start, day_end = audit_day_bounds(day)
+        c.execute(f"""
+            SELECT {', '.join(AUDIT_LOG_COLUMNS)}
+            FROM audit_logs
+            WHERE timestamp >= ? AND timestamp < ? AND timestamp < ?
+            ORDER BY timestamp ASC
+        """, (day_start, day_end, cutoff_ts))
+        rows = c.fetchall()
+        if not rows:
+            continue
+
+        records = [audit_row_to_record(row) for row in rows]
+        c.execute("SELECT * FROM audit_log_archives WHERE day = ?", (day,))
+        existing = c.fetchone()
+        if existing:
+            records = decode_audit_archive(existing) + records
+
+        deduped = {}
+        for record in records:
+            key = tuple(str(record.get(col, '')) for col in AUDIT_LOG_COLUMNS)
+            deduped[key] = {col: record.get(col) for col in AUDIT_LOG_COLUMNS}
+        records = sorted(deduped.values(), key=lambda item: int(item.get('timestamp') or 0))
+        if not records:
+            continue
+
+        raw_blob, compressed_blob = encode_audit_archive(records)
+        start_ts = min(int(record.get('timestamp') or 0) for record in records)
+        end_ts = max(int(record.get('timestamp') or 0) for record in records)
+        c.execute("""
+            INSERT OR REPLACE INTO audit_log_archives
+            (day, start_ts, end_ts, count, raw_size, compressed_size, data, created_ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            day, start_ts, end_ts, len(records), len(raw_blob), len(compressed_blob), compressed_blob, now_ts
+        ))
+        c.execute("DELETE FROM audit_logs WHERE timestamp >= ? AND timestamp < ? AND timestamp < ?", (day_start, day_end, cutoff_ts))
+
+        archived_days += 1
+        archived_rows += len(rows)
+        saved_bytes += max(0, len(raw_blob) - len(compressed_blob))
+
+    if archived_days:
+        conn.commit()
+        logging.info(
+            f"[AUDIT_ARCHIVE] Archived {archived_rows} rows across {archived_days} day(s), "
+            f"estimated saved {saved_bytes} bytes"
+        )
+
+    return {
+        'days': archived_days,
+        'rows': archived_rows,
+        'saved_bytes': saved_bytes
+    }
+
+def archived_audit_has_unread(conn, last_check):
+    c = conn.cursor()
+    c.execute("SELECT * FROM audit_log_archives WHERE end_ts > ? ORDER BY end_ts DESC", (last_check,))
+    for archive in c.fetchall():
+        for record in decode_audit_archive(archive):
+            if int(record.get('timestamp') or 0) > last_check and record.get('level') in ('ERROR', 'SECURITY', 'WARN'):
+                return True
+    return False
+
+def day_key_from_timestamp(timestamp):
+    return int(datetime.fromtimestamp(int(timestamp)).strftime('%Y%m%d'))
+
+def day_bounds_from_key(day_key):
+    day_start = datetime.strptime(str(day_key), '%Y%m%d')
+    start_ts = int(day_start.timestamp())
+    end_ts = int((day_start + timedelta(days=1)).timestamp())
+    return start_ts, end_ts
+
+def day_label_from_key(day_key):
+    return datetime.strptime(str(day_key), '%Y%m%d').strftime('%Y-%m-%d')
+
+def get_earliest_history_day(conn, max_day_key=None):
+    c = conn.cursor()
+    earliest_day = None
+
+    def consider_ts(ts_value):
+        nonlocal earliest_day
+        if ts_value is None:
+            return
+        try:
+            day = day_key_from_timestamp(ts_value)
+        except (TypeError, ValueError, OSError):
+            return
+        if max_day_key is not None and day > max_day_key:
+            return
+        earliest_day = day if earliest_day is None else min(earliest_day, day)
+
+    for table in LOW_DISK_PRUNE_TABLES:
+        try:
+            c.execute(f"SELECT MIN(timestamp) FROM {table}")
+            row = c.fetchone()
+            if row:
+                consider_ts(row[0])
+        except sqlite3.Error as e:
+            logging.warning(f"Low disk prune scan failed for {table}: {e}")
+
+    try:
+        c.execute("SELECT MIN(day) FROM audit_log_archives")
+        row = c.fetchone()
+        if row and row[0] is not None:
+            day = int(row[0])
+            if max_day_key is None or day <= max_day_key:
+                earliest_day = day if earliest_day is None else min(earliest_day, day)
+    except sqlite3.Error as e:
+        logging.warning(f"Low disk prune scan failed for audit_log_archives: {e}")
+
+    return earliest_day
+
+def get_config_value(conn, key, default=None):
+    try:
+        row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
+        return row['value'] if row else default
+    except sqlite3.Error:
+        return default
+
+def set_config_value(conn, key, value):
+    conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, str(value)))
+
+def get_config_bool(conn, key, default=False):
+    value = get_config_value(conn, key, None)
+    if value is None:
+        return default
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+def get_config_int(conn, key, default=0):
+    try:
+        return int(float(get_config_value(conn, key, default)))
+    except (TypeError, ValueError):
+        return default
+
+def prune_history_day(conn, day_key):
+    day_start, day_end = day_bounds_from_key(day_key)
+    c = conn.cursor()
+    deleted = {}
+
+    for table in LOW_DISK_PRUNE_TABLES:
+        try:
+            c.execute(f"DELETE FROM {table} WHERE timestamp >= ? AND timestamp < ?", (day_start, day_end))
+            deleted[table] = c.rowcount if c.rowcount is not None else 0
+        except sqlite3.Error as e:
+            logging.warning(f"Low disk prune delete failed for {table}: {e}")
+            deleted[table] = f"error: {e}"
+
+    try:
+        c.execute("DELETE FROM audit_log_archives WHERE day = ?", (day_key,))
+        deleted['audit_log_archives'] = c.rowcount if c.rowcount is not None else 0
+    except sqlite3.Error as e:
+        logging.warning(f"Low disk prune delete failed for audit_log_archives: {e}")
+        deleted['audit_log_archives'] = f"error: {e}"
+
+    return deleted
+
+def run_low_disk_history_prune():
+    try:
+        storage_before = get_storage_usage_info()
+    except Exception as e:
+        logging.warning(f"Low disk prune skipped, disk usage unavailable: {e}")
+        return {'pruned_days': 0, 'error': str(e)}
+
+    free_before = int(storage_before.get('disk_free_bytes') or 0)
+    if free_before >= LOW_DISK_FREE_THRESHOLD_BYTES:
+        return {'pruned_days': 0, 'free_before': free_before}
+
+    pruned_days = 0
+    free_after = free_before
+    now_ts = int(time.time())
+    blocked_without_prune = False
+    space_reclaimed_without_prune = False
+    audit_events = []
+
+    def enqueue_audit(level, module, action, message, details=None, operator=None):
+        audit_events.append({
+            'level': level,
+            'module': module,
+            'action': action,
+            'message': message,
+            'details': details,
+            'operator': operator
+        })
+
+    conn = None
+    db_maintenance_lock.acquire()
+    try:
+        conn = get_db_connection()
+        auto_prune_enabled = get_config_bool(conn, 'low_disk_auto_prune_enabled', False)
+        last_notice_ts = get_config_int(conn, 'low_disk_last_notice_ts', 0)
+
+        if not auto_prune_enabled:
+            if now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS:
+                set_config_value(conn, 'low_disk_last_notice_ts', now_ts)
+                conn.commit()
+                enqueue_audit(
+                    'INFO',
+                    'SYSTEM',
+                    'LOW_DISK_SPACE_WARNING',
+                    '磁盘剩余空间不足，自动删除历史数据已禁用，未删除任何记录',
+                    details={
+                        'free_before_bytes': free_before,
+                        'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
+                        'auto_prune_enabled': False
+                    },
+                    operator='SYSTEM'
+                )
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_before,
+                'skipped': 'auto_prune_disabled'
+            }
+
+        preflight = reclaim_sqlite_space_after_prune(conn)
+        free_after = int(preflight.get('free_after_bytes', free_before))
+        free_gain_base = free_after
+        if preflight.get('success') and free_after >= LOW_DISK_TARGET_FREE_BYTES:
+            space_reclaimed_without_prune = True
+            enqueue_audit(
+                'INFO',
+                'SYSTEM',
+                'LOW_DISK_SPACE_RECLAIMED',
+                '磁盘剩余空间不足，已通过 SQLite 空间回收恢复可用空间，未删除历史记录',
+                details={
+                    'free_before_bytes': free_before,
+                    'free_after_bytes': free_after,
+                    'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                    'space_reclaim': preflight
+                },
+                operator='SYSTEM'
+            )
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_after,
+                'space_reclaimed': True
+            }
+
+        can_safely_continue = (
+            preflight.get('success')
+            or preflight.get('can_vacuum_safely') is True
+        )
+        if not can_safely_continue:
+            blocked_without_prune = True
+            blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+            set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
+            conn.commit()
+            enqueue_audit(
+                'INFO',
+                'SYSTEM',
+                'LOW_DISK_PRUNE_BLOCKED',
+                '低磁盘清理前无法安全回收 SQLite 空间，已暂停自动删除以保护历史记录',
+                details={
+                    'free_before_bytes': free_before,
+                    'free_after_bytes': free_after,
+                    'min_free_gain_bytes': LOW_DISK_MIN_FREE_GAIN_BYTES,
+                    'blocked_until': blocked_until,
+                    'space_reclaim': preflight
+                },
+                operator='SYSTEM'
+            )
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_after,
+                'skipped': 'unsafe_sqlite_reclaim',
+                'blocked_until': blocked_until
+            }
+
+        blocked_until = get_config_int(conn, 'low_disk_prune_blocked_until', 0)
+        if blocked_until > now_ts:
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_before,
+                'skipped': 'blocked_after_no_space_gain',
+                'blocked_until': blocked_until
+            }
+
+        last_prune_ts = get_config_int(conn, 'low_disk_last_prune_ts', 0)
+        if now_ts - last_prune_ts < LOW_DISK_PRUNE_COOLDOWN_SECONDS:
+            return {
+                'pruned_days': 0,
+                'free_before': free_before,
+                'free_after': free_before,
+                'skipped': 'cooldown',
+                'next_allowed_ts': last_prune_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+            }
+
+        retention_days = max(1, get_config_int(conn, 'data_retention_days', RETENTION_DAYS))
+        protect_days = max(LOW_DISK_PROTECT_DAYS, retention_days)
+        max_prune_ts = now_ts - protect_days * 86400
+        max_day_key = day_key_from_timestamp(max_prune_ts - 86400)
+
+        for _ in range(LOW_DISK_MAX_PRUNE_DAYS_PER_RUN):
+            day_key = get_earliest_history_day(conn, max_day_key=max_day_key)
+            if day_key is None:
+                break
+
+            day_label = day_label_from_key(day_key)
+            deleted = prune_history_day(conn, day_key)
+            delete_errors = {key: value for key, value in deleted.items() if not isinstance(value, int)}
+            if delete_errors:
+                conn.rollback()
+                blocked_without_prune = True
+                blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+                set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
+                conn.commit()
+                enqueue_audit(
+                    'ERROR',
+                    'SYSTEM',
+                    'LOW_DISK_PRUNE_ABORTED',
+                    '低磁盘清理删除阶段发生错误，已回滚并暂停自动删除',
+                    details={
+                        'candidate_day': day_label,
+                        'delete_errors': delete_errors,
+                        'blocked_until': blocked_until
+                    },
+                    operator='SYSTEM'
+                )
+                break
+            conn.commit()
+
+            reclaim = reclaim_sqlite_space_after_prune(conn)
+            free_after = int(reclaim.get('free_after_bytes', free_before))
+
+            pruned_days += 1
+            audit_deleted = 0
+            for key in ('audit_logs', 'audit_log_archives'):
+                value = deleted.get(key, 0)
+                if isinstance(value, int):
+                    audit_deleted += value
+            audit_level = 'WARN' if audit_deleted > 0 else 'INFO'
+            audit_action = 'LOW_DISK_AUDIT_PRUNE' if audit_deleted > 0 else 'LOW_DISK_PRUNE'
+            audit_message = (
+                f'磁盘剩余空间不足，已自动丢弃 {day_label} 的历史审计日志和历史数据'
+                if audit_deleted > 0
+                else f'磁盘剩余空间不足，已自动丢弃 {day_label} 的历史数据'
+            )
+            enqueue_audit(
+                audit_level,
+                'SYSTEM',
+                audit_action,
+                audit_message,
+                details={
+                    'day': day_label,
+                    'free_before_bytes': free_before,
+                    'free_after_bytes': free_after,
+                    'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
+                    'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                    'protect_days': protect_days,
+                    'auto_prune_enabled': True,
+                    'audit_deleted_rows': audit_deleted,
+                    'deleted': deleted,
+                    'space_reclaim': reclaim
+                },
+                operator='SYSTEM'
+            )
+            set_config_value(conn, 'low_disk_last_prune_ts', now_ts)
+            conn.commit()
+
+            if free_after >= LOW_DISK_TARGET_FREE_BYTES:
+                break
+
+            if free_after - free_gain_base < LOW_DISK_MIN_FREE_GAIN_BYTES:
+                blocked_until = now_ts + LOW_DISK_PRUNE_COOLDOWN_SECONDS
+                set_config_value(conn, 'low_disk_prune_blocked_until', blocked_until)
+                conn.commit()
+                enqueue_audit(
+                    'INFO',
+                    'SYSTEM',
+                    'LOW_DISK_PRUNE_BLOCKED',
+                    '低磁盘清理后文件系统可用空间未明显增加，已暂停后续自动删除以保护历史记录',
+                    details={
+                        'day': day_label,
+                        'free_before_bytes': free_before,
+                        'free_after_bytes': free_after,
+                        'min_free_gain_bytes': LOW_DISK_MIN_FREE_GAIN_BYTES,
+                        'blocked_until': blocked_until,
+                        'space_reclaim': reclaim
+                    },
+                    operator='SYSTEM'
+                )
+                break
+            free_gain_base = free_after
+    finally:
+        if conn:
+            conn.close()
+        db_maintenance_lock.release()
+        for event in audit_events:
+            write_audit(**event)
+
+    if pruned_days == 0 and not blocked_without_prune and not space_reclaimed_without_prune:
+        should_notice_empty = True
+        try:
+            with db_maintenance_lock:
+                notice_conn = get_db_connection()
+                try:
+                    last_notice_ts = get_config_int(notice_conn, 'low_disk_last_notice_ts', 0)
+                    should_notice_empty = now_ts - last_notice_ts >= LOW_DISK_NOTICE_COOLDOWN_SECONDS
+                    if should_notice_empty:
+                        set_config_value(notice_conn, 'low_disk_last_notice_ts', now_ts)
+                        notice_conn.commit()
+                finally:
+                    notice_conn.close()
+        except Exception:
+            should_notice_empty = True
+
+    if pruned_days == 0 and not blocked_without_prune and not space_reclaimed_without_prune and should_notice_empty:
+        write_audit(
+            'INFO',
+            'SYSTEM',
+            'LOW_DISK_PRUNE_EMPTY',
+            '磁盘剩余空间不足，但没有超过保护窗口的可丢弃历史数据',
+            details={
+                'free_before_bytes': free_before,
+                'threshold_bytes': LOW_DISK_FREE_THRESHOLD_BYTES,
+                'target_free_bytes': LOW_DISK_TARGET_FREE_BYTES,
+                'protect_days': LOW_DISK_PROTECT_DAYS
+            },
+            operator='SYSTEM'
+        )
+
+    return {
+        'pruned_days': pruned_days,
+        'free_before': free_before,
+        'free_after': free_after
+    }
+
 # --- 日志配置 ---
+class SuppressBenignDisconnectFilter(logging.Filter):
+    """Hide noisy client disconnect traces emitted by Werkzeug's dev server."""
+    IGNORE_PATTERNS = (
+        'BrokenPipeError',
+        'Errno 32',
+        'ConnectionResetError',
+        'SSLError',
+        'UNEXPECTED_EOF_WHILE_READING',
+        'Unexpected EOF',
+        'connection closed by peer',
+        'Software caused connection abort'
+    )
+
+    def filter(self, record):
+        msg = record.getMessage()
+        if 'Error on request' in msg and any(pattern in msg for pattern in self.IGNORE_PATTERNS):
+            return False
+        return True
+
 def setup_logging():
     log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    disconnect_filter = SuppressBenignDisconnectFilter()
     
     # 文件日志 (Rotating 10MB, keep 5 backups)
     file_handler = RotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
     file_handler.setFormatter(log_formatter)
     file_handler.setLevel(logging.INFO)
+    file_handler.addFilter(disconnect_filter)
     
     # 控制台日志
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(log_formatter)
     console_handler.setLevel(logging.INFO)
+    console_handler.addFilter(disconnect_filter)
     
     # Root Logger
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.addFilter(disconnect_filter)
 
 setup_logging()
 
@@ -154,18 +1175,21 @@ def db_writer_worker():
             sql, params, event = task
             
             # 执行写入
-            conn = get_db_connection()
             try:
-                if isinstance(sql, list): # 支持批量执行
-                    for s, p in zip(sql, params):
-                        conn.execute(s, p)
-                else:
-                    conn.execute(sql, params)
-                conn.commit()
+                with db_maintenance_lock:
+                    conn = get_db_connection()
+                    try:
+                        if isinstance(sql, list): # 支持批量执行
+                            for s, p in zip(sql, params):
+                                conn.execute(s, p)
+                        else:
+                            conn.execute(sql, params)
+                        conn.commit()
+                    finally:
+                        conn.close()
             except Exception as e:
                 logging.error(f"Async DB Write Error: {e} | SQL: {sql}")
             finally:
-                conn.close()
                 if event: event.set()
                 db_write_queue.task_done()
         except Exception as e:
@@ -280,6 +1304,7 @@ def init_db():
     if db_ver_row is None:
         # 全新安装或旧版本
         c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('software_version', ?)", (VERSION,))
+        c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('update_notice_ack_version', ?)", (VERSION,))
         c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', ?)", (config['SERVER'].get('server_name', 'MY_SERVER'),))
     elif db_ver < '1.3.6':
         # 版本升级迁移
@@ -288,6 +1313,9 @@ def init_db():
         current_name = config['SERVER'].get('server_name', 'MY_SERVER')
         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('server_name', ?)", (current_name,))
         print(f"Migration: server_name '{current_name}' migrated to database.")
+    if db_ver_row is not None and db_ver != VERSION:
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('previous_software_version', ?)", (db_ver,))
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('software_version', ?)", (VERSION,))
 
     c.execute('''CREATE TABLE IF NOT EXISTS metrics_v2 
                  (timestamp INTEGER, cpu_temp REAL, fan_rpm INTEGER, power_watts INTEGER,
@@ -388,6 +1416,18 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_audit_logs_level ON audit_logs(level)')
 
+    # 历史审计日志压缩归档表：按自然日存储 zlib 压缩 JSON，保留日志页与导出能力
+    c.execute('''CREATE TABLE IF NOT EXISTS audit_log_archives
+                 (day INTEGER PRIMARY KEY,
+                  start_ts INTEGER,
+                  end_ts INTEGER,
+                  count INTEGER,
+                  raw_size INTEGER,
+                  compressed_size INTEGER,
+                  data BLOB,
+                  created_ts INTEGER)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_audit_log_archives_range ON audit_log_archives(start_ts, end_ts)')
+
     # 新增延迟记录表
     c.execute('''CREATE TABLE IF NOT EXISTS recording_intervals (timestamp INTEGER, interval REAL)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_intervals_ts ON recording_intervals(timestamp)')
@@ -400,6 +1440,10 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('data_retention_days', '7')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('pending_retention_days', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_auto_prune_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_last_notice_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_last_prune_ts', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_prune_blocked_until', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hw', '[1, 24]')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hist', '[1, 6, 24, 72, 168]')")
 
@@ -1751,6 +2795,8 @@ def get_log_unread_status():
         # 查询是否有更新的警告日志（包括异常间隔）
         c.execute("SELECT COUNT(*) FROM audit_logs WHERE timestamp > ? AND (level='ERROR' OR level='SECURITY' OR level='WARN')", (last_check,))
         count = c.fetchone()[0]
+        if count == 0 and archived_audit_has_unread(conn, last_check):
+            count = 1
         conn.close()
         
         return count > 0
@@ -1893,33 +2939,50 @@ def calculate_energy_consumption(start_ts, end_ts):
 def energy_maintenance_task():
     """维护 energy_hourly 表，补全缺失的小时数据，并处理数据保留期变更"""
     while True:
+        conn = None
+        audit_after_maintenance = None
         try:
             now = int(time.time())
             # 当前整点
             current_hour_ts = (now // 3600) * 3600
             
+            with db_maintenance_lock:
+                conn = get_db_connection()
+                c = conn.cursor()
+
+                # --- 处理数据保留期变更 (3天反悔期) ---
+                c.execute("SELECT value FROM config WHERE key='retention_change_ts'")
+                change_ts_row = c.fetchone()
+                change_ts = int(change_ts_row[0]) if change_ts_row else 0
+
+                if change_ts > 0 and (now - change_ts) >= (3 * 86400):
+                    # 3天到期，正式生效
+                    c.execute("SELECT value FROM config WHERE key='pending_retention_days'")
+                    pending_row = c.fetchone()
+                    if pending_row and int(pending_row[0]) > 0:
+                        new_val = pending_row[0]
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (new_val,))
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
+                        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
+                        conn.commit()
+                        audit_after_maintenance = ('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天')
+
+                # [日志体积优化] 定期执行增量空间回收
+                c.execute("PRAGMA incremental_vacuum(50);")
+
+                # 历史审计日志按自然日压缩归档，保留近 30 天热表用于快速查询
+                compress_old_audit_logs(conn, now)
+                conn.close()
+                conn = None
+
+            if audit_after_maintenance:
+                write_audit(*audit_after_maintenance, operator='SYSTEM')
+
+            # 磁盘空间低于阈值时，按最早自然日逐批丢弃历史数据并写入 WARN 审计
+            run_low_disk_history_prune()
+
             conn = get_db_connection()
             c = conn.cursor()
-
-            # --- 处理数据保留期变更 (3天反悔期) ---
-            c.execute("SELECT value FROM config WHERE key='retention_change_ts'")
-            change_ts_row = c.fetchone()
-            change_ts = int(change_ts_row[0]) if change_ts_row else 0
-
-            if change_ts > 0 and (now - change_ts) >= (3 * 86400):
-                # 3天到期，正式生效
-                c.execute("SELECT value FROM config WHERE key='pending_retention_days'")
-                pending_row = c.fetchone()
-                if pending_row and int(pending_row[0]) > 0:
-                    new_val = pending_row[0]
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('data_retention_days', ?)", (new_val,))
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('retention_change_ts', '0')")
-                    c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('pending_retention_days', '0')")
-                    conn.commit()
-                    write_audit('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天', operator='SYSTEM')
-            
-            # [日志体积优化] 定期执行增量空间回收
-            c.execute("PRAGMA incremental_vacuum(50);")
             
             # 1. 查找 metrics_v2 中最早的数据时间
             c.execute("SELECT MIN(timestamp) FROM metrics_v2")
@@ -1948,6 +3011,11 @@ def energy_maintenance_task():
             conn.close()
         except Exception as e:
             print(f"Energy Maintenance Error: {e}")
+            try:
+                if conn:
+                    conn.close()
+            except:
+                pass
         
         # 每 10 分钟检查一次（主要是为了跨过整点时能触发上一小时的计算）
         time.sleep(600)
@@ -2327,7 +3395,10 @@ def background_worker():
                     
                     if sensors_list:
                         try:
-                            compressed_data = zlib.compress(json.dumps(sensors_list).encode('utf-8'))
+                            compressed_data = compress_payload(
+                                json.dumps(sensors_list, separators=(',', ':'), ensure_ascii=False).encode('utf-8'),
+                                SENSOR_HISTORY_COMPRESSION_LEVEL
+                            )
                             sensor_buffer.append((int(now), compressed_data))
                         except Exception as e:
                             logging.error(f"Sensor Compression Error: {e}")
@@ -2798,6 +3869,93 @@ def logs_page():
 def api_version():
     return jsonify({'version': VERSION})
 
+@app.route('/api/update_notice', methods=['GET', 'POST'])
+@login_required
+def api_update_notice():
+    conn = get_db_connection()
+    c = conn.cursor()
+    if request.method == 'POST':
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('update_notice_ack_version', ?)", (VERSION,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'ok'})
+
+    c.execute("SELECT key, value FROM config WHERE key IN ('update_notice_ack_version', 'previous_software_version')")
+    cfg = {row['key']: row['value'] for row in c.fetchall()}
+    conn.close()
+
+    ack_version = cfg.get('update_notice_ack_version', '')
+    release_note = get_release_note(VERSION)
+    return jsonify({
+        'show': ack_version != VERSION,
+        'version': VERSION,
+        'date': release_note.get('date', ''),
+        'previous_version': cfg.get('previous_software_version', ''),
+        'logo': IPMI_ASCII_LOGO,
+        'notes': release_note.get('items', []),
+        'notes_by_lang': release_note.get('notes_by_lang', {}),
+        'language_labels': release_note.get('language_labels', {})
+    })
+
+@app.route('/api/certificate', methods=['GET', 'POST'])
+@login_required
+def api_certificate():
+    if request.method == 'GET':
+        return jsonify(get_certificate_status())
+
+    try:
+        cert_upload = request.files.get('cert_file')
+        key_upload = request.files.get('key_file')
+        cert_data = _read_uploaded_file(cert_upload, '证书')
+        key_data = _read_uploaded_file(key_upload, '私钥')
+
+        cert_info = _validate_certificate_bytes(cert_data)
+        _validate_private_key_bytes(key_data)
+        _validate_certificate_pair(cert_data, key_data)
+
+        _atomic_write_bytes(DEFAULT_CERT_FILE, cert_data, 0o644)
+        _atomic_write_bytes(DEFAULT_KEY_FILE, key_data, 0o600)
+
+        write_audit(
+            'WARN',
+            'CONFIG',
+            'CERT_UPLOAD',
+            'HTTPS 证书已更新，重启服务后生效',
+            details={
+                'expires_at': cert_info.get('expires_at_str'),
+                'days_left': cert_info.get('days_left'),
+                'cert_path': DEFAULT_CERT_FILE,
+                'key_path': DEFAULT_KEY_FILE
+            },
+            operator=get_client_ip()
+        )
+        return jsonify({
+            'status': 'success',
+            'message': '证书已保存，重启服务后生效',
+            'certificate': get_certificate_status()
+        })
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logging.exception('Certificate upload failed')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/service/restart', methods=['POST'])
+@login_required
+def api_service_restart():
+    try:
+        write_audit(
+            'WARN',
+            'SYSTEM',
+            'SERVICE_RESTART',
+            '用户请求重启 IPMI_WEB 服务',
+            operator=get_client_ip()
+        )
+        threading.Timer(0.8, restart_current_process).start()
+        return jsonify({'status': 'restarting'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/log_status')
 @login_required
 def api_log_status():
@@ -2878,69 +4036,46 @@ def api_logs():
 @app.route('/api/audit_logs')
 @login_required
 def api_audit_logs():
-    limit = int(request.args.get('limit', 100))
-    offset = int(request.args.get('offset', 0))
+    limit = max(1, min(500, int(request.args.get('limit', 100))))
+    offset = max(0, int(request.args.get('offset', 0)))
     module = request.args.get('module')
     level = request.args.get('level')
     search = request.args.get('search')
     
     conn = get_db_connection()
     c = conn.cursor()
-    
-    query = "SELECT * FROM audit_logs WHERE 1=1"
-    params = []
-    
-    if module:
-        query += " AND module = ?"
-        params.append(module)
-    if level:
-        query += " AND level = ?"
-        params.append(level)
-    if search:
-        query += " AND (message LIKE ? OR action LIKE ? OR operator LIKE ?)"
-        wildcard = f"%{search}%"
-        params.extend([wildcard, wildcard, wildcard])
-        
-    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-    
-    c.execute(query, params)
-    rows = c.fetchall()
-    
-    # Get total count for pagination
-    count_query = "SELECT COUNT(*) FROM audit_logs WHERE 1=1"
-    count_params = []
-    if module:
-        count_query += " AND module = ?"
-        count_params.append(module)
-    if level:
-        count_query += " AND level = ?"
-        count_params.append(level)
-    if search:
-        count_query += " AND (message LIKE ? OR action LIKE ? OR operator LIKE ?)"
-        wildcard = f"%{search}%"
-        count_params.extend([wildcard, wildcard, wildcard])
-        
-    c.execute(count_query, count_params)
-    total = c.fetchone()[0]
+
+    filter_sql, filter_params = build_audit_filter_sql(module, level, search)
+    c.execute(f"SELECT COUNT(*) FROM audit_logs WHERE 1=1{filter_sql}", filter_params)
+    hot_total = int(c.fetchone()[0])
+
+    hot_rows = []
+    if offset < hot_total:
+        hot_limit = min(limit, hot_total - offset)
+        c.execute(
+            f"SELECT * FROM audit_logs WHERE 1=1{filter_sql} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            filter_params + [hot_limit, offset]
+        )
+        hot_rows = c.fetchall()
+
+    remaining = limit - len(hot_rows)
+    archive_offset = max(0, offset - hot_total)
+    archive_records, archive_total = query_audit_archive_records(
+        conn,
+        module=module,
+        level=level,
+        search=search,
+        limit=remaining,
+        offset=archive_offset,
+        include_records=remaining > 0
+    )
     conn.close()
-    
-    logs = []
-    for row in rows:
-        logs.append({
-            'timestamp': row['timestamp'],
-            'time_str': datetime.fromtimestamp(row['timestamp']).strftime('%Y-%m-%d %H:%M:%S'),
-            'level': row['level'],
-            'module': row['module'],
-            'operator': row['operator'],
-            'action': row['action'],
-            'message': row['message'],
-            'details': json.loads(row['details']) if row['details'] else {},
-            'ua': row['ua']
-        })
+
+    logs = [format_audit_record(audit_row_to_record(row)) for row in hot_rows]
+    logs.extend(format_audit_record(record) for record in archive_records)
         
     return jsonify({
-        'total': total,
+        'total': hot_total + archive_total,
         'logs': logs
     })
 
@@ -3175,6 +4310,123 @@ def api_alert_rules():
         finally:
             conn.close()
 
+def build_storage_status(cursor=None):
+    close_conn = False
+    if cursor is None:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        close_conn = True
+    else:
+        conn = None
+
+    try:
+        min_ts = None
+        max_ts = None
+        for table in ('metrics_v2', 'gpu_metrics', 'sensor_history', 'energy_hourly', 'audit_logs'):
+            try:
+                cursor.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM {table}")
+                row = cursor.fetchone()
+                if row and row[0] is not None and row[1] is not None:
+                    min_ts = row[0] if min_ts is None else min(min_ts, row[0])
+                    max_ts = row[1] if max_ts is None else max(max_ts, row[1])
+            except sqlite3.Error:
+                continue
+        try:
+            cursor.execute("SELECT MIN(start_ts), MAX(end_ts) FROM audit_log_archives")
+            row = cursor.fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                min_ts = row[0] if min_ts is None else min(min_ts, row[0])
+                max_ts = row[1] if max_ts is None else max(max_ts, row[1])
+        except sqlite3.Error:
+            pass
+
+        status = {}
+        if min_ts is not None and max_ts is not None:
+            status['stored_since_ts'] = int(min_ts)
+            status['stored_until_ts'] = int(max_ts)
+            status['stored_days'] = max(1, math.ceil((max_ts - min_ts + 1) / 86400))
+        else:
+            status['stored_since_ts'] = 0
+            status['stored_until_ts'] = 0
+            status['stored_days'] = 0
+
+        try:
+            status['db_size_bytes'] = os.path.getsize(DB_FILE)
+        except OSError:
+            status['db_size_bytes'] = 0
+        try:
+            sqlite_stats = get_sqlite_space_stats(cursor.connection)
+            status.update({
+                'db_page_size': sqlite_stats.get('page_size', 0),
+                'db_page_count': sqlite_stats.get('page_count', 0),
+                'db_freelist_count': sqlite_stats.get('freelist_count', 0),
+                'db_reclaimable_bytes': sqlite_stats.get('reclaimable_bytes', 0),
+                'db_auto_vacuum': sqlite_stats.get('auto_vacuum', 0)
+            })
+        except Exception as e:
+            logging.warning(f"SQLite space stats read failed: {e}")
+            status.update({
+                'db_page_size': 0,
+                'db_page_count': 0,
+                'db_freelist_count': 0,
+                'db_reclaimable_bytes': 0,
+                'db_auto_vacuum': 0
+            })
+
+        try:
+            status.update(get_storage_usage_info())
+        except Exception as e:
+            logging.warning(f"Disk usage read failed: {e}")
+            status.update({
+                'disk_path': '',
+                'disk_total_bytes': 0,
+                'disk_used_bytes': 0,
+                'disk_free_bytes': 0
+            })
+        return status
+    finally:
+        if close_conn and conn:
+            conn.close()
+
+@app.route('/api/storage_status')
+@login_required
+def api_storage_status():
+    return jsonify(build_storage_status())
+
+@app.route('/api/dashboard_options')
+@login_required
+def api_dashboard_options():
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT key, value FROM config WHERE key IN ('dashboard_hours_hw', 'dashboard_hours_hist')"
+        ).fetchall()
+        cfg = {row['key']: row['value'] for row in rows}
+    finally:
+        conn.close()
+
+    def parse_hours(key, fallback):
+        try:
+            value = json.loads(cfg.get(key, '[]'))
+            if isinstance(value, list) and value:
+                return [int(v) for v in value]
+        except Exception:
+            pass
+        return fallback
+
+    return jsonify({
+        'dashboard_hours_hw': parse_hours('dashboard_hours_hw', [1, 24]),
+        'dashboard_hours_hist': parse_hours('dashboard_hours_hist', [1, 6, 24, 72, 168])
+    })
+
+@app.route('/api/release_notes')
+@login_required
+def api_release_notes():
+    return jsonify({
+        'version': VERSION,
+        'notes': parse_changelog()
+    })
+
 @app.route('/api/settings', methods=['GET', 'POST'])
 @login_required
 def api_settings():
@@ -3183,6 +4435,7 @@ def api_settings():
     if request.method == 'GET':
         keys = ('log_delay_warn', 'log_delay_danger', 'data_retention_days', 
                 'pending_retention_days', 'retention_change_ts', 
+                'low_disk_auto_prune_enabled', 'low_disk_prune_blocked_until',
                 'dashboard_hours_hw', 'dashboard_hours_hist',
                 'email_enabled', 'email_mode', 'smtp_server', 'smtp_port', 
                 'smtp_user', 'smtp_encryption',
@@ -3214,16 +4467,16 @@ def api_settings():
             except:
                 res[k] = 0
             if k == 'data_retention_days' and res[k] == 0: res[k] = 7
+        res['low_disk_auto_prune_enabled'] = (
+            'true' if str(res.get('low_disk_auto_prune_enabled', 'false')).lower() == 'true' else 'false'
+        )
+        try:
+            res['low_disk_prune_blocked_until'] = int(res.get('low_disk_prune_blocked_until', 0))
+        except:
+            res['low_disk_prune_blocked_until'] = 0
         for k in ('dashboard_hours_hw', 'dashboard_hours_hist'):
             try: res[k] = json.loads(res.get(k, '[]'))
             except: res[k] = []
-            
-        # 获取数据库文件大小 (字节)
-        try:
-            db_size = os.path.getsize(DB_FILE)
-            res['db_size_bytes'] = db_size
-        except:
-            res['db_size_bytes'] = 0
             
         return jsonify(res)
 
@@ -3301,6 +4554,7 @@ def api_settings():
             mapping = {
                 'log_delay_warn': '采集延迟(警告)',
                 'log_delay_danger': '采集延迟(危险)',
+                'low_disk_auto_prune_enabled': '低磁盘自动回收开关',
                 'dashboard_hours_hw': '看板时效(硬件)',
                 'dashboard_hours_hist': '看板时效(历史)',
                 'email_enabled': '邮件通知开关',
@@ -3335,6 +4589,8 @@ def api_settings():
                         else:
                             db_v = json.dumps(new_v) if isinstance(new_v, list) else str(new_v)
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, db_v))
+                        if key == 'low_disk_auto_prune_enabled':
+                            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('low_disk_prune_blocked_until', '0')")
                         old_display = mask_config_value(key, format_val(old_v))
                         new_display = mask_config_value(key, format_val(new_v))
                         changes.append(f"{label}: {old_display} -> {new_display}")
@@ -3736,7 +4992,7 @@ def api_export_data():
                 ts = row['timestamp']
                 compressed_blob = row['data']
                 try:
-                    raw_json = zlib.decompress(compressed_blob).decode('utf-8')
+                    raw_json = decompress_payload(compressed_blob).decode('utf-8')
                     writer.writerow([ts, raw_json])
                 except Exception as e:
                     logging.error(f"Sensor Export Decompression Error at {ts}: {e}")
@@ -3790,11 +5046,36 @@ def api_export_data():
         finally:
             local_conn.close()
 
+    def export_audit_logs_task():
+        """导出热表与压缩归档中的完整审计日志。"""
+        local_conn = get_db_connection()
+        try:
+            cur = local_conn.cursor()
+            cur.execute(f"SELECT {', '.join(AUDIT_LOG_COLUMNS)} FROM audit_logs ORDER BY timestamp ASC")
+            records = [audit_row_to_record(row) for row in cur.fetchall()]
+
+            cur.execute("SELECT * FROM audit_log_archives ORDER BY start_ts ASC")
+            for archive in cur.fetchall():
+                records.extend(decode_audit_archive(archive))
+
+            records.sort(key=lambda item: int(item.get('timestamp') or 0))
+            if not records:
+                return None, None
+
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(AUDIT_LOG_COLUMNS)
+            for record in records:
+                writer.writerow([record.get(col, '') for col in AUDIT_LOG_COLUMNS])
+
+            return "audit_logs.csv", output.getvalue()
+        finally:
+            local_conn.close()
+
     tasks = [
         ("SELECT * FROM energy_hourly ORDER BY timestamp ASC", "energy_persistence.csv"),
         ("SELECT * FROM recording_intervals ORDER BY timestamp ASC", "recording_intervals.csv"),
-        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv"),
-        ("SELECT * FROM audit_logs ORDER BY timestamp ASC", "audit_logs.csv")
+        ("SELECT * FROM gpu_metrics ORDER BY timestamp ASC", "gpu_history.csv")
     ]
 
     memory_file = io.BytesIO()
@@ -3807,6 +5088,8 @@ def api_export_data():
             futures[executor.submit(export_metrics_task)] = "metrics_history.csv"
             # 提交特殊的传感器导出任务
             futures[executor.submit(export_sensors_task)] = "sensors_history.csv"
+            # 提交审计日志任务（包含压缩归档）
+            futures[executor.submit(export_audit_logs_task)] = "audit_logs.csv"
             
             for future in concurrent.futures.as_completed(futures):
                 filename, csv_data = future.result()
@@ -4374,13 +5657,10 @@ def build_startup_payload():
     """
     构建启动时的完整硬件信息载荷
     """
-    import datetime
-    import json
-    
     payload = {
         "app_name": "IPMI_WEB",
         "version": VERSION,
-        "timestamp": datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         "environment": {
             "ipmitool": shutil.which('ipmitool') is not None,
             "ipmitool_path": shutil.which('ipmitool') or "Not found",
@@ -4891,12 +6171,14 @@ def api_history_gpu():
     conn = get_db_connection()
     c = conn.cursor()
     cutoff = int(time.time() - (hours * 3600))
-    c.execute("SELECT timestamp, temp, util_gpu, util_mem, mem_total, mem_used, power FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC", (cutoff, gpu_index))
+    c.execute("""SELECT timestamp, temp, util_gpu, util_mem, mem_total, mem_used, power, clock_core
+                 FROM gpu_metrics WHERE timestamp > ? AND gpu_index = ? ORDER BY timestamp ASC""",
+              (cutoff, gpu_index))
     data = c.fetchall()
     conn.close()
     
     if not data:
-        return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': []})
+        return jsonify({'times': [], 'temp': [], 'util_gpu': [], 'util_mem': [], 'mem_used': [], 'power': [], 'clock_core': []})
   
     # 智能降采样
     target_points = 1200
@@ -4915,7 +6197,7 @@ def api_history_gpu():
             curr_ts = sampled_data[i][0]
             # 统一 2min 宽容断点逻辑
             if curr_ts - prev_ts > max(120, step * 5):
-                final_data.append(( (prev_ts + curr_ts) // 2, None, None, None, None, None, None))
+                final_data.append(((prev_ts + curr_ts) // 2, None, None, None, None, None, None, None))
         final_data.append(sampled_data[i])
   
     return jsonify({
@@ -4924,7 +6206,8 @@ def api_history_gpu():
         'util_gpu': [d[2] for d in final_data],
         'util_mem': [d[3] for d in final_data],
         'mem_used': [d[5] for d in final_data],
-        'power': [d[6] for d in final_data]
+        'power': [d[6] for d in final_data],
+        'clock_core': [d[7] for d in final_data]
     })
 
 @app.route('/api/sensor_history_detail')
@@ -4965,7 +6248,7 @@ def api_sensor_history_detail():
         if count % step == 0:
             ts = row['timestamp']
             try:
-                sensors = json.loads(zlib.decompress(row['data']))
+                sensors = json.loads(decompress_payload(row['data']))
                 target = next((s for s in sensors if s['name'] == name), None)
                 if target:
                     val_raw = target['value']
@@ -5203,15 +6486,28 @@ from werkzeug.serving import WSGIRequestHandler
 
 class SilentHandler(WSGIRequestHandler):
     """静默处理常见的网络中断报错"""
+    IGNORE_PATTERNS = (
+        "BrokenPipeError", "Errno 32", "SSLError", "EOF",
+        "UNEXPECTED_EOF_WHILE_READING", "Unexpected EOF",
+        "connection closed by peer", "Software caused connection abort"
+    )
+
+    def _should_suppress(self, msg):
+        return any(p in msg for p in self.IGNORE_PATTERNS)
+
+    def log(self, type, message, *args):
+        try:
+            rendered = message % args if args else str(message)
+        except Exception:
+            rendered = str(message)
+        if type == 'error' and self._should_suppress(rendered):
+            return
+        super().log(type, message, *args)
+
     def log_error(self, format, *args):
         # 忽略 BrokenPipe 和 SSL 相关的非致命错误 (不污染 journalctl)
-        err_msg = str(args[0]) if args else ""
-        ignore_patterns = [
-            "BrokenPipeError", "Errno 32", "SSLError", "EOF", 
-            "UNEXPECTED_EOF_WHILE_READING", "Unexpected EOF",
-            "connection closed by peer", "Software caused connection abort"
-        ]
-        if any(p in err_msg for p in ignore_patterns):
+        err_msg = str(args[0]) if args else str(format)
+        if self._should_suppress(err_msg):
             return
         super().log_error(format, *args)
 
@@ -5273,7 +6569,8 @@ if __name__ == '__main__':
             print(f"Failed to save CPU info to database: {cpu_save_err}")
         
         write_audit('INFO', 'SYSTEM', 'STARTUP', log_summary, details=startup_payload, operator='SYSTEM')
-        logging.info(f"[STARTUP] Hardware Probe: {json.dumps(startup_payload, indent=2, ensure_ascii=False)}")
+        logging.info("[STARTUP] Hardware probe completed; full payload stored in audit log details.")
+        logging.debug(f"[STARTUP] Hardware Probe: {json.dumps(startup_payload, indent=2, ensure_ascii=False)}")
     except Exception as e:
         print(f"Failed to log startup: {e}")
         # 降级到原有的简单日志记录

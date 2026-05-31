@@ -338,6 +338,10 @@ n        /* 标签样式 */
             line-height: 1.1;
             user-select: none;
             font-size: 18px; /* 电脑端默认 */
+            max-width: 100%;
+            overflow: hidden;
+            white-space: pre;
+            letter-spacing: 0;
         }
         @media (max-width: 768px) {
             .about-ascii { font-size: 2.2vw; } /* 移动端按比例缩放 */
@@ -479,11 +483,11 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-danger shadow-lg">
                 <div class="modal-body p-4 text-center">
-                    <i class="fas fa-exclamation-circle text-danger fs-1 mb-3"></i>
-                    <h5 class="fw-bold">确认删除此规则？</h5>
+                    <i class="fas fa-exclamation-circle text-danger fs-1 mb-3" id="confirm-icon"></i>
+                    <h5 class="fw-bold" id="confirm-title">确认删除此规则？</h5>
                     <p class="text-muted small mb-4" id="confirm-msg">删除后将无法恢复</p>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-secondary flex-grow-1" data-bs-dismiss="modal">取消</button>
+                        <button class="btn btn-secondary flex-grow-1" id="confirm-cancel-btn" data-bs-dismiss="modal">取消</button>
                         <button class="btn btn-danger flex-grow-1 fw-bold" id="confirm-execute-btn">确认删除</button>
                     </div>
                 </div>
@@ -502,6 +506,23 @@ n        /* 标签样式 */
                     <div class="d-grid gap-2">
                         <button class="btn btn-warning fw-bold" id="discard-confirm-btn">确认放弃</button>
                         <button class="btn btn-outline-secondary" data-bs-dismiss="modal">继续编辑</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 更新日志 Modal -->
+    <div class="modal fade" id="releaseNotesModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content bg-dark border-secondary shadow-lg">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i>更新日志</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="release-notes-content" class="small text-light d-flex flex-column gap-3">
+                        <span class="text-muted">加载中...</span>
                     </div>
                 </div>
             </div>
@@ -534,6 +555,9 @@ n        /* 标签样式 */
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-email" type="button">
                                 <i class="fas fa-envelope me-2"></i> 邮件通知
+                            </button>
+                            <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-certificate" type="button">
+                                <i class="fas fa-certificate me-2"></i> 证书管理
                             </button>
                             <button class="nav-link text-start py-3 mb-1 mt-auto border-top border-secondary border-opacity-25 rounded-0" data-bs-toggle="pill" data-bs-target="#tab-about" type="button">
                                 <i class="fas fa-info-circle me-2"></i> 关于项目
@@ -601,6 +625,33 @@ n        /* 标签样式 */
                                     <div id="retention-status"></div>
                                     <div class="text-muted small">
                                         <i class="fas fa-hdd me-1"></i>数据库占用: <span id="db-size-val" class="text-light fw-bold">--</span>
+                                        <span class="mx-2 text-secondary">|</span>
+                                        <i class="fas fa-calendar-alt me-1"></i>已存储: <span id="stored-days-val" class="text-light fw-bold">--</span>
+                                        <span class="mx-2 text-secondary">|</span>
+                                        <i class="fas fa-save me-1"></i>磁盘剩余: <span id="disk-free-val" class="text-light fw-bold">--</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <hr class="border-secondary opacity-25 my-4">
+                            <h6 class="text-primary mb-3 fw-bold">低磁盘自动回收</h6>
+                            <div class="bg-black bg-opacity-25 border border-secondary border-opacity-25 rounded p-3">
+                                <div class="d-flex justify-content-between align-items-center gap-3">
+                                    <div>
+                                        <div class="fw-bold text-light">允许空间不足时自动删除最早历史日</div>
+                                        <div class="small text-muted mt-1">仅删除完整落在保护窗口之外的自然日；删除前后会尝试回收 SQLite 可用空间，无法安全回收时自动暂停。</div>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="low-disk-auto-prune" onchange="markChanged()">
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-3 small">
+                                    <div class="col-md-6 d-flex justify-content-between">
+                                        <span class="text-muted">SQLite 可回收空间</span>
+                                        <span id="db-reclaimable-val" class="text-light fw-bold">--</span>
+                                    </div>
+                                    <div class="col-md-6 d-flex justify-content-between">
+                                        <span class="text-muted">自动删除保护状态</span>
+                                        <span id="low-disk-protect-val" class="text-light fw-bold">--</span>
                                     </div>
                                 </div>
                             </div>
@@ -800,6 +851,53 @@ n        /* 标签样式 */
                             </div>
                         </div>
 
+                        <!-- 证书管理 Tab -->
+                        <div class="tab-pane fade" id="tab-certificate">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h6 class="text-primary mb-0 fw-bold">HTTPS 证书</h6>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadCertificateStatus()">
+                                    <i class="fas fa-sync-alt me-1"></i>刷新
+                                </button>
+                            </div>
+
+                            <div class="bg-black bg-opacity-25 border border-secondary border-opacity-25 rounded p-3 mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-muted small">当前状态</span>
+                                    <span id="cert-status-badge" class="badge bg-secondary">--</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-muted small">证书到期</span>
+                                    <span id="cert-expiry-val" class="text-light small font-monospace">--</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-muted small">剩余时间</span>
+                                    <span id="cert-days-val" class="text-light small">--</span>
+                                </div>
+                                <div class="small text-muted-plus mt-3">
+                                    上传证书会统一覆盖当前服务证书文件；保存前会先校验证书格式、有效期和私钥匹配关系。
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">PEM / CRT 证书文件</label>
+                                    <input type="file" id="cert-file-input" class="form-control bg-dark border-secondary text-light" accept=".pem,.crt,.cer">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted small fw-bold">KEY 私钥文件</label>
+                                    <input type="file" id="key-file-input" class="form-control bg-dark border-secondary text-light" accept=".key,.pem">
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary fw-bold" id="btn-upload-cert" onclick="uploadCertificate()">
+                                    <span id="upload-cert-text">上传并替换证书</span>
+                                    <i id="upload-cert-spinner" class="fas fa-spinner fa-spin d-none"></i>
+                                </button>
+                            </div>
+                            <div id="cert-error-msg" class="alert alert-danger d-none small py-2 mt-3 mb-0"></div>
+                        </div>
+
                         <!-- 关于页面 Tab -->
                         <div class="tab-pane fade h-100" id="tab-about">
                             <div class="d-flex flex-column align-items-center justify-content-center text-center py-4 h-100">
@@ -821,6 +919,12 @@ n        /* 标签样式 */
                                         <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-primary text-decoration-none small hover-underline">
                                             <i class="fab fa-github me-1"></i>stlin256/IPMI_WEB
                                         </a>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3">
+                                        <span class="text-muted small">更新日志</span>
+                                        <button class="btn btn-link btn-sm text-primary p-0 text-decoration-none" onclick="openReleaseNotesModal()">
+                                            <i class="fas fa-list-alt me-1"></i>查看
+                                        </button>
                                     </div>
                                 </div>
                                 <div class="mt-auto pt-4 opacity-50 font-monospace">
@@ -1674,6 +1778,7 @@ n        /* 标签样式 */
             log_delay_warn: fmtVal(document.getElementById('set-warn').value),
             log_delay_danger: fmtVal(document.getElementById('set-danger').value),
             data_retention_days: fmtVal(document.getElementById('set-retention').value),
+            low_disk_auto_prune_enabled: document.getElementById('low-disk-auto-prune').checked ? 'true' : 'false',
             dashboard_hours_hw: JSON.stringify(getChecked('check-hw-hours').sort()),
             dashboard_hours_hist: JSON.stringify(getChecked('check-hist-hours').sort()),
             alert_rules: JSON.stringify(alertRules.filter(r => !r._deleted).map(({id, ...rest}) => {
@@ -1706,6 +1811,7 @@ n        /* 标签样式 */
             log_delay_warn: fmtVal(initialSettingsSnapshot.log_delay_warn),
             log_delay_danger: fmtVal(initialSettingsSnapshot.log_delay_danger),
             data_retention_days: fmtVal(initialSettingsSnapshot.data_retention_days),
+            low_disk_auto_prune_enabled: initialSettingsSnapshot.low_disk_auto_prune_enabled,
             dashboard_hours_hw: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hw.sort()),
             dashboard_hours_hist: JSON.stringify(initialSettingsSnapshot.dashboard_hours_hist.sort()),
             alert_rules: JSON.stringify(initialSettingsSnapshot.alert_rules.map(({id, ...rest}) => {
@@ -1747,27 +1853,44 @@ n        /* 标签样式 */
         checkChanges();
     }
 
+    function formatBytes(bytes) {
+        if (!bytes) return bytes === 0 ? '0 B' : '--';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
     // 实时更新数据库体积
     async function refreshDbSize() {
         try {
-            const res = await fetch('/api/settings');
+            const res = await fetch('/api/storage_status');
             const data = await res.json();
-            const formatBytes = (bytes) => {
-                if (bytes === 0) return '0 B';
-                const k = 1024;
-                const sizes = ['B', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            };
             const el = document.getElementById('db-size-val');
             if (el) el.innerText = formatBytes(data.db_size_bytes || 0);
+            const daysEl = document.getElementById('stored-days-val');
+            if (daysEl) daysEl.innerText = data.stored_days ? `${data.stored_days} 天` : '--';
+            const diskFreeEl = document.getElementById('disk-free-val');
+            if (diskFreeEl) diskFreeEl.innerText = formatBytes(data.disk_free_bytes || 0);
+            const reclaimEl = document.getElementById('db-reclaimable-val');
+            if (reclaimEl) reclaimEl.innerText = formatBytes(data.db_reclaimable_bytes || 0);
         } catch (e) {}
     }
 
-    function showConfirmModal(msg, onConfirm) {
+    function showConfirmModal(msg, onConfirm, options = {}) {
         if (!confirmModal) confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+        const modalContent = document.querySelector('#confirmModal .modal-content');
+        const icon = document.getElementById('confirm-icon');
+        const title = document.getElementById('confirm-title');
         document.getElementById('confirm-msg').innerText = msg;
         const btn = document.getElementById('confirm-execute-btn');
+        modalContent.className = `modal-content bg-dark ${options.borderClass || 'border-danger'} shadow-lg`;
+        icon.className = `${options.iconClass || 'fas fa-exclamation-circle text-danger'} fs-1 mb-3`;
+        title.innerText = options.title || '确认操作';
+        btn.className = `btn ${options.confirmClass || 'btn-danger'} flex-grow-1 fw-bold`;
+        btn.innerText = options.confirmText || '确认';
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+        if (cancelBtn) cancelBtn.innerText = options.cancelText || '取消';
         btn.onclick = () => {
             onConfirm();
             confirmModal.hide();
@@ -1775,23 +1898,226 @@ n        /* 标签样式 */
         confirmModal.show();
     }
 
+    async function loadCertificateStatus() {
+        const badge = document.getElementById('cert-status-badge');
+        const expiry = document.getElementById('cert-expiry-val');
+        const days = document.getElementById('cert-days-val');
+        if (!badge) return;
+
+        try {
+            const res = await fetch('/api/certificate');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '读取证书状态失败');
+
+            badge.className = 'badge';
+            if (data.installed && data.valid) {
+                const daysLeft = Number(data.days_left);
+                if (!Number.isNaN(daysLeft) && daysLeft <= 14) {
+                    badge.classList.add('bg-warning', 'text-dark');
+                    badge.innerText = '即将到期';
+                } else {
+                    badge.classList.add('bg-success');
+                    badge.innerText = data.https_active ? '已启用' : '已安装';
+                }
+            } else if (data.cert_exists || data.key_exists) {
+                badge.classList.add('bg-danger');
+                badge.innerText = '配置不完整';
+            } else {
+                badge.classList.add('bg-secondary');
+                badge.innerText = '未安装';
+            }
+
+            expiry.innerText = data.expires_at_str || '--';
+            days.innerText = data.days_left === null || data.days_left === undefined ? '--' : `${data.days_left} 天`;
+        } catch (e) {
+            badge.className = 'badge bg-danger';
+            badge.innerText = '读取失败';
+            const errEl = document.getElementById('cert-error-msg');
+            if (errEl) {
+                errEl.innerText = e.message;
+                errEl.classList.remove('d-none');
+            }
+        }
+    }
+
+    async function uploadCertificate() {
+        const certInput = document.getElementById('cert-file-input');
+        const keyInput = document.getElementById('key-file-input');
+        const btn = document.getElementById('btn-upload-cert');
+        const text = document.getElementById('upload-cert-text');
+        const spinner = document.getElementById('upload-cert-spinner');
+        const errEl = document.getElementById('cert-error-msg');
+
+        errEl.classList.add('d-none');
+        if (!certInput.files.length || !keyInput.files.length) {
+            showConfirmModal('请同时选择证书文件和私钥文件。', () => {}, {
+                title: '证书上传失败',
+                iconClass: 'fas fa-times-circle text-danger',
+                borderClass: 'border-danger',
+                confirmClass: 'btn-danger',
+                confirmText: '知道了',
+                cancelText: '关闭'
+            });
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('cert_file', certInput.files[0]);
+        formData.append('key_file', keyInput.files[0]);
+
+        try {
+            btn.disabled = true;
+            text.classList.add('d-none');
+            spinner.classList.remove('d-none');
+
+            const res = await fetch('/api/certificate', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '证书上传失败');
+
+            certInput.value = '';
+            keyInput.value = '';
+            await loadCertificateStatus();
+            showConfirmModal('证书已保存。需要重启服务后，新证书才会被 HTTPS 服务加载。是否立即重启？', restartService, {
+                title: '重启服务以应用证书？',
+                iconClass: 'fas fa-sync-alt text-warning',
+                borderClass: 'border-warning',
+                confirmClass: 'btn-warning',
+                confirmText: '立即重启'
+            });
+        } catch (e) {
+            errEl.innerText = e.message;
+            errEl.classList.remove('d-none');
+            showConfirmModal(e.message, () => {}, {
+                title: '证书上传失败',
+                iconClass: 'fas fa-times-circle text-danger',
+                borderClass: 'border-danger',
+                confirmClass: 'btn-danger',
+                confirmText: '知道了',
+                cancelText: '关闭'
+            });
+        } finally {
+            btn.disabled = false;
+            text.classList.remove('d-none');
+            spinner.classList.add('d-none');
+        }
+    }
+
+    async function restartService() {
+        try {
+            const res = await fetch('/api/service/restart', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '重启请求失败');
+            showToast('服务正在重启，请稍后刷新页面');
+        } catch (e) {
+            showToast('重启失败: ' + e.message, true);
+        }
+    }
+
     const DASHBOARD_PRESETS = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720];
+
+    function getReleaseNoteGroups(entry) {
+        const groups = [];
+        const notesByLang = entry && entry.notes_by_lang && typeof entry.notes_by_lang === 'object'
+            ? entry.notes_by_lang
+            : {};
+        const labels = entry && entry.language_labels && typeof entry.language_labels === 'object'
+            ? entry.language_labels
+            : {};
+        const orderedLangs = ['zh-CN', 'en']
+            .filter(lang => Array.isArray(notesByLang[lang]) && notesByLang[lang].length)
+            .concat(Object.keys(notesByLang).filter(lang => !['zh-CN', 'en'].includes(lang)));
+
+        orderedLangs.forEach(lang => {
+            const items = Array.isArray(notesByLang[lang]) ? notesByLang[lang].filter(Boolean) : [];
+            if (items.length) groups.push({ label: labels[lang] || lang, items });
+        });
+
+        if (!groups.length && Array.isArray(entry.items)) {
+            const items = entry.items.filter(Boolean);
+            if (items.length) groups.push({ label: 'Notes', items });
+        }
+        return groups;
+    }
+
+    async function loadReleaseNotes(containerId = 'release-notes-content') {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '<span class="text-muted">加载中...</span>';
+        try {
+            const res = await fetch('/api/release_notes');
+            const data = await res.json();
+            const versions = Array.isArray(data.notes) ? data.notes : [];
+            if (!versions.length) {
+                container.innerHTML = '<span class="text-muted">暂无更新日志</span>';
+                return;
+            }
+            container.innerHTML = versions.map(entry => {
+                const groups = getReleaseNoteGroups(entry);
+                const dateText = entry.date ? ` · ${escapeHtml(entry.date)}` : '';
+                const groupsHtml = groups.map(group => `
+                    <div class="mb-2">
+                        <div class="text-muted-plus fw-bold mb-1">${escapeHtml(group.label)}</div>
+                        <ul class="mb-0 ps-3">
+                            ${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('');
+                return `
+                    <div>
+                        <div class="text-primary fw-bold mb-1">V ${escapeHtml(entry.version || '')}${dateText}</div>
+                        ${groupsHtml || '<span class="text-muted">暂无更新内容</span>'}
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = `<span class="text-danger">加载失败: ${escapeHtml(e.message)}</span>`;
+        }
+    }
+
+    async function openReleaseNotesModal() {
+        const modalEl = document.getElementById('releaseNotesModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+        await loadReleaseNotes('release-notes-content');
+    }
+
+    function updateLowDiskProtectStatus(settings) {
+        const el = document.getElementById('low-disk-protect-val');
+        if (!el) return;
+        if ((settings.low_disk_auto_prune_enabled || 'false') !== 'true') {
+            el.innerText = '已禁用';
+            el.className = 'text-muted fw-bold';
+            return;
+        }
+        const blockedUntil = parseInt(settings.low_disk_prune_blocked_until || 0);
+        if (blockedUntil && blockedUntil > Date.now() / 1000) {
+            const until = new Date(blockedUntil * 1000).toLocaleString();
+            el.innerText = `暂停至 ${until}`;
+            el.className = 'text-warning fw-bold';
+            return;
+        }
+        el.innerText = '保护中';
+        el.className = 'text-success fw-bold';
+    }
 
     async function openDelaySettings() {
         if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
         
         try {
-            // 0. 获取版本号
-            const vRes = await fetch('/api/version');
+            settingsModal.show();
+
+            // 并行获取轻量配置，避免设置按钮等待存储扫描/证书解析。
+            const [vRes, res, rulesRes] = await Promise.all([
+                fetch('/api/version'),
+                fetch('/api/settings'),
+                fetch('/api/alert_rules')
+            ]);
             const vData = await vRes.json();
             const currentSWVersion = vData.version;
-
-            // 1. 获取全局设置
-            const res = await fetch('/api/settings');
             globalSettings = await res.json();
-
-            // 2. 获取告警规则并深度拷贝，用于后续对比
-            const rulesRes = await fetch('/api/alert_rules');
             alertRules = await rulesRes.json();
             
             // 创建原始数据快照
@@ -1800,6 +2126,7 @@ n        /* 标签样式 */
                 log_delay_warn: parseFloat(globalSettings.log_delay_warn),
                 log_delay_danger: parseFloat(globalSettings.log_delay_danger),
                 data_retention_days: parseInt(globalSettings.data_retention_days),
+                low_disk_auto_prune_enabled: globalSettings.low_disk_auto_prune_enabled || 'false',
                 dashboard_hours_hw: [...globalSettings.dashboard_hours_hw],
                 dashboard_hours_hist: [...globalSettings.dashboard_hours_hist],
                 alert_rules: JSON.parse(JSON.stringify(alertRules)),
@@ -1829,6 +2156,7 @@ n        /* 标签样式 */
             document.getElementById('set-warn').value = globalSettings.log_delay_warn;
             document.getElementById('set-danger').value = globalSettings.log_delay_danger;
             document.getElementById('set-retention').value = globalSettings.data_retention_days;
+            document.getElementById('low-disk-auto-prune').checked = globalSettings.low_disk_auto_prune_enabled === 'true';
 
             // 填充报告设置
             document.getElementById('summary-enabled').checked = globalSettings.summary_enabled === 'true';
@@ -1854,15 +2182,11 @@ n        /* 标签样式 */
             document.getElementById('email-sender').value = globalSettings.email_sender_name || '';
             document.getElementById('email-receiver').value = globalSettings.email_receiver || '';
             
-            // 显示数据库体积
-            const formatBytes = (bytes) => {
-                if (bytes === 0) return '0 B';
-                const k = 1024;
-                const sizes = ['B', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            };
-            document.getElementById('db-size-val').innerText = formatBytes(globalSettings.db_size_bytes || 0);
+            document.getElementById('db-size-val').innerText = '--';
+            document.getElementById('stored-days-val').innerText = '--';
+            document.getElementById('disk-free-val').innerText = '--';
+            document.getElementById('db-reclaimable-val').innerText = '--';
+            updateLowDiskProtectStatus(globalSettings);
 
             // 动态渲染勾选框 (优化视觉：激活状态使用 primary)
             const renderChecks = (containerId, currentArr) => {
@@ -1880,6 +2204,8 @@ n        /* 标签样式 */
             };
             renderChecks('check-hw-hours', globalSettings.dashboard_hours_hw);
             renderChecks('check-hist-hours', globalSettings.dashboard_hours_hist);
+            refreshDbSize();
+            loadCertificateStatus();
 
             // 为所有设置输入框添加变更监听
             const settingInputs = document.querySelectorAll('#settingsModal input, #settingsModal select');
@@ -1908,8 +2234,6 @@ n        /* 标签样式 */
             // 更新关于页面的版本号
             const aboutVer = document.getElementById('about-ver-val');
             if (aboutVer) aboutVer.innerText = `V ${currentSWVersion}`;
-            
-            settingsModal.show();
         } catch (e) {
             showToast('加载设置失败: ' + e.message, true);
         }
@@ -2147,6 +2471,7 @@ n        /* 标签样式 */
             log_delay_warn: parseFloat(document.getElementById('set-warn').value),
             log_delay_danger: parseFloat(document.getElementById('set-danger').value),
             data_retention_days: parseInt(document.getElementById('set-retention').value),
+            low_disk_auto_prune_enabled: document.getElementById('low-disk-auto-prune').checked ? 'true' : 'false',
             dashboard_hours_hw: getChecked('check-hw-hours'),
             dashboard_hours_hist: getChecked('check-hist-hours'),
             alert_rules: rulesToSave, // 只发送未被标记删除的规则
@@ -2190,6 +2515,7 @@ n        /* 标签样式 */
                     log_delay_warn: payload.log_delay_warn,
                     log_delay_danger: payload.log_delay_danger,
                     data_retention_days: payload.data_retention_days,
+                    low_disk_auto_prune_enabled: payload.low_disk_auto_prune_enabled,
                     dashboard_hours_hw: [...payload.dashboard_hours_hw],
                     dashboard_hours_hist: [...payload.dashboard_hours_hist],
                     alert_rules: JSON.parse(JSON.stringify(rulesToSave)),
