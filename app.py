@@ -52,7 +52,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.21'
+VERSION = '1.3.22'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -187,6 +187,23 @@ def get_certificate_status():
         'key_path': active_key,
         'https_active': HAS_CERT,
         **info
+    }
+
+def get_storage_usage_info():
+    db_path = os.path.abspath(DB_FILE)
+    usage_path = os.path.dirname(db_path) or os.getcwd()
+    while usage_path and not os.path.exists(usage_path):
+        parent = os.path.dirname(usage_path)
+        if parent == usage_path:
+            usage_path = os.getcwd()
+            break
+        usage_path = parent
+    total, used, free = shutil.disk_usage(usage_path)
+    return {
+        'disk_path': usage_path,
+        'disk_total_bytes': total,
+        'disk_used_bytes': used,
+        'disk_free_bytes': free
     }
 
 def _read_uploaded_file(file_storage, label):
@@ -3496,6 +3513,16 @@ def api_settings():
             res['db_size_bytes'] = db_size
         except:
             res['db_size_bytes'] = 0
+        try:
+            res.update(get_storage_usage_info())
+        except Exception as e:
+            logging.warning(f"Disk usage read failed: {e}")
+            res.update({
+                'disk_path': '',
+                'disk_total_bytes': 0,
+                'disk_used_bytes': 0,
+                'disk_free_bytes': 0
+            })
             
         return jsonify(res)
 
