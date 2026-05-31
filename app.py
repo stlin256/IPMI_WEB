@@ -52,12 +52,27 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.3.24'
+VERSION = '1.4.0'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
 /___//_/   /_/  /_//___/   |__/|__//___//____/ """
-UPDATE_NOTES = {}
+UPDATE_NOTES = {
+    '1.4.0': [
+        'GPU 页面新增核心频率趋势曲线，可与温度、功耗、显存频率等指标一起观察。',
+        '首次升级后登录会显示带 IPMI_WEB ASCII Logo 的版本更新提示，并展示本次更新说明。',
+        '设置页新增证书管理，支持上传 PEM 证书和私钥、查看证书过期时间，并在上传后询问是否重启服务。',
+        '存储管理新增已存储天数和磁盘剩余空间展示。',
+        '30 天以前的审计日志会按自然日压缩归档，降低长期运行时的数据库占用。',
+        '磁盘剩余空间低于 800MB 时，会按最早自然日自动丢弃历史数据，并写入 WARN 审计日志触发提醒红点。',
+        'GPU page now includes a core clock trend line for easier correlation with temperature, power, and memory clock data.',
+        'After upgrading, the first login shows an IPMI_WEB ASCII-logo update notice with release notes.',
+        'Settings now include certificate management for uploading PEM certificate/key files, viewing expiration, and confirming service restart after upload.',
+        'Storage management now shows stored data age and remaining disk space.',
+        'Audit logs older than 30 days are compressed into daily archives to reduce long-term database growth.',
+        'When free disk space drops below 800MB, the oldest history days are pruned automatically and WARN audit entries wake the unread alert dot.'
+    ]
+}
 
 # 安全白名单：这些 IP 永远不会被封禁
 IP_WHITELIST = [] # 移除 127.0.0.1 白名单以启用内网穿透防护测试
