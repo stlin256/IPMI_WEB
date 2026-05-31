@@ -338,6 +338,10 @@ n        /* 标签样式 */
             line-height: 1.1;
             user-select: none;
             font-size: 18px; /* 电脑端默认 */
+            max-width: 100%;
+            overflow: hidden;
+            white-space: pre;
+            letter-spacing: 0;
         }
         @media (max-width: 768px) {
             .about-ascii { font-size: 2.2vw; } /* 移动端按比例缩放 */
@@ -483,7 +487,7 @@ n        /* 标签样式 */
                     <h5 class="fw-bold" id="confirm-title">确认删除此规则？</h5>
                     <p class="text-muted small mb-4" id="confirm-msg">删除后将无法恢复</p>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-secondary flex-grow-1" data-bs-dismiss="modal">取消</button>
+                        <button class="btn btn-secondary flex-grow-1" id="confirm-cancel-btn" data-bs-dismiss="modal">取消</button>
                         <button class="btn btn-danger flex-grow-1 fw-bold" id="confirm-execute-btn">确认删除</button>
                     </div>
                 </div>
@@ -829,9 +833,8 @@ n        /* 标签样式 */
                                     <span class="text-muted small">剩余时间</span>
                                     <span id="cert-days-val" class="text-light small">--</span>
                                 </div>
-                                <div class="small text-muted text-break mt-3">
-                                    <div>证书: <span id="cert-path-val" class="font-monospace text-muted-plus">--</span></div>
-                                    <div>私钥: <span id="key-path-val" class="font-monospace text-muted-plus">--</span></div>
+                                <div class="small text-muted-plus mt-3">
+                                    上传证书会统一覆盖当前服务证书文件；保存前会先校验证书格式、有效期和私钥匹配关系。
                                 </div>
                             </div>
 
@@ -876,6 +879,17 @@ n        /* 标签样式 */
                                         <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-primary text-decoration-none small hover-underline">
                                             <i class="fab fa-github me-1"></i>stlin256/IPMI_WEB
                                         </a>
+                                    </div>
+                                    <div class="bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-3 text-start">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span class="text-muted small fw-bold">更新日志</span>
+                                            <button class="btn btn-link btn-sm text-primary p-0 text-decoration-none" onclick="loadReleaseNotes()">
+                                                <i class="fas fa-sync-alt me-1"></i>刷新
+                                            </button>
+                                        </div>
+                                        <div id="about-release-notes" class="small text-light d-flex flex-column gap-3">
+                                            <span class="text-muted">加载中...</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="mt-auto pt-4 opacity-50 font-monospace">
@@ -1802,18 +1816,19 @@ n        /* 标签样式 */
         checkChanges();
     }
 
+    function formatBytes(bytes) {
+        if (!bytes) return bytes === 0 ? '0 B' : '--';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
     // 实时更新数据库体积
     async function refreshDbSize() {
         try {
-            const res = await fetch('/api/settings');
+            const res = await fetch('/api/storage_status');
             const data = await res.json();
-            const formatBytes = (bytes) => {
-                if (bytes === 0) return '0 B';
-                const k = 1024;
-                const sizes = ['B', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            };
             const el = document.getElementById('db-size-val');
             if (el) el.innerText = formatBytes(data.db_size_bytes || 0);
             const daysEl = document.getElementById('stored-days-val');
@@ -1835,6 +1850,8 @@ n        /* 标签样式 */
         title.innerText = options.title || '确认操作';
         btn.className = `btn ${options.confirmClass || 'btn-danger'} flex-grow-1 fw-bold`;
         btn.innerText = options.confirmText || '确认';
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+        if (cancelBtn) cancelBtn.innerText = options.cancelText || '取消';
         btn.onclick = () => {
             onConfirm();
             confirmModal.hide();
@@ -1846,8 +1863,6 @@ n        /* 标签样式 */
         const badge = document.getElementById('cert-status-badge');
         const expiry = document.getElementById('cert-expiry-val');
         const days = document.getElementById('cert-days-val');
-        const certPath = document.getElementById('cert-path-val');
-        const keyPath = document.getElementById('key-path-val');
         if (!badge) return;
 
         try {
@@ -1875,8 +1890,6 @@ n        /* 标签样式 */
 
             expiry.innerText = data.expires_at_str || '--';
             days.innerText = data.days_left === null || data.days_left === undefined ? '--' : `${data.days_left} 天`;
-            certPath.innerText = data.cert_path || '--';
-            keyPath.innerText = data.key_path || '--';
         } catch (e) {
             badge.className = 'badge bg-danger';
             badge.innerText = '读取失败';
@@ -1898,8 +1911,14 @@ n        /* 标签样式 */
 
         errEl.classList.add('d-none');
         if (!certInput.files.length || !keyInput.files.length) {
-            errEl.innerText = '请同时选择证书文件和私钥文件';
-            errEl.classList.remove('d-none');
+            showConfirmModal('请同时选择证书文件和私钥文件。', () => {}, {
+                title: '证书上传失败',
+                iconClass: 'fas fa-times-circle text-danger',
+                borderClass: 'border-danger',
+                confirmClass: 'btn-danger',
+                confirmText: '知道了',
+                cancelText: '关闭'
+            });
             return;
         }
 
@@ -1932,6 +1951,14 @@ n        /* 标签样式 */
         } catch (e) {
             errEl.innerText = e.message;
             errEl.classList.remove('d-none');
+            showConfirmModal(e.message, () => {}, {
+                title: '证书上传失败',
+                iconClass: 'fas fa-times-circle text-danger',
+                borderClass: 'border-danger',
+                confirmClass: 'btn-danger',
+                confirmText: '知道了',
+                cancelText: '关闭'
+            });
         } finally {
             btn.disabled = false;
             text.classList.remove('d-none');
@@ -1952,21 +1979,80 @@ n        /* 标签样式 */
 
     const DASHBOARD_PRESETS = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720];
 
+    function getReleaseNoteGroups(entry) {
+        const groups = [];
+        const notesByLang = entry && entry.notes_by_lang && typeof entry.notes_by_lang === 'object'
+            ? entry.notes_by_lang
+            : {};
+        const labels = entry && entry.language_labels && typeof entry.language_labels === 'object'
+            ? entry.language_labels
+            : {};
+        const orderedLangs = ['zh-CN', 'en']
+            .filter(lang => Array.isArray(notesByLang[lang]) && notesByLang[lang].length)
+            .concat(Object.keys(notesByLang).filter(lang => !['zh-CN', 'en'].includes(lang)));
+
+        orderedLangs.forEach(lang => {
+            const items = Array.isArray(notesByLang[lang]) ? notesByLang[lang].filter(Boolean) : [];
+            if (items.length) groups.push({ label: labels[lang] || lang, items });
+        });
+
+        if (!groups.length && Array.isArray(entry.items)) {
+            const items = entry.items.filter(Boolean);
+            if (items.length) groups.push({ label: 'Notes', items });
+        }
+        return groups;
+    }
+
+    async function loadReleaseNotes() {
+        const container = document.getElementById('about-release-notes');
+        if (!container) return;
+        container.innerHTML = '<span class="text-muted">加载中...</span>';
+        try {
+            const res = await fetch('/api/release_notes');
+            const data = await res.json();
+            const versions = Array.isArray(data.notes) ? data.notes : [];
+            if (!versions.length) {
+                container.innerHTML = '<span class="text-muted">暂无更新日志</span>';
+                return;
+            }
+            container.innerHTML = versions.map(entry => {
+                const groups = getReleaseNoteGroups(entry);
+                const dateText = entry.date ? ` · ${escapeHtml(entry.date)}` : '';
+                const groupsHtml = groups.map(group => `
+                    <div class="mb-2">
+                        <div class="text-muted-plus fw-bold mb-1">${escapeHtml(group.label)}</div>
+                        <ul class="mb-0 ps-3">
+                            ${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('');
+                return `
+                    <div>
+                        <div class="text-primary fw-bold mb-1">V ${escapeHtml(entry.version || '')}${dateText}</div>
+                        ${groupsHtml || '<span class="text-muted">暂无更新内容</span>'}
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = `<span class="text-danger">加载失败: ${escapeHtml(e.message)}</span>`;
+        }
+    }
+
     async function openDelaySettings() {
         if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
         
         try {
-            // 0. 获取版本号
-            const vRes = await fetch('/api/version');
+            settingsModal.show();
+
+            // 并行获取轻量配置，避免设置按钮等待存储扫描/证书解析。
+            const [vRes, res, rulesRes] = await Promise.all([
+                fetch('/api/version'),
+                fetch('/api/settings'),
+                fetch('/api/alert_rules')
+            ]);
             const vData = await vRes.json();
             const currentSWVersion = vData.version;
-
-            // 1. 获取全局设置
-            const res = await fetch('/api/settings');
             globalSettings = await res.json();
-
-            // 2. 获取告警规则并深度拷贝，用于后续对比
-            const rulesRes = await fetch('/api/alert_rules');
             alertRules = await rulesRes.json();
             
             // 创建原始数据快照
@@ -2029,17 +2115,9 @@ n        /* 标签样式 */
             document.getElementById('email-sender').value = globalSettings.email_sender_name || '';
             document.getElementById('email-receiver').value = globalSettings.email_receiver || '';
             
-            // 显示数据库体积
-            const formatBytes = (bytes) => {
-                if (bytes === 0) return '0 B';
-                const k = 1024;
-                const sizes = ['B', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            };
-            document.getElementById('db-size-val').innerText = formatBytes(globalSettings.db_size_bytes || 0);
-            document.getElementById('stored-days-val').innerText = globalSettings.stored_days ? `${globalSettings.stored_days} 天` : '--';
-            document.getElementById('disk-free-val').innerText = formatBytes(globalSettings.disk_free_bytes || 0);
+            document.getElementById('db-size-val').innerText = '--';
+            document.getElementById('stored-days-val').innerText = '--';
+            document.getElementById('disk-free-val').innerText = '--';
 
             // 动态渲染勾选框 (优化视觉：激活状态使用 primary)
             const renderChecks = (containerId, currentArr) => {
@@ -2057,7 +2135,9 @@ n        /* 标签样式 */
             };
             renderChecks('check-hw-hours', globalSettings.dashboard_hours_hw);
             renderChecks('check-hist-hours', globalSettings.dashboard_hours_hist);
-            await loadCertificateStatus();
+            refreshDbSize();
+            loadCertificateStatus();
+            loadReleaseNotes();
 
             // 为所有设置输入框添加变更监听
             const settingInputs = document.querySelectorAll('#settingsModal input, #settingsModal select');
@@ -2086,8 +2166,6 @@ n        /* 标签样式 */
             // 更新关于页面的版本号
             const aboutVer = document.getElementById('about-ver-val');
             if (aboutVer) aboutVer.innerText = `V ${currentSWVersion}`;
-            
-            settingsModal.show();
         } catch (e) {
             showToast('加载设置失败: ' + e.message, true);
         }

@@ -384,13 +384,13 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
-                <pre id="update-notice-logo" class="text-primary mb-4" style="font-family: 'SF Mono', Consolas, monospace; font-size: 10px; line-height: 1.1; white-space: pre; overflow-x: auto;"></pre>
+                <pre id="update-notice-logo" class="text-primary mb-4" style="font-family: 'SF Mono', Consolas, monospace; font-size: 8.5px; line-height: 1.1; white-space: pre; overflow: hidden; max-width: 100%; letter-spacing: 0;"></pre>
                 <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3 mb-3">
                     <span class="text-muted small">当前版本</span>
                     <span class="badge bg-primary rounded-pill font-monospace" id="update-notice-version">V --</span>
                 </div>
                 <div id="update-notice-plain" class="text-muted small mb-0">版本已更新。</div>
-                <ul id="update-notice-notes" class="small text-light mb-0 ps-3 d-none"></ul>
+                <div id="update-notice-notes" class="small text-light mb-0 d-none"></div>
             </div>
             <div class="modal-footer border-secondary">
                 <button type="button" class="btn btn-primary px-4 fw-bold" data-bs-dismiss="modal">知道了</button>
@@ -687,6 +687,47 @@
         toast.show();
     }
 
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.innerText = value === null || value === undefined ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function getReleaseNoteGroups(entry) {
+        const groups = [];
+        const notesByLang = entry && entry.notes_by_lang && typeof entry.notes_by_lang === 'object'
+            ? entry.notes_by_lang
+            : {};
+        const labels = entry && entry.language_labels && typeof entry.language_labels === 'object'
+            ? entry.language_labels
+            : {};
+        const orderedLangs = ['zh-CN', 'en']
+            .filter(lang => Array.isArray(notesByLang[lang]) && notesByLang[lang].length)
+            .concat(Object.keys(notesByLang).filter(lang => !['zh-CN', 'en'].includes(lang)));
+
+        orderedLangs.forEach(lang => {
+            const items = Array.isArray(notesByLang[lang]) ? notesByLang[lang].filter(Boolean) : [];
+            if (items.length) groups.push({ label: labels[lang] || lang, items });
+        });
+
+        if (!groups.length && Array.isArray(entry.notes)) {
+            const items = entry.notes.filter(Boolean);
+            if (items.length) groups.push({ label: 'Notes', items });
+        }
+        return groups;
+    }
+
+    function renderReleaseNoteGroups(entry) {
+        return getReleaseNoteGroups(entry).map(group => `
+            <div class="mb-3">
+                <div class="text-primary fw-bold mb-1">${escapeHtml(group.label)}</div>
+                <ul class="mb-0 ps-3">
+                    ${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                </ul>
+            </div>
+        `).join('');
+    }
+
     async function acknowledgeUpdateNotice() {
         if (!updateNoticePendingAck) return;
         updateNoticePendingAck = false;
@@ -708,11 +749,11 @@
 
             const notesEl = document.getElementById('update-notice-notes');
             const plainEl = document.getElementById('update-notice-plain');
-            const notes = Array.isArray(data.notes) ? data.notes.filter(Boolean) : [];
-            if (notes.length > 0) {
+            const notesHtml = renderReleaseNoteGroups(data);
+            if (notesHtml) {
                 plainEl.classList.add('d-none');
                 notesEl.classList.remove('d-none');
-                notesEl.innerHTML = notes.map(note => `<li>${note}</li>`).join('');
+                notesEl.innerHTML = notesHtml;
             } else {
                 notesEl.classList.add('d-none');
                 notesEl.innerHTML = '';
@@ -915,7 +956,7 @@
 
     async function loadDashboardOptions() {
         try {
-            const res = await fetch('/api/settings');
+            const res = await fetch('/api/dashboard_options');
             const settings = await res.json();
             const container = document.getElementById('tr-container');
             if (container && settings.dashboard_hours_hw) {
@@ -948,7 +989,7 @@
            loader.style.display = 'block';
        }
 
-       fetch(`/api/history_custom?hours=${hours}`).then(r => r.json()).then(d => {
+       fetch(`/api/history_custom?hours=${hours}&energy=0`).then(r => r.json()).then(d => {
            historyData = d;
            updateChart();
            if (!isSilent) {
@@ -1143,7 +1184,7 @@
         document.getElementById('modal-sensor-name').innerText = name;
         
         // 1. 初始化按钮组 (遵循 hist 设置，并匹配 hist 页面样式)
-        const settingsRes = await fetch('/api/settings');
+        const settingsRes = await fetch('/api/dashboard_options');
         const settings = await settingsRes.json();
         const container = document.getElementById('sensor-hist-range-container');
         
@@ -1257,7 +1298,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
         await loadDashboardOptions();
         init();
-        checkUpdateNotice();
+        setTimeout(checkUpdateNotice, 800);
         checkLogStatus();
         setInterval(checkLogStatus, 5000);
     });
