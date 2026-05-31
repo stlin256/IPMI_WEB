@@ -878,7 +878,7 @@
            loader.style.display = 'block';
        }
 
-       fetch(`/api/history_custom?hours=${hours}`).then(r => r.json()).then(d => {
+       fetch(`/api/history_custom?hours=${hours}&energy=0`).then(r => r.json()).then(d => {
            historyData = d;
            updateChart();
            if (!isSilent) {
