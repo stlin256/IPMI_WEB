@@ -3893,64 +3893,8 @@ def empty_history_custom_response():
         'stats': {}
     }
 
-def calculate_hourly_energy_range(start_hour_ts, end_hour_ts):
-    """Aggregate complete-hour energy in one SQLite pass for uncached history ranges."""
-    if end_hour_ts <= start_hour_ts:
-        return {}
-
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""WITH raw AS (
-                    SELECT timestamp,
-                           power_watts,
-                           CAST((timestamp - ?) / 3600 AS INTEGER) AS bucket
-                    FROM metrics_v2
-                    WHERE timestamp >= ? AND timestamp < ?
-                 ),
-                 pairs AS (
-                    SELECT bucket,
-                           timestamp AS t1,
-                           power_watts AS p1,
-                           LEAD(timestamp) OVER (PARTITION BY bucket ORDER BY timestamp) AS t2,
-                           LEAD(power_watts) OVER (PARTITION BY bucket ORDER BY timestamp) AS p2
-                    FROM raw
-                 ),
-                 agg AS (
-                    SELECT bucket,
-                           COUNT(*) AS samples,
-                           SUM(CASE WHEN t2 IS NOT NULL AND p1 IS NOT NULL AND p2 IS NOT NULL
-                                      AND t2 > t1 AND t2 - t1 <= 120
-                                    THEN ((p1 + p2) / 2.0) * (t2 - t1)
-                                    ELSE 0 END) AS energy_ws,
-                           SUM(CASE WHEN t2 IS NOT NULL AND p1 IS NOT NULL AND p2 IS NOT NULL
-                                      AND t2 > t1 AND t2 - t1 <= 120
-                                    THEN t2 - t1
-                                    ELSE 0 END) AS integrated_seconds
-                    FROM pairs
-                    GROUP BY bucket
-                 )
-                 SELECT ? + bucket * 3600 AS timestamp,
-                        samples,
-                        CASE WHEN integrated_seconds > 3600 * 0.8
-                             THEN (energy_ws / integrated_seconds * 3600) / 3600.0
-                             ELSE energy_ws / 3600.0
-                        END AS energy_wh
-                 FROM agg
-                 WHERE samples > 0""",
-              (start_hour_ts, start_hour_ts, end_hour_ts, start_hour_ts))
-    rows = c.fetchall()
-    conn.close()
-
-    return {
-        int(row['timestamp']): (
-            float(row['energy_wh'] or 0),
-            int(row['samples'] or 0)
-        )
-        for row in rows
-    }
-
 def calculate_energy_consumption_fast(start_ts, end_ts):
-    """Calculate energy with hourly persistence for long ranges and raw data only at edges."""
+    """Calculate energy from cached complete hours plus raw edge ranges."""
     start_ts = int(start_ts)
     end_ts = int(end_ts)
     if end_ts <= start_ts:
@@ -3974,37 +3918,14 @@ def calculate_energy_consumption_fast(start_ts, end_ts):
     if last_full_hour > first_full_hour:
         conn = get_db_connection()
         c = conn.cursor()
-        c.execute("""SELECT timestamp, energy_wh, samples
+        c.execute("""SELECT SUM(energy_wh) AS energy_wh, SUM(samples) AS samples
                      FROM energy_hourly WHERE timestamp >= ? AND timestamp < ?""",
                   (first_full_hour, last_full_hour))
-        cached_by_hour = {int(row['timestamp']): row for row in c.fetchall()}
+        row = c.fetchone()
         conn.close()
-
-        missing_hours = []
-        for hour_ts in range(first_full_hour, last_full_hour, 3600):
-            cached = cached_by_hour.get(hour_ts)
-            if cached:
-                total_wh += float(cached['energy_wh'] or 0)
-                total_samples += int(cached['samples'] or 0)
-            else:
-                missing_hours.append(hour_ts)
-
-        if missing_hours:
-            computed_by_hour = calculate_hourly_energy_range(min(missing_hours), max(missing_hours) + 3600)
-            conn = get_db_connection()
-            c = conn.cursor()
-            for hour_ts in missing_hours:
-                hour_wh, hour_samples = computed_by_hour.get(hour_ts, (0.0, 0))
-                if hour_samples > 0:
-                    total_wh += hour_wh
-                    total_samples += hour_samples
-                    try:
-                        c.execute("""INSERT OR IGNORE INTO energy_hourly (timestamp, energy_wh, samples)
-                                     VALUES (?, ?, ?)""", (hour_ts, hour_wh, hour_samples))
-                    except sqlite3.Error:
-                        pass
-            conn.commit()
-            conn.close()
+        if row:
+            total_wh += float(row['energy_wh'] or 0)
+            total_samples += int(row['samples'] or 0)
 
     tail_start = max(first_full_hour, last_full_hour)
     if end_ts > tail_start:
@@ -4019,6 +3940,7 @@ def calculate_energy_consumption_fast(start_ts, end_ts):
 @login_required
 def api_history_custom():
     hours = parse_hours_arg(default=24)
+    include_energy = parse_bool(request.args.get('energy'), True)
     now_ts = int(time.time())
     cutoff = now_ts - (hours * 3600)
     bucket_size = history_bucket_seconds(hours)
@@ -4103,17 +4025,19 @@ def api_history_custom():
                  ORDER BY bucket ASC""", (cutoff, cutoff, bucket_size))
     gpu_by_bucket = {row['bucket']: dict(row) for row in c.fetchall()}
 
-    current_hour_ts = (now_ts // 3600) * 3600
-    c.execute("SELECT MIN(timestamp) FROM energy_hourly")
-    abs_min_row = c.fetchone()
-    c.execute("SELECT MIN(timestamp) FROM metrics_v2")
-    metrics_min_row = c.fetchone()
-    min_candidates = []
-    if abs_min_row and abs_min_row[0] is not None:
-        min_candidates.append(int(abs_min_row[0]))
-    if metrics_min_row and metrics_min_row[0] is not None:
-        min_candidates.append(int(metrics_min_row[0]))
-    abs_min_ts = min(min_candidates) if min_candidates else current_hour_ts
+    abs_min_ts = None
+    if include_energy:
+        current_hour_ts = (now_ts // 3600) * 3600
+        c.execute("SELECT MIN(timestamp) FROM energy_hourly")
+        abs_min_row = c.fetchone()
+        c.execute("SELECT MIN(timestamp) FROM metrics_v2")
+        metrics_min_row = c.fetchone()
+        min_candidates = []
+        if abs_min_row and abs_min_row[0] is not None:
+            min_candidates.append(int(abs_min_row[0]))
+        if metrics_min_row and metrics_min_row[0] is not None:
+            min_candidates.append(int(metrics_min_row[0]))
+        abs_min_ts = min(min_candidates) if min_candidates else current_hour_ts
     conn.close()
 
     if not metric_rows:
@@ -4179,21 +4103,22 @@ def api_history_custom():
             for k in aligned_gpu:
                 aligned_gpu[k].append(None)
 
-    try:
-        energy_start_ts = int(request.args.get('energy_start', 0))
-    except (TypeError, ValueError):
-        energy_start_ts = 0
-    if energy_start_ts == 0:
-        energy_start_ts = abs_min_ts
-    energy_start_ts = min(max(energy_start_ts, abs_min_ts), now_ts)
+    if include_energy:
+        try:
+            energy_start_ts = int(request.args.get('energy_start', 0))
+        except (TypeError, ValueError):
+            energy_start_ts = 0
+        if energy_start_ts == 0:
+            energy_start_ts = abs_min_ts
+        energy_start_ts = min(max(energy_start_ts, abs_min_ts), now_ts)
 
-    interval_energy_wh, _ = calculate_energy_consumption_fast(cutoff, now_ts)
-    total_energy_wh, _ = calculate_energy_consumption_fast(energy_start_ts, now_ts)
-    
-    stats['energy_interval'] = round(interval_energy_wh / 1000.0, 3)
-    stats['energy_total'] = round(total_energy_wh / 1000.0, 3)
-    stats['energy_start_date'] = datetime.fromtimestamp(energy_start_ts).strftime('%Y-%m-%d')
-    stats['energy_earliest_date'] = datetime.fromtimestamp(abs_min_ts).strftime('%Y-%m-%d')
+        interval_energy_wh, _ = calculate_energy_consumption_fast(cutoff, now_ts)
+        total_energy_wh, _ = calculate_energy_consumption_fast(energy_start_ts, now_ts)
+
+        stats['energy_interval'] = round(interval_energy_wh / 1000.0, 3)
+        stats['energy_total'] = round(total_energy_wh / 1000.0, 3)
+        stats['energy_start_date'] = datetime.fromtimestamp(energy_start_ts).strftime('%Y-%m-%d')
+        stats['energy_earliest_date'] = datetime.fromtimestamp(abs_min_ts).strftime('%Y-%m-%d')
 
     return jsonify({
         'times': [datetime.fromtimestamp(d['timestamp']).strftime(time_fmt) for d in final_data],

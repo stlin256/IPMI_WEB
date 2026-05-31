@@ -546,8 +546,7 @@
         // 监听 Insights 折叠展开事件，实现懒加载
         const collapseEl = document.getElementById('collapseInsights');
         collapseEl.addEventListener('show.bs.collapse', () => {
-            // 如果正在加载基础数据，或者基础数据还没加载完，点开立刻处理
-            // 如果基础数据加载完了，loadInsights 内部会判断是否需要重新请求
+            if (isBaseDataLoading) return;
             loadInsights();
         });
         collapseEl.addEventListener('shown.bs.collapse', () => {
@@ -835,6 +834,10 @@
         // 取消之前的基础历史请求
         if (baseAbortController) baseAbortController.abort();
         baseAbortController = new AbortController();
+        if (insightsAbortController) insightsAbortController.abort();
+        insightsAbortController = null;
+        rawData.analysis = null;
+        lastInsightsHours = -1;
         
         const wrapper = document.getElementById('charts-wrapper');
         const skeleton = document.getElementById('skeleton-screen');
@@ -860,18 +863,6 @@
             }
         });
         
-        const isInsightsShown = document.getElementById('collapseInsights').classList.contains('show');
-        
-        // 逻辑修正：
-        // 1. 如果是展开的，那么同时处理
-        if (isInsightsShown) {
-            loadInsights();
-        } else {
-            // 如果没展开，标记数据已过期，下次打开时再请求
-            rawData.analysis = null;
-            lastInsightsHours = -1;
-        }
-
         const energyStart = localStorage.getItem('energy_start_ts') || 0;
         
         // 请求基础历史数据 (不包含 heavy insights 计算)
@@ -889,11 +880,8 @@
             
             updateChart();
 
-            if (!isInsightsShown && document.getElementById('collapseInsights').classList.contains('show')) {
-                loadInsights();
-            } else if (!isInsightsShown) {
-                loadInsights(true);
-            }
+            const insightsShownNow = document.getElementById('collapseInsights').classList.contains('show');
+            loadInsights(!insightsShownNow);
         }).catch(e => {
             if (e.name === 'AbortError') return;
             isBaseDataLoading = false;
