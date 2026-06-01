@@ -211,6 +211,66 @@ def first_detail_value(details, keys, fallback=''):
             return value
     return fallback
 
+def translate_alert_metric(locale, metric):
+    metric = str(metric or '')
+    key = f'logs.alert.metric.{metric}'
+    text = translate_locale(locale, key)
+    return metric if text == key else text
+
+def parse_legacy_alert_message(message, recovered=False):
+    text = str(message or '')
+    if recovered:
+        match = re.search(r'告警恢复\s+\[(.*?)\]:\s+(\S+)\s+已恢复正常\s+\(当前值\s+(.+?)\)', text)
+        if not match:
+            return {}
+        return {
+            'rule_name': match.group(1),
+            'metric': match.group(2),
+            'value': match.group(3)
+        }
+    match = re.search(r'告警触发\s+\[(.*?)\]:\s+(\S+)\s+当前值\s+(.+?)\s+([<>!=]=?|==)\s+(.+?)\s+\(持续\s+(\d+)s\)', text)
+    if not match:
+        return {}
+    return {
+        'rule_name': match.group(1),
+        'metric': match.group(2),
+        'value': match.group(3),
+        'operator': match.group(4),
+        'threshold': match.group(5),
+        'duration': match.group(6)
+    }
+
+def translate_alert_audit_message(record, locale, recovered=False):
+    details = parse_audit_details(record.get('details'))
+    legacy = parse_legacy_alert_message(record.get('message'), recovered=recovered)
+    rule_name = first_detail_value(details, ['rule_name', 'name'], legacy.get('rule_name', ''))
+    metric = first_detail_value(details, ['metric'], legacy.get('metric', ''))
+    value = first_detail_value(details, ['value'], legacy.get('value', ''))
+    metric_label = translate_alert_metric(locale, metric)
+
+    if recovered:
+        return translate_locale(
+            locale,
+            'logs.alertRecoveredDetail',
+            name=rule_name,
+            metric=metric_label,
+            value=value
+        )
+
+    operator = first_detail_value(details, ['operator'], legacy.get('operator', ''))
+    threshold = first_detail_value(details, ['threshold'], legacy.get('threshold', ''))
+    duration = first_detail_value(details, ['duration', 'duration_seconds'], legacy.get('duration', ''))
+    return translate_locale(
+        locale,
+        'logs.alertTriggeredDetail',
+        name=rule_name,
+        metric=metric_label,
+        value=value,
+        operator=operator,
+        threshold=threshold,
+        duration=duration
+    )
+
 def translate_audit_message(record, locale=None):
     locale = locale or get_current_locale()
     t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
@@ -249,9 +309,9 @@ def translate_audit_message(record, locale=None):
     if module == 'SYSTEM' and action == 'RETENTION_UPDATE':
         return t_locale('logs.retentionUpdateAction')
     if module == 'SYSTEM' and action == 'ALERT_TRIGGER':
-        return t_locale('logs.alertTriggered', name=first_detail_value(details, ['rule_name', 'name'], ''))
+        return translate_alert_audit_message(record, locale)
     if module == 'SYSTEM' and action == 'ALERT_RECOVER':
-        return t_locale('logs.alertRecovered', name=first_detail_value(details, ['rule_name', 'name'], ''))
+        return translate_alert_audit_message(record, locale, recovered=True)
     if module == 'SYSTEM' and action == 'DATA_GAP':
         return t_locale('logs.dataGap', seconds=first_detail_value(details, ['gap_seconds', 'seconds'], '--'))
     if module == 'SYSTEM' and action == 'LOW_DISK_SPACE_WARNING':
@@ -3705,7 +3765,15 @@ def background_worker():
                                 msg = f"告警触发 [{rule['name']}]: {rule['metric']} 当前值 {val_display} {rule['operator']} {threshold} (持续 {int(now)-state['start_ts']}s)"
                                 # 强制写入审计日志
                                 write_audit(r_level, 'SYSTEM', 'ALERT_TRIGGER', msg, 
-                                           details={'metric': rule['metric'], 'value': val, 'threshold': threshold, 'rule_id': rid},
+                                           details={
+                                               'rule_name': rule['name'],
+                                               'metric': rule['metric'],
+                                               'value': val_display,
+                                               'operator': rule['operator'],
+                                               'threshold': threshold,
+                                               'duration': int(now) - state['start_ts'],
+                                               'rule_id': rid
+                                           },
                                            operator='SYSTEM')
                                 state['last_notify_ts'] = int(now)
                                 state['is_alerting'] = 1
@@ -3722,7 +3790,12 @@ def background_worker():
                         if state['is_alerting'] == 1 and state['recovery_count'] >= 5:
                             if now - worker_start_time > 15:
                                 write_audit('INFO', 'SYSTEM', 'ALERT_RECOVER', f"告警恢复 [{rule['name']}]: {rule['metric']} 已恢复正常 (当前值 {val_display})", 
-                                           details={'metric': rule['metric'], 'value': val, 'rule_id': rid},
+                                           details={
+                                               'rule_name': rule['name'],
+                                               'metric': rule['metric'],
+                                               'value': val_display,
+                                               'rule_id': rid
+                                           },
                                            operator='SYSTEM')
                             state['is_alerting'] = 0
                         

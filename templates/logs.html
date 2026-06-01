@@ -1533,6 +1533,57 @@
         return fallback;
     }
 
+    function translateMaybe(key, fallback = '') {
+        const translated = t(key);
+        return translated === key ? fallback : translated;
+    }
+
+    function localizeAlertMetric(metric) {
+        return translateMaybe(`logs.alert.metric.${metric}`, metric || '');
+    }
+
+    function parseLegacyAlertMessage(message, recovered = false) {
+        const text = String(message || '');
+        if (recovered) {
+            const match = text.match(/告警恢复\s+\[(.*?)\]:\s+(\S+)\s+已恢复正常\s+\(当前值\s+(.+?)\)/);
+            if (!match) return {};
+            return { rule_name: match[1], metric: match[2], value: match[3] };
+        }
+        const match = text.match(/告警触发\s+\[(.*?)\]:\s+(\S+)\s+当前值\s+(.+?)\s+([<>!=]=?|==)\s+(.+?)\s+\(持续\s+(\d+)s\)/);
+        if (!match) return {};
+        return {
+            rule_name: match[1],
+            metric: match[2],
+            value: match[3],
+            operator: match[4],
+            threshold: match[5],
+            duration: match[6]
+        };
+    }
+
+    function localizeAlertAuditMessage(log, recovered = false) {
+        const details = log.details || {};
+        const legacy = parseLegacyAlertMessage(log.message, recovered);
+        const name = firstDetailValue(details, ['rule_name', 'name'], legacy.rule_name || '');
+        const metric = firstDetailValue(details, ['metric'], legacy.metric || '');
+        const value = firstDetailValue(details, ['value'], legacy.value || '');
+        if (recovered) {
+            return t('logs.alertRecoveredDetail', {
+                name,
+                metric: localizeAlertMetric(metric),
+                value
+            });
+        }
+        return t('logs.alertTriggeredDetail', {
+            name,
+            metric: localizeAlertMetric(metric),
+            value,
+            operator: firstDetailValue(details, ['operator'], legacy.operator || ''),
+            threshold: firstDetailValue(details, ['threshold'], legacy.threshold || ''),
+            duration: firstDetailValue(details, ['duration', 'duration_seconds'], legacy.duration || '')
+        });
+    }
+
     function localizeChangeLine(change) {
         const text = String(change || '');
         const match = text.match(/^(.+?):\s*(.*?)\s*->\s*(.*)$/);
@@ -1565,8 +1616,8 @@
         if (log.module === 'SYSTEM' && log.action === 'SUMMARY_SENT') return t('logs.summarySentAction');
         if (log.module === 'SYSTEM' && log.action === 'RETENTION_PENDING') return t('logs.retentionPendingAction');
         if (log.module === 'SYSTEM' && log.action === 'RETENTION_UPDATE') return t('logs.retentionUpdateAction');
-        if (log.module === 'SYSTEM' && log.action === 'ALERT_TRIGGER') return t('logs.alertTriggered', { name: firstDetailValue(details, ['rule_name', 'name'], '') });
-        if (log.module === 'SYSTEM' && log.action === 'ALERT_RECOVER') return t('logs.alertRecovered', { name: firstDetailValue(details, ['rule_name', 'name'], '') });
+        if (log.module === 'SYSTEM' && log.action === 'ALERT_TRIGGER') return localizeAlertAuditMessage(log);
+        if (log.module === 'SYSTEM' && log.action === 'ALERT_RECOVER') return localizeAlertAuditMessage(log, true);
         if (log.module === 'SYSTEM' && log.action === 'DATA_GAP') return t('logs.dataGap', { seconds: firstDetailValue(details, ['gap_seconds', 'seconds'], '--') });
         if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_SPACE_WARNING') return t('logs.lowDiskSpaceWarning');
         if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_SPACE_RECLAIMED') return t('logs.lowDiskSpaceReclaimed');
