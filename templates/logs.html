@@ -662,6 +662,7 @@
                                         <span id="low-disk-protect-val" class="text-light fw-bold">--</span>
                                     </div>
                                 </div>
+                                <div class="small text-muted mt-2" data-i18n="settings.sqliteReclaimHelp">{{ t('settings.sqliteReclaimHelp') }}</div>
                             </div>
                         </div>
 
@@ -1498,6 +1499,7 @@
         '采集延迟(警告)': 'logs.config.log_delay_warn',
         '采集延迟(危险)': 'logs.config.log_delay_danger',
         '低磁盘自动回收开关': 'logs.config.low_disk_auto_prune_enabled',
+        '低磁盘自动删除开关': 'logs.config.low_disk_auto_prune_enabled',
         '看板时效(硬件)': 'logs.config.dashboard_hours_hw',
         '看板时效(历史)': 'logs.config.dashboard_hours_hist',
         '邮件发送模式': 'logs.config.email_mode',
@@ -1626,6 +1628,30 @@
         if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_AUDIT_PRUNE') return t('logs.lowDiskAuditPrune', { day: firstDetailValue(details, ['day'], '') });
         if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_PRUNE') return t('logs.lowDiskPrune', { day: firstDetailValue(details, ['day'], '') });
         if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_PRUNE_EMPTY') return t('logs.lowDiskPruneEmpty');
+        if (log.module === 'SYSTEM' && log.action === 'AUDIT_ARCHIVE') {
+            return t('logs.auditArchive', {
+                rows: firstDetailValue(details, ['rows'], 0),
+                days: firstDetailValue(details, ['days'], 0)
+            });
+        }
+        if (log.module === 'SYSTEM' && log.action === 'SENSOR_ARCHIVE') {
+            return t('logs.sensorArchive', {
+                rows: firstDetailValue(details, ['rows'], 0),
+                hours: firstDetailValue(details, ['hours'], 0)
+            });
+        }
+        if (log.module === 'SYSTEM' && log.action === 'SQLITE_RECLAIM') {
+            return t('logs.sqliteReclaim', {
+                saved: firstDetailValue(details, ['saved_text', 'db_size_saved_bytes'], 0),
+                reclaimable: firstDetailValue(details, ['reclaimable_text', 'reclaimable_before_bytes'], 0)
+            });
+        }
+        if (log.module === 'SYSTEM' && log.action === 'SQLITE_RECLAIM_SKIPPED') {
+            return t('logs.sqliteReclaimSkipped', { reason: firstDetailValue(details, ['reason'], '') });
+        }
+        if (log.module === 'SYSTEM' && log.action === 'RETENTION_CLEANUP') {
+            return t('logs.retentionCleanup', { rows: firstDetailValue(details, ['rows'], 0) });
+        }
         if (log.module === 'SYSTEM' && log.action === 'EMAIL_TEST') {
             return t('logs.emailTest', { receivers: details.receivers || details.receiver || '' });
         }

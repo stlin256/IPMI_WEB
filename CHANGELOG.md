@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.6 - 2026-06-01
+
+### 中文
+
+- GPU 卡片中的核心频率曲线改为绿色，和其他指标线条区分更清晰。
+- 传感器全量历史新增小时级压缩归档，近 6 小时保留热表，较旧数据打包为可查询、可导出的归档块，降低长期数据库占用。
+- 审计日志归档改为更紧凑的列式格式，同时兼容旧版归档数据。
+- SQLite 可回收空间改为后台自动压缩；达到阈值且磁盘空间足够时自动执行，低磁盘开关只负责必要时删除最早历史日。
+- 存储管理文案改为“低磁盘自动删除”，避免把 SQLite 空间压缩和历史删除混为一谈。
+- 补全空间清理和压缩审计日志：审计归档、传感器归档、SQLite 压缩、保留期清理都会写入可本地化摘要，折叠状态下也能看懂发生了什么。
+
+### English
+
+- Changed the GPU card core-clock trend line to green so it is easier to distinguish from other metrics.
+- Added hourly compressed archives for full sensor history. The latest 6 hours stay in the hot table, while older samples are packed into queryable and exportable archive blocks to reduce long-term database growth.
+- Switched archived audit logs to a more compact columnar format while keeping compatibility with existing archives.
+- SQLite reclaimable space is now compacted automatically by background maintenance once it reaches the threshold and enough disk space is available. The low-disk switch now only controls deletion of the oldest history day when necessary.
+- Renamed the storage setting copy to “Low-disk Auto Delete” to separate SQLite compaction from destructive history deletion.
+- Added complete audit summaries for space cleanup and compression: audit archives, sensor archives, SQLite compaction, and retention cleanup now write localized summaries that are clear without expanding details.
+
 ## 1.4.5 - 2026-06-01
 
 ### 中文

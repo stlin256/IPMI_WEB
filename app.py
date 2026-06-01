@@ -54,7 +54,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.4.5'
+VERSION = '1.4.6'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -328,6 +328,28 @@ def translate_audit_message(record, locale=None):
         return t_locale('logs.lowDiskPrune', day=first_detail_value(details, ['day'], ''))
     if module == 'SYSTEM' and action == 'LOW_DISK_PRUNE_EMPTY':
         return t_locale('logs.lowDiskPruneEmpty')
+    if module == 'SYSTEM' and action == 'AUDIT_ARCHIVE':
+        return t_locale(
+            'logs.auditArchive',
+            rows=first_detail_value(details, ['rows'], 0),
+            days=first_detail_value(details, ['days'], 0)
+        )
+    if module == 'SYSTEM' and action == 'SENSOR_ARCHIVE':
+        return t_locale(
+            'logs.sensorArchive',
+            rows=first_detail_value(details, ['rows'], 0),
+            hours=first_detail_value(details, ['hours'], 0)
+        )
+    if module == 'SYSTEM' and action == 'SQLITE_RECLAIM':
+        return t_locale(
+            'logs.sqliteReclaim',
+            saved=first_detail_value(details, ['saved_text'], first_detail_value(details, ['db_size_saved_bytes'], 0)),
+            reclaimable=first_detail_value(details, ['reclaimable_text'], first_detail_value(details, ['reclaimable_before_bytes'], 0))
+        )
+    if module == 'SYSTEM' and action == 'SQLITE_RECLAIM_SKIPPED':
+        return t_locale('logs.sqliteReclaimSkipped', reason=first_detail_value(details, ['reason'], ''))
+    if module == 'SYSTEM' and action == 'RETENTION_CLEANUP':
+        return t_locale('logs.retentionCleanup', rows=first_detail_value(details, ['rows'], 0))
     if module == 'SYSTEM' and action == 'EMAIL_TEST':
         receivers = details.get('receivers') or details.get('receiver') or ''
         if isinstance(receivers, list):
@@ -422,8 +444,12 @@ AUDIT_ARCHIVE_AFTER_DAYS = 1
 AUDIT_ARCHIVE_MAX_DAYS_PER_RUN = 14
 AUDIT_ARCHIVE_COMPRESSION_LEVEL = 9
 SENSOR_HISTORY_COMPRESSION_LEVEL = 9
+SENSOR_ARCHIVE_AFTER_SECONDS = 6 * 3600
+SENSOR_ARCHIVE_MAX_HOURS_PER_RUN = 12
 COMPRESSED_CODEC_ZLIB = b'ZL1'
 COMPRESSED_CODEC_LZMA = b'XZ1'
+SQLITE_AUTO_RECLAIM_MIN_BYTES = 16 * 1024 * 1024
+SQLITE_AUTO_RECLAIM_COOLDOWN_SECONDS = 6 * 3600
 LOW_DISK_FREE_THRESHOLD_BYTES = 800 * 1024 * 1024
 LOW_DISK_TARGET_FREE_BYTES = 900 * 1024 * 1024
 LOW_DISK_MAX_PRUNE_DAYS_PER_RUN = 1
@@ -441,6 +467,21 @@ LOW_DISK_PRUNE_TABLES = (
     'audit_logs'
 )
 db_maintenance_lock = threading.RLock()
+
+def format_bytes_compact(bytes_value):
+    try:
+        value = float(bytes_value or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+    units = ('B', 'KB', 'MB', 'GB', 'TB')
+    idx = 0
+    while value >= 1024 and idx < len(units) - 1:
+        value /= 1024
+        idx += 1
+    if idx == 0:
+        return f"{int(value)} {units[idx]}"
+    text = f"{value:.2f}".rstrip('0').rstrip('.')
+    return f"{text} {units[idx]}"
 
 def _resolve_certificate_files():
     resolved_cert = DEFAULT_CERT_FILE if os.path.exists(DEFAULT_CERT_FILE) else COMBINED_CERT_FILE
@@ -555,7 +596,7 @@ def checkpoint_sqlite_wal(conn):
         logging.warning(f"SQLite WAL checkpoint failed: {e}")
 
 def reclaim_sqlite_space_after_prune(conn, required_gain=LOW_DISK_MIN_FREE_GAIN_BYTES):
-    """Shrink SQLite after destructive pruning only when the filesystem can do it safely."""
+    """Shrink SQLite only when reclaimable pages and filesystem free space make it safe."""
     before_usage = get_storage_usage_info()
     before_free = int(before_usage.get('disk_free_bytes') or 0)
     db_size = os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0
@@ -626,6 +667,59 @@ def reclaim_sqlite_space_after_prune(conn, required_gain=LOW_DISK_MIN_FREE_GAIN_
         'reclaimable_before_bytes': reclaimable,
         'reclaimable_after_bytes': get_sqlite_space_stats(conn).get('reclaimable_bytes', 0)
     }
+
+def auto_reclaim_sqlite_space(conn, now_ts=None):
+    now_ts = int(now_ts or time.time())
+    last_reclaim_ts = get_config_int(conn, 'sqlite_last_auto_reclaim_ts', 0)
+    if now_ts - last_reclaim_ts < SQLITE_AUTO_RECLAIM_COOLDOWN_SECONDS:
+        return {'attempted': False, 'reason': 'cooldown', 'next_allowed_ts': last_reclaim_ts + SQLITE_AUTO_RECLAIM_COOLDOWN_SECONDS}
+
+    reclaimable = int(get_sqlite_space_stats(conn).get('reclaimable_bytes') or 0)
+    if reclaimable < SQLITE_AUTO_RECLAIM_MIN_BYTES:
+        return {'attempted': False, 'reason': 'low_reclaimable_bytes', 'reclaimable_before_bytes': reclaimable}
+
+    result = reclaim_sqlite_space_after_prune(conn, required_gain=SQLITE_AUTO_RECLAIM_MIN_BYTES)
+    if result.get('attempted') or result.get('reason') == 'insufficient_free_space_for_vacuum':
+        set_config_value(conn, 'sqlite_last_auto_reclaim_ts', now_ts)
+        conn.commit()
+    if result.get('success'):
+        saved_bytes = int(result.get('db_size_saved_bytes') or 0)
+        reclaimable_before = int(result.get('reclaimable_before_bytes') or 0)
+        logging.info(
+            f"[SQLITE_RECLAIM] Reclaimed {saved_bytes} bytes "
+            f"from SQLite in {result.get('seconds', 0)}s"
+        )
+        write_audit(
+            'INFO',
+            'SYSTEM',
+            'SQLITE_RECLAIM',
+            f"SQLite 空间自动压缩完成，释放 {format_bytes_compact(saved_bytes)}",
+            details={
+                **result,
+                'saved_text': format_bytes_compact(saved_bytes),
+                'reclaimable_text': format_bytes_compact(reclaimable_before)
+            },
+            operator='SYSTEM'
+        )
+    elif result.get('attempted'):
+        write_audit(
+            'ERROR',
+            'SYSTEM',
+            'SQLITE_RECLAIM_SKIPPED',
+            'SQLite 空间自动压缩失败',
+            details=result,
+            operator='SYSTEM'
+        )
+    elif result.get('reason') == 'insufficient_free_space_for_vacuum':
+        write_audit(
+            'WARN',
+            'SYSTEM',
+            'SQLITE_RECLAIM_SKIPPED',
+            'SQLite 空间自动压缩已跳过：磁盘空间不足，无法安全整理',
+            details=result,
+            operator='SYSTEM'
+        )
+    return result
 
 def _read_uploaded_file(file_storage, label, locale=None):
     t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
@@ -760,20 +854,290 @@ def audit_day_bounds(day_key):
 def audit_row_to_record(row):
     return {col: row[col] for col in AUDIT_LOG_COLUMNS}
 
+def normalize_audit_record(record):
+    return {col: record.get(col) for col in AUDIT_LOG_COLUMNS}
+
+def pack_audit_records(records):
+    return {
+        'format': 'audit_cols_v1',
+        'cols': list(AUDIT_LOG_COLUMNS),
+        'rows': [[record.get(col) for col in AUDIT_LOG_COLUMNS] for record in records]
+    }
+
+def unpack_audit_records(payload):
+    if isinstance(payload, list):
+        return [normalize_audit_record(record) for record in payload if isinstance(record, dict)]
+    if not isinstance(payload, dict):
+        return []
+    if payload.get('format') != 'audit_cols_v1':
+        return []
+    cols = payload.get('cols')
+    rows = payload.get('rows')
+    if not isinstance(cols, list) or not isinstance(rows, list):
+        return []
+    records = []
+    for row in rows:
+        if not isinstance(row, list):
+            continue
+        item = {col: row[idx] if idx < len(row) else None for idx, col in enumerate(cols)}
+        records.append(normalize_audit_record(item))
+    return records
+
 def decode_audit_archive(row):
     try:
         raw = decompress_payload(row['data']).decode('utf-8')
-        records = json.loads(raw)
-        if not isinstance(records, list):
-            return []
-        return records
+        return unpack_audit_records(json.loads(raw))
     except Exception as e:
         logging.error(f"Audit archive decode failed for day {row['day']}: {e}")
         return []
 
 def encode_audit_archive(records):
-    raw = json.dumps(records, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    raw = json.dumps(pack_audit_records(records), ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     return raw, compress_payload(raw)
+
+def sensor_hour_key(timestamp):
+    return int(int(timestamp) // 3600 * 3600)
+
+def normalize_sensor_record(sensor):
+    if not isinstance(sensor, dict):
+        return None
+    return {
+        'source': sensor.get('source') or '',
+        'name': sensor.get('name') or '',
+        'unit': sensor.get('unit') or '',
+        'value': sensor.get('value'),
+        'status': sensor.get('status') or ''
+    }
+
+def encode_sensor_archive(samples):
+    names = []
+    name_index = {}
+    rows = []
+    for ts, sensors in samples:
+        values = [None] * len(names)
+        statuses = [None] * len(names)
+        for sensor in sensors:
+            item = normalize_sensor_record(sensor)
+            if not item or not item['name']:
+                continue
+            key = (item['source'], item['name'], item['unit'])
+            idx = name_index.get(key)
+            if idx is None:
+                idx = len(names)
+                name_index[key] = idx
+                names.append({'source': item['source'], 'name': item['name'], 'unit': item['unit']})
+                values.append(None)
+                statuses.append(None)
+            values[idx] = item['value']
+            statuses[idx] = item['status']
+        rows.append([int(ts), values, statuses])
+    payload = {'format': 'sensor_cols_v1', 'sensors': names, 'rows': rows}
+    raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    return raw, compress_payload(raw)
+
+def decode_sensor_archive(row):
+    try:
+        raw = decompress_payload(row['data']).decode('utf-8')
+        payload = json.loads(raw)
+        if not isinstance(payload, dict) or payload.get('format') != 'sensor_cols_v1':
+            return []
+        sensors = payload.get('sensors') or []
+        rows = payload.get('rows') or []
+        decoded = []
+        for item in rows:
+            if not isinstance(item, list) or len(item) < 2:
+                continue
+            ts = int(item[0])
+            values = item[1] if isinstance(item[1], list) else []
+            statuses = item[2] if len(item) > 2 and isinstance(item[2], list) else []
+            sensor_list = []
+            for idx, meta in enumerate(sensors):
+                if idx >= len(values) or values[idx] is None:
+                    continue
+                sensor_list.append({
+                    'source': meta.get('source', '') if isinstance(meta, dict) else '',
+                    'name': meta.get('name', '') if isinstance(meta, dict) else '',
+                    'unit': meta.get('unit', '') if isinstance(meta, dict) else '',
+                    'value': values[idx],
+                    'status': statuses[idx] if idx < len(statuses) and statuses[idx] is not None else ''
+                })
+            decoded.append((ts, sensor_list))
+        return decoded
+    except Exception as e:
+        logging.error(f"Sensor archive decode failed for hour {row['hour_ts']}: {e}")
+        return []
+
+def iter_sensor_history_rows(conn, start_ts=None, end_ts=None):
+    params = []
+    clauses = []
+    if start_ts is not None:
+        clauses.append('timestamp >= ?')
+        params.append(int(start_ts))
+    if end_ts is not None:
+        clauses.append('timestamp < ?')
+        params.append(int(end_ts))
+    where = 'WHERE ' + ' AND '.join(clauses) if clauses else ''
+    cur = conn.cursor()
+    cur.execute(f"SELECT timestamp, data FROM sensor_history {where} ORDER BY timestamp ASC", params)
+    while True:
+        row = cur.fetchone()
+        if not row:
+            break
+        try:
+            yield int(row['timestamp']), json.loads(decompress_payload(row['data']).decode('utf-8'))
+        except Exception as e:
+            logging.error(f"Sensor history decode failed at {row['timestamp']}: {e}")
+            yield int(row['timestamp']), None
+
+def iter_sensor_archive_rows(conn, start_ts=None, end_ts=None):
+    params = []
+    clauses = []
+    if start_ts is not None:
+        clauses.append('end_ts > ?')
+        params.append(int(start_ts))
+    if end_ts is not None:
+        clauses.append('start_ts < ?')
+        params.append(int(end_ts))
+    where = 'WHERE ' + ' AND '.join(clauses) if clauses else ''
+    cur = conn.cursor()
+    cur.execute(f"SELECT * FROM sensor_history_archives {where} ORDER BY hour_ts ASC", params)
+    for archive in cur.fetchall():
+        for ts, sensors in decode_sensor_archive(archive):
+            if start_ts is not None and ts < int(start_ts):
+                continue
+            if end_ts is not None and ts >= int(end_ts):
+                continue
+            yield ts, sensors
+
+def iter_all_sensor_rows(conn, start_ts=None, end_ts=None):
+    archive_iter = iter(iter_sensor_archive_rows(conn, start_ts, end_ts))
+    hot_iter = iter(iter_sensor_history_rows(conn, start_ts, end_ts))
+    archive_item = next(archive_iter, None)
+    hot_item = next(hot_iter, None)
+
+    while archive_item is not None or hot_item is not None:
+        if archive_item is None:
+            yield hot_item
+            hot_item = next(hot_iter, None)
+            continue
+        if hot_item is None:
+            yield archive_item
+            archive_item = next(archive_iter, None)
+            continue
+        archive_ts = int(archive_item[0])
+        hot_ts = int(hot_item[0])
+        if archive_ts < hot_ts:
+            yield archive_item
+            archive_item = next(archive_iter, None)
+        elif hot_ts < archive_ts:
+            yield hot_item
+            hot_item = next(hot_iter, None)
+        else:
+            yield hot_item
+            archive_item = next(archive_iter, None)
+            hot_item = next(hot_iter, None)
+
+def estimate_sensor_sample_count(conn, start_ts=None, end_ts=None):
+    total = 0
+    try:
+        params = []
+        clauses = []
+        if start_ts is not None:
+            clauses.append('timestamp >= ?')
+            params.append(int(start_ts))
+        if end_ts is not None:
+            clauses.append('timestamp < ?')
+            params.append(int(end_ts))
+        where = 'WHERE ' + ' AND '.join(clauses) if clauses else ''
+        row = conn.execute(f"SELECT COUNT(*) FROM sensor_history {where}", params).fetchone()
+        total += int(row[0] or 0) if row else 0
+    except sqlite3.Error:
+        pass
+    try:
+        params = []
+        clauses = []
+        if start_ts is not None:
+            clauses.append('end_ts > ?')
+            params.append(int(start_ts))
+        if end_ts is not None:
+            clauses.append('start_ts < ?')
+            params.append(int(end_ts))
+        where = 'WHERE ' + ' AND '.join(clauses) if clauses else ''
+        row = conn.execute(f"SELECT SUM(count) FROM sensor_history_archives {where}", params).fetchone()
+        total += int(row[0] or 0) if row and row[0] is not None else 0
+    except sqlite3.Error:
+        pass
+    return total
+
+def archive_old_sensor_history(conn, now_ts=None):
+    now_ts = int(now_ts or time.time())
+    cutoff_ts = sensor_hour_key(now_ts - SENSOR_ARCHIVE_AFTER_SECONDS)
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT CAST(timestamp / 3600 AS INTEGER) * 3600 AS hour_ts
+        FROM sensor_history
+        WHERE timestamp < ?
+        ORDER BY hour_ts ASC
+        LIMIT ?
+    """, (cutoff_ts, SENSOR_ARCHIVE_MAX_HOURS_PER_RUN))
+    hours = [int(row['hour_ts']) for row in c.fetchall() if row['hour_ts'] is not None]
+    archived_hours = 0
+    archived_rows = 0
+    saved_bytes = 0
+
+    for hour_ts in hours:
+        hour_end = hour_ts + 3600
+        rows = list(iter_sensor_history_rows(conn, hour_ts, min(hour_end, cutoff_ts)))
+        rows = [(ts, sensors) for ts, sensors in rows if sensors]
+        if not rows:
+            continue
+        existing_rows = []
+        c.execute("SELECT * FROM sensor_history_archives WHERE hour_ts = ?", (hour_ts,))
+        existing = c.fetchone()
+        if existing:
+            existing_rows = decode_sensor_archive(existing)
+        merged = {}
+        for ts, sensors in existing_rows + rows:
+            merged[int(ts)] = sensors
+        samples = sorted(merged.items())
+        if not samples:
+            continue
+        raw_blob, compressed_blob = encode_sensor_archive(samples)
+        start_ts = min(ts for ts, _ in samples)
+        end_ts = max(ts for ts, _ in samples) + 1
+        c.execute("""
+            INSERT OR REPLACE INTO sensor_history_archives
+            (hour_ts, start_ts, end_ts, count, raw_size, compressed_size, data, created_ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            hour_ts, start_ts, end_ts, len(samples), len(raw_blob), len(compressed_blob), compressed_blob, now_ts
+        ))
+        c.executemany("DELETE FROM sensor_history WHERE timestamp = ?", [(ts,) for ts, _ in rows])
+        archived_hours += 1
+        archived_rows += len(rows)
+        saved_bytes += max(0, len(raw_blob) - len(compressed_blob))
+
+    if archived_hours:
+        conn.commit()
+        saved_text = format_bytes_compact(saved_bytes)
+        logging.info(
+            f"[SENSOR_ARCHIVE] Archived {archived_rows} rows across {archived_hours} hour(s), "
+            f"estimated saved {saved_bytes} bytes"
+        )
+        write_audit(
+            'INFO',
+            'SYSTEM',
+            'SENSOR_ARCHIVE',
+            f'传感器历史已压缩归档，{archived_rows} 行 / {archived_hours} 小时，估算节省 {saved_text}',
+            details={
+                'rows': archived_rows,
+                'hours': archived_hours,
+                'saved_bytes': saved_bytes,
+                'saved_text': saved_text
+            },
+            operator='SYSTEM'
+        )
+    return {'hours': archived_hours, 'rows': archived_rows, 'saved_bytes': saved_bytes}
 
 def filter_audit_record(record, module=None, level=None, search=None):
     if module and record.get('module') != module:
@@ -932,9 +1296,23 @@ def compress_old_audit_logs(conn, now_ts=None):
 
     if archived_days:
         conn.commit()
+        saved_text = format_bytes_compact(saved_bytes)
         logging.info(
             f"[AUDIT_ARCHIVE] Archived {archived_rows} rows across {archived_days} day(s), "
             f"estimated saved {saved_bytes} bytes"
+        )
+        write_audit(
+            'INFO',
+            'SYSTEM',
+            'AUDIT_ARCHIVE',
+            f'审计日志已压缩归档，{archived_rows} 行 / {archived_days} 天，估算节省 {saved_text}',
+            details={
+                'rows': archived_rows,
+                'days': archived_days,
+                'saved_bytes': saved_bytes,
+                'saved_text': saved_text
+            },
+            operator='SYSTEM'
         )
 
     return {
@@ -999,6 +1377,14 @@ def get_earliest_history_day(conn, max_day_key=None):
     except sqlite3.Error as e:
         logging.warning(f"Low disk prune scan failed for audit_log_archives: {e}")
 
+    try:
+        c.execute("SELECT MIN(hour_ts) FROM sensor_history_archives")
+        row = c.fetchone()
+        if row and row[0] is not None:
+            consider_ts(int(row[0]))
+    except sqlite3.Error as e:
+        logging.warning(f"Low disk prune scan failed for sensor_history_archives: {e}")
+
     return earliest_day
 
 def get_config_value(conn, key, default=None):
@@ -1042,6 +1428,13 @@ def prune_history_day(conn, day_key):
     except sqlite3.Error as e:
         logging.warning(f"Low disk prune delete failed for audit_log_archives: {e}")
         deleted['audit_log_archives'] = f"error: {e}"
+
+    try:
+        c.execute("DELETE FROM sensor_history_archives WHERE hour_ts >= ? AND hour_ts < ?", (day_start, day_end))
+        deleted['sensor_history_archives'] = c.rowcount if c.rowcount is not None else 0
+    except sqlite3.Error as e:
+        logging.warning(f"Low disk prune delete failed for sensor_history_archives: {e}")
+        deleted['sensor_history_archives'] = f"error: {e}"
 
     return deleted
 
@@ -1415,6 +1808,32 @@ def execute_db_async(sql, params=None, wait=False):
     except queue.Full:
         logging.error("DB Write Queue is FULL! Dropping request.")
 
+def run_db_maintenance_delete(sql, params=(), label=None):
+    """Run a maintenance delete synchronously so row counts can be audited."""
+    try:
+        with db_maintenance_lock:
+            conn = get_db_connection()
+            try:
+                cur = conn.execute(sql, params)
+                deleted = cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
+                conn.commit()
+                if deleted:
+                    logging.info(f"[RETENTION_CLEANUP] Deleted {deleted} row(s) from {label or sql}")
+                return deleted
+            finally:
+                conn.close()
+    except Exception as e:
+        logging.error(f"Retention cleanup failed for {label or sql}: {e}")
+        write_audit(
+            'ERROR',
+            'SYSTEM',
+            'RETENTION_CLEANUP_FAIL',
+            f'历史数据保留期清理失败: {label or sql}',
+            details={'label': label or sql, 'error': str(e)},
+            operator='SYSTEM'
+        )
+        return 0
+
 def write_audit(level, module, action, message, details=None, operator=None, force_check=False):
     """
     全方位审计日志写入函数
@@ -1554,6 +1973,16 @@ def init_db():
     # 新增传感器全量历史表 (压缩存储)
     c.execute('''CREATE TABLE IF NOT EXISTS sensor_history
                  (timestamp INTEGER PRIMARY KEY, data BLOB)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS sensor_history_archives
+                 (hour_ts INTEGER PRIMARY KEY,
+                  start_ts INTEGER,
+                  end_ts INTEGER,
+                  count INTEGER,
+                  raw_size INTEGER,
+                  compressed_size INTEGER,
+                  data BLOB,
+                  created_ts INTEGER)''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_sensor_history_archives_range ON sensor_history_archives(start_ts, end_ts)')
 
     # 防爆破表：记录 IP + User-Agent 组合尝试失败情况
     c.execute('''CREATE TABLE IF NOT EXISTS login_attempts
@@ -1652,6 +2081,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_last_notice_ts', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_last_prune_ts', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('low_disk_prune_blocked_until', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('sqlite_last_auto_reclaim_ts', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hw', '[1, 24]')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('dashboard_hours_hist', '[1, 6, 24, 72, 168]')")
 
@@ -3206,11 +3636,10 @@ def energy_maintenance_task():
                         conn.commit()
                         audit_after_maintenance = ('INFO', 'SYSTEM', 'RETENTION_APPLIED', f'数据保留期变更已生效: {new_val} 天')
 
-                # [日志体积优化] 定期执行增量空间回收
-                c.execute("PRAGMA incremental_vacuum(50);")
-
                 # 历史审计日志按自然日压缩归档，保留近 30 天热表用于快速查询
                 compress_old_audit_logs(conn, now)
+                archive_old_sensor_history(conn, now)
+                auto_reclaim_sqlite_space(conn, now)
                 conn.close()
                 conn = None
 
@@ -3324,6 +3753,7 @@ def background_worker():
     metrics_buffer = []
     sensor_buffer = []
     interval_buffer = []
+    last_retention_audit_ts = 0
     
     last_net_io = psutil.net_io_counters()
     last_disk_io = psutil.disk_io_counters()
@@ -3686,15 +4116,44 @@ def background_worker():
 
                     # 只有在批量写入时才执行清理动作，减少频率
                     cutoff = int(now) - (current_retention_days * 86400)
-                    execute_db_async([
-                        "DELETE FROM metrics_v2 WHERE timestamp < ?",
-                        "DELETE FROM sensor_history WHERE timestamp < ?",
-                        "DELETE FROM recording_intervals WHERE timestamp < ?"
-                    ], [
-                        (cutoff,),
-                        (cutoff,),
-                        (int(now) - 86400,)
-                    ])
+                    retention_deleted = {
+                        'metrics_v2': run_db_maintenance_delete(
+                            "DELETE FROM metrics_v2 WHERE timestamp < ?",
+                            (cutoff,),
+                            'metrics_v2'
+                        ),
+                        'sensor_history': run_db_maintenance_delete(
+                            "DELETE FROM sensor_history WHERE timestamp < ?",
+                            (cutoff,),
+                            'sensor_history'
+                        ),
+                        'sensor_history_archives': run_db_maintenance_delete(
+                            "DELETE FROM sensor_history_archives WHERE end_ts < ?",
+                            (cutoff,),
+                            'sensor_history_archives'
+                        ),
+                        'recording_intervals': run_db_maintenance_delete(
+                            "DELETE FROM recording_intervals WHERE timestamp < ?",
+                            (int(now) - 86400,),
+                            'recording_intervals'
+                        )
+                    }
+                    retention_deleted_total = sum(retention_deleted.values())
+                    if retention_deleted_total and now - last_retention_audit_ts >= 3600:
+                        write_audit(
+                            'INFO',
+                            'SYSTEM',
+                            'RETENTION_CLEANUP',
+                            f'按数据保留期清理历史数据，共删除 {retention_deleted_total} 行',
+                            details={
+                                'rows': retention_deleted_total,
+                                'deleted': retention_deleted,
+                                'retention_days': current_retention_days,
+                                'cutoff_ts': cutoff
+                            },
+                            operator='SYSTEM'
+                        )
+                        last_retention_audit_ts = now
               
                 # === 秒级告警规则检测 ===
                 c.execute("SELECT * FROM alert_rules WHERE enabled = 1")
@@ -3820,6 +4279,7 @@ def background_worker():
                                details={'gap_seconds': gap_seconds_f, 'last_check': last_check_f, 'current': current_now},
                                operator='SYSTEM')
                     logging.warning(f"[DATA_GAP] Detected gap of {round(gap_seconds_f, 3)} seconds")
+                last_audit_check_ts['last_check'] = current_ts
           
             # [关键修复] 显式关闭连接
             conn.close()
@@ -3846,6 +4306,7 @@ def gpu_worker():
     last_db_log_time = 0
     # [性能优化] 批量插入缓冲区
     gpu_metrics_buffer = []
+    last_gpu_retention_audit_ts = 0
     
     retry_delay = 1
     max_retry_delay = 30
@@ -3953,10 +4414,27 @@ def gpu_worker():
                             cutoff = int(now) - (current_retention_days * 86400)
                             cleanup_conn.close()
 
-                            sqls.append("DELETE FROM gpu_metrics WHERE timestamp < ?")
-                            all_params.append((cutoff,))
-                            
-                            execute_db_async(sqls, all_params)
+                            execute_db_async(sqls, all_params, wait=True)
+                            deleted_gpu_rows = run_db_maintenance_delete(
+                                "DELETE FROM gpu_metrics WHERE timestamp < ?",
+                                (cutoff,),
+                                'gpu_metrics'
+                            )
+                            if deleted_gpu_rows and now - last_gpu_retention_audit_ts >= 3600:
+                                write_audit(
+                                    'INFO',
+                                    'SYSTEM',
+                                    'RETENTION_CLEANUP',
+                                    f'按数据保留期清理 GPU 历史数据，共删除 {deleted_gpu_rows} 行',
+                                    details={
+                                        'rows': deleted_gpu_rows,
+                                        'deleted': {'gpu_metrics': deleted_gpu_rows},
+                                        'retention_days': current_retention_days,
+                                        'cutoff_ts': cutoff
+                                    },
+                                    operator='SYSTEM'
+                                )
+                                last_gpu_retention_audit_ts = now
                             gpu_metrics_buffer = [] # 清空缓冲区
                             
                         last_db_log_time = now
@@ -4362,7 +4840,7 @@ def api_config_precheck():
         # 1. 对比设置
         all_keys = set(list(current_settings.keys()) + list(new_settings.keys()))
         # 过滤掉一些不该被导入覆盖的内部状态键
-        ignore_keys = {'last_log_check', 'db_zero_cleanup_done', 'recording_intervals_init_done', 'log_migration_done', 'retention_change_ts', 'pending_retention_days'}
+        ignore_keys = {'last_log_check', 'db_zero_cleanup_done', 'recording_intervals_init_done', 'log_migration_done', 'retention_change_ts', 'pending_retention_days', 'sqlite_last_auto_reclaim_ts'}
         
         for k in all_keys:
             if k in ignore_keys: continue
@@ -4592,6 +5070,14 @@ def build_storage_status(cursor=None):
                 max_ts = row[1] if max_ts is None else max(max_ts, row[1])
         except sqlite3.Error:
             pass
+        try:
+            cursor.execute("SELECT MIN(start_ts), MAX(end_ts) FROM sensor_history_archives")
+            row = cursor.fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                min_ts = row[0] if min_ts is None else min(min_ts, row[0])
+                max_ts = row[1] if max_ts is None else max(max_ts, row[1])
+        except sqlite3.Error:
+            pass
 
         status = {}
         if min_ts is not None and max_ts is not None:
@@ -4614,7 +5100,8 @@ def build_storage_status(cursor=None):
                 'db_page_count': sqlite_stats.get('page_count', 0),
                 'db_freelist_count': sqlite_stats.get('freelist_count', 0),
                 'db_reclaimable_bytes': sqlite_stats.get('reclaimable_bytes', 0),
-                'db_auto_vacuum': sqlite_stats.get('auto_vacuum', 0)
+                'db_auto_vacuum': sqlite_stats.get('auto_vacuum', 0),
+                'db_auto_reclaim_min_bytes': SQLITE_AUTO_RECLAIM_MIN_BYTES
             })
         except Exception as e:
             logging.warning(f"SQLite space stats read failed: {e}")
@@ -4623,7 +5110,8 @@ def build_storage_status(cursor=None):
                 'db_page_count': 0,
                 'db_freelist_count': 0,
                 'db_reclaimable_bytes': 0,
-                'db_auto_vacuum': 0
+                'db_auto_vacuum': 0,
+                'db_auto_reclaim_min_bytes': SQLITE_AUTO_RECLAIM_MIN_BYTES
             })
 
         try:
@@ -4809,7 +5297,7 @@ def api_settings():
             mapping = {
                 'log_delay_warn': '采集延迟(警告)',
                 'log_delay_danger': '采集延迟(危险)',
-                'low_disk_auto_prune_enabled': '低磁盘自动回收开关',
+                'low_disk_auto_prune_enabled': '低磁盘自动删除开关',
                 'dashboard_hours_hw': '看板时效(硬件)',
                 'dashboard_hours_hist': '看板时效(历史)',
                 'email_enabled': '邮件通知开关',
@@ -5242,19 +5730,16 @@ def api_export_data():
         local_conn = get_db_connection()
         try:
             cur = local_conn.cursor()
-            cur.execute("SELECT timestamp, data FROM sensor_history ORDER BY timestamp ASC")
-            rows = cur.fetchall()
-            if not rows: return None, None
+            total_rows = estimate_sensor_sample_count(local_conn)
+            if not total_rows: return None, None
             
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(['timestamp', 'sensors_json'])
             
-            for row in rows:
-                ts = row['timestamp']
-                compressed_blob = row['data']
+            for ts, sensors in iter_all_sensor_rows(local_conn):
                 try:
-                    raw_json = decompress_payload(compressed_blob).decode('utf-8')
+                    raw_json = json.dumps(sensors, ensure_ascii=False, separators=(',', ':'))
                     writer.writerow([ts, raw_json])
                 except Exception as e:
                     logging.error(f"Sensor Export Decompression Error at {ts}: {e}")
@@ -6480,12 +6965,10 @@ def api_sensor_history_detail():
     if not name: return jsonify({'error': 'Missing name'}), 400
 
     conn = get_db_connection()
-    c = conn.cursor()
     cutoff = int(time.time() - (hours * 3600))
     
-    # [性能优化] 先统计总行数，计算步长进行跳步解压
-    c.execute("SELECT COUNT(*) FROM sensor_history WHERE timestamp > ?", (cutoff,))
-    total_count = c.fetchone()[0]
+    # [性能优化] 先估算总行数，计算步长进行跳步解压；同时覆盖热表和小时归档块。
+    total_count = estimate_sensor_sample_count(conn, cutoff)
     
     if total_count == 0:
         conn.close()
@@ -6495,22 +6978,14 @@ def api_sensor_history_detail():
     target_points = 2000
     step = max(1, total_count // target_points)
     
-    # 使用迭代器逐行处理，避免一次性载入大数据量到内存
-    c.execute("SELECT timestamp, data FROM sensor_history WHERE timestamp > ? ORDER BY timestamp ASC", (cutoff,))
-    
     raw_series = []
     unit = ""
     count = 0
     
-    while True:
-        row = c.fetchone()
-        if not row: break
-        
+    for ts, sensors in iter_all_sensor_rows(conn, cutoff):
         # 跳步逻辑：每 step 行处理一次
         if count % step == 0:
-            ts = row['timestamp']
             try:
-                sensors = json.loads(decompress_payload(row['data']))
                 target = next((s for s in sensors if s['name'] == name), None)
                 if target:
                     val_raw = target['value']
@@ -6524,8 +6999,6 @@ def api_sensor_history_detail():
             break
 
     conn.close()
-
-    if not raw_series: return jsonify({'times': [], 'values': [], 'unit': unit})
 
     if not raw_series: return jsonify({'times': [], 'values': [], 'unit': unit})
 

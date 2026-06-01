@@ -93,18 +93,21 @@ GPU 监控通过可选的 `gpu_agent.py` 采集远端或虚拟机内的 NVIDIA �
 IPMI_WEB 会长期写入历史数据，因此必须主动控制数据库体积。当前策略包括：
 
 - 常规历史表按设置中的保留天数清理。
-- 审计日志按自然日压缩归档，归档内容仍可在日志页和导出接口中读取。
+- 传感器全量历史保留近 6 小时热表，较旧数据按小时压缩归档；归档内容仍可在传感器详情曲线和导出接口中读取。
+- 审计日志按自然日压缩归档，归档使用更紧凑的列式结构，仍兼容旧归档并可在日志页和导出接口中读取。
 - 新写入的压缩数据带格式标记，优先使用高压缩比 LZMA，旧 zlib 数据仍可兼容读取。
 - 设置 -> 存储管理中可以查看 `data.db` 文件体积、已存储天数、磁盘剩余空间和 SQLite 可回收空间。
-- 低磁盘自动回收默认关闭。只有管理员在存储管理里显式打开后，系统才会在磁盘剩余空间低于 800MB 时执行自动处理。
-- 自动处理会先尝试 SQLite WAL checkpoint 和安全 `VACUUM`，把数据库内部 freelist 真正归还给文件系统；如果空间已恢复，不会删除历史记录。
+- SQLite 可回收空间会由后台维护自动压缩；达到 16MB 阈值且磁盘空间足够时才执行，避免频繁阻塞数据库。
+- 低磁盘自动删除默认关闭。只有管理员在存储管理里显式打开后，系统才会在磁盘剩余空间低于 800MB 时删除历史数据。
+- 低磁盘处理会先尝试 SQLite WAL checkpoint 和安全 `VACUUM`，把数据库内部 freelist 真正归还给文件系统；如果空间已恢复，不会删除历史记录。
 - 只有在安全回收仍不足时，才会按最早自然日流式丢弃保护窗口之外的历史数据。
 - 自动删除至少保护最近 7 天，并且会同时尊重当前数据保留期；单次最多处理 1 个自然日，随后进入冷却期。
 - 如果 SQLite 无法安全整理，或删除后文件系统可用空间没有明显增加，系统会熔断后续自动删除并写入保护日志。
+- 审计归档、传感器归档、SQLite 压缩和保留期清理都会写入系统审计摘要，日志折叠状态下也能看出处理内容。
 - 普通低磁盘清理写 INFO，不触发红点；只有确实丢弃历史审计日志时才写 WARN 并点亮提醒红点。
 
 > [!NOTE]
-> 如果看到 `data.db` 文件很大，但存储管理里的“SQLite 可回收空间”也很大，通常说明大量页面已经在数据库内部空闲。开启低磁盘自动回收后，在磁盘低于阈值时系统会优先尝试整理数据库文件，而不是先删除更多历史记录。
+> 如果看到 `data.db` 文件很大，但存储管理里的“SQLite 可回收空间”也很大，通常说明大量页面已经在数据库内部空闲。后台维护会在达到阈值且空间足够时自动整理数据库文件；“低磁盘自动删除”只控制磁盘不足时是否允许删除更早的历史记录。
 
 ### FRP、反向代理和真实 IP
 
@@ -141,8 +144,12 @@ flowchart LR
     GPUWorker --> DB
 
     Energy["维护线程"] --> Archive["审计日志自然日压缩归档"]
+    Energy --> SensorArchive["传感器小时压缩归档"]
+    Energy --> Vacuum["SQLite 自动压缩"]
     Energy --> Prune["低磁盘按最早自然日清理"]
     Archive --> DB
+    SensorArchive --> DB
+    Vacuum --> DB
     Prune --> DB
 
     Scheduler["报告调度器"] --> Mail["SMTP / MTA 邮件"]
@@ -158,7 +165,9 @@ flowchart TD
 
     Hot --> Retention["保留期清理"]
     Hot --> AuditArchive["审计日志自然日归档"]
+    Hot --> SensorArchive["传感器小时归档"]
     AuditArchive --> Compressed[("压缩归档")]
+    SensorArchive --> Compressed
     Compressed --> Logs["日志页 / 导出"]
 
     Hot --> LowDisk{"剩余空间 < 800MB?"}
@@ -259,18 +268,21 @@ The UI language follows the browser on the first visit and can later be pinned t
 ### Storage model
 
 - Hot history tables are cleaned by the configured retention period.
-- Audit logs are compressed by local natural day and remain readable from the logs page and export API.
+- Full sensor history keeps the latest 6 hours in the hot table. Older samples are packed into hourly compressed archives that remain readable from sensor detail charts and exports.
+- Audit logs are compressed by local natural day using a more compact columnar layout, while existing archives remain compatible and readable from the logs page and export API.
 - New compressed payloads use a codec prefix and prefer high-ratio LZMA while retaining legacy zlib compatibility.
 - Settings -> Storage Management shows the `data.db` file size, stored data age, free disk space, and SQLite reclaimable space.
-- Low-disk auto reclaim is disabled by default. It only runs after an administrator explicitly enables it in Storage Management.
-- When free disk space drops below 800MB, the maintenance path first runs a WAL checkpoint and safe SQLite `VACUUM` to return freelist pages to the filesystem. If this restores the target free space, no history rows are deleted.
+- SQLite reclaimable space is compacted automatically by background maintenance once it reaches the 16MB threshold and enough disk space is available, avoiding frequent database stalls.
+- Low-disk auto delete is disabled by default. It only deletes history after an administrator explicitly enables it and free disk space drops below 800MB.
+- Low-disk handling first runs a WAL checkpoint and safe SQLite `VACUUM` to return freelist pages to the filesystem. If this restores the target free space, no history rows are deleted.
 - If safe reclaim is not enough, only complete natural days outside the protection window are discarded.
 - The deletion guard always protects at least the latest 7 days and the configured retention window. One run can process at most one natural day before the cooldown applies.
 - If SQLite cannot be compacted safely, or deleting rows does not noticeably increase filesystem free space, automatic deletion is blocked and a protection audit entry is written.
+- Audit archiving, sensor archiving, SQLite compaction, and retention cleanup all write system audit summaries that are understandable without expanding details.
 - Routine low-disk pruning writes INFO. It only writes WARN and wakes the red dot when historical audit logs are actually discarded.
 
 > [!NOTE]
-> A large `data.db` with a large “SQLite reclaimable space” value usually means many pages are already free inside SQLite. With low-disk auto reclaim enabled, IPMI_WEB tries to shrink the database file before deleting any additional history.
+> A large `data.db` with a large “SQLite reclaimable space” value usually means many pages are already free inside SQLite. Background maintenance compacts the database once the threshold is reached and enough disk space is available; “Low-disk Auto Delete” only controls whether older history may be deleted when disk space is actually low.
 
 ### English architecture
 
@@ -292,8 +304,12 @@ flowchart LR
     GPUWorker --> DB
 
     Maintenance["Maintenance Thread"] --> Archive["Daily Audit Archives"]
+    Maintenance --> SensorArchive["Hourly Sensor Archives"]
+    Maintenance --> Vacuum["SQLite Auto Compaction"]
     Maintenance --> Prune["Low Disk Prune"]
     Archive --> DB
+    SensorArchive --> DB
+    Vacuum --> DB
     Prune --> DB
 ```
 
