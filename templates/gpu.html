@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPU Monitoring - {{ server_name }} Ops</title>
+    <title>{{ t('gpu.title') }} - {{ server_name }} Ops</title>
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
@@ -55,7 +55,7 @@
         <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
             <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
             <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden">New Logs</span>
+                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
             </span>
         </a>
         <div class="navbar-nav flex-row me-auto ms-4">
@@ -64,26 +64,26 @@
             <a class="nav-link active me-3" href="/gpu">GPU</a>
             <a class="nav-link" href="/history">HIST</a>
         </div>
-        <a href="/logout" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
     </div>
 </nav>
 
 <div class="container-fluid mt-4 px-3 px-md-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="h3 mb-1"><i class="fas fa-microchip me-2"></i>GPU 监控</h2>
+            <h2 class="h3 mb-1"><i class="fas fa-microchip me-2"></i><span data-i18n="gpu.title">{{ t('gpu.title') }}</span></h2>
             <div class="small">
-                <span id="agent-status" class="badge bg-secondary">Checking...</span>
-                <span class="text-muted ms-2">最后更新: <span id="last-update">--</span></span>
+                <span id="agent-status" class="badge bg-secondary" data-i18n="gpu.checking">{{ t('gpu.checking') }}</span>
+                <span class="text-muted ms-2"><span data-i18n="gpu.lastUpdate">{{ t('gpu.lastUpdate') }}</span>: <span id="last-update">--</span></span>
             </div>
         </div>
         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#gpuConfigModal">
-            <i class="fas fa-cog me-1"></i> 配置
+            <i class="fas fa-cog me-1"></i><span data-i18n="gpu.configure">{{ t('gpu.configure') }}</span>
         </button>
     </div>
 
     <div id="offline-msg" class="offline-overlay">
-        <i class="fas fa-exclamation-triangle me-2"></i> GPU Agent Offline
+        <i class="fas fa-exclamation-triangle me-2"></i><span data-i18n="gpu.agentOffline">{{ t('gpu.agentOffline') }}</span>
     </div>
 
     <div id="gpu-container" class="row g-4 flex-grow-1">
@@ -96,33 +96,37 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title"><i class="fas fa-cog me-2"></i>GPU Agent 配置</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ t('gpu.agentConfig') }}</span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
                 <form id="gpuConfigForm">
                     <div class="mb-3">
-                        <label class="form-label text-muted">Agent 主机地址 (Host)</label>
+                        <label class="form-label text-muted" data-i18n="gpu.host">{{ t('gpu.host') }}</label>
                         <input type="text" class="form-control bg-dark text-white border-secondary" id="config-host" placeholder="127.0.0.1">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted">Agent 端口 (Port)</label>
+                        <label class="form-label text-muted" data-i18n="gpu.port">{{ t('gpu.port') }}</label>
                         <input type="number" class="form-control bg-dark text-white border-secondary" id="config-port" placeholder="9999">
                     </div>
                     <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="config-enabled">
-                        <label class="form-check-label" for="config-enabled">启用 GPU 监控</label>
+                        <label class="form-check-label" for="config-enabled" data-i18n="gpu.enabled">{{ t('gpu.enabled') }}</label>
                     </div>
                 </form>
             </div>
             <div class="modal-footer border-top border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()">保存配置</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.cancel">{{ t('app.cancel') }}</button>
+                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()" data-i18n="app.save">{{ t('app.save') }}</button>
             </div>
         </div>
     </div>
 </div>
 
+<script>
+    window.I18N_MESSAGES = {{ i18n_messages | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script>
     function loadGpuConfig() {
         fetch('/api/config/gpu')
@@ -151,7 +155,7 @@
                 modal.hide();
                 refreshGpuData();
             } else {
-                alert('保存失败: ' + (d.message || '未知错误'));
+                alert(t('gpu.saveFailed', { message: d.message || t('logs.unknown') }));
             }
         });
     }
@@ -170,20 +174,20 @@
                 lastUpdate.innerText = new Date().toLocaleTimeString();
 
                 if (!data.online) {
-                    statusBadge.innerText = 'Offline';
+                    statusBadge.innerText = t('gpu.offline');
                     statusBadge.className = 'badge bg-danger';
                     container.classList.add('agent-offline');
                     offlineMsg.style.display = 'block';
                     return;
                 }
 
-                statusBadge.innerText = 'Online';
+                statusBadge.innerText = t('gpu.online');
                 statusBadge.className = 'badge bg-success';
                 container.classList.remove('agent-offline');
                 offlineMsg.style.display = 'none';
 
                 if (!data.gpus || data.gpus.length === 0) {
-                    container.innerHTML = '<div class="col-12 text-center text-muted py-5">未发现 GPU 设备</div>';
+                    container.innerHTML = `<div class="col-12 text-center text-muted py-5">${t('gpu.notFound')}</div>`;
                     lastGpuCount = 0;
                     return;
                 }
@@ -202,7 +206,7 @@
                                 <div class="card-body">
                                     <div class="mb-3">
                                         <div class="d-flex justify-content-between gpu-label">
-                                            <span>GPU 负载</span>
+                                            <span>${t('gpu.load')}</span>
                                             <span class="gpu-value" id="gpu-${index}-util-val">--%</span>
                                         </div>
                                         <div class="progress">
@@ -211,7 +215,7 @@
                                     </div>
                                     <div class="mb-3">
                                         <div class="d-flex justify-content-between gpu-label">
-                                            <span>显存活动</span>
+                                            <span>${t('gpu.memoryActivity')}</span>
                                             <span class="gpu-value" id="gpu-${index}-mem-util-val">--%</span>
                                         </div>
                                         <div class="progress">
@@ -223,7 +227,7 @@
                                     </div>
                                     <div class="mb-0">
                                         <div class="d-flex justify-content-between gpu-label">
-                                            <span>功耗</span>
+                                            <span>${t('gpu.power')}</span>
                                             <span class="gpu-value" id="gpu-${index}-pwr-val">--W</span>
                                         </div>
                                         <div class="progress">
@@ -232,10 +236,10 @@
                                     </div>
                                 </div>
                                 <div class="info-grid">
-                                    <div class="info-item"><span class="info-label">核心频率</span><span class="info-value" id="gpu-${index}-core-clock">-- MHz</span></div>
-                                    <div class="info-item"><span class="info-label">显存频率</span><span class="info-value" id="gpu-${index}-mem-clock">-- MHz</span></div>
-                                    <div class="info-item"><span class="info-label">风扇转速</span><span class="info-value" id="gpu-${index}-fan">--%</span></div>
-                                    <div class="info-item"><span class="info-label">ECC 错误</span><span class="info-value" id="gpu-${index}-ecc">0</span></div>
+                                    <div class="info-item"><span class="info-label">${t('gpu.coreClock')}</span><span class="info-value" id="gpu-${index}-core-clock">-- MHz</span></div>
+                                    <div class="info-item"><span class="info-label">${t('gpu.memoryClock')}</span><span class="info-value" id="gpu-${index}-mem-clock">-- MHz</span></div>
+                                    <div class="info-item"><span class="info-label">${t('gpu.fanSpeed')}</span><span class="info-value" id="gpu-${index}-fan">--%</span></div>
+                                    <div class="info-item"><span class="info-label">${t('gpu.eccErrors')}</span><span class="info-value" id="gpu-${index}-ecc">0</span></div>
                                 </div>
                                 <div class="p-3 border-top border-secondary" style="height: 150px;">
                                     <canvas id="gpu-chart-${index}"></canvas>
@@ -283,7 +287,7 @@
             })
             .catch(err => {
                 console.error('GPU Status Error:', err);
-                document.getElementById('agent-status').innerText = 'Error';
+                document.getElementById('agent-status').innerText = t('gpu.error');
                 document.getElementById('agent-status').className = 'badge bg-warning';
             });
     }

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>系统日志 - {{ server_name }} Ops</title>
+    <title>{{ t('logs.title') }} - {{ server_name }} Ops</title>
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
@@ -87,7 +87,7 @@
             font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
         }
         
-n        /* 标签样式 */
+        /* 标签样式 */
         .cli-tag {
             display: inline-flex;
             align-items: center;
@@ -460,7 +460,7 @@ n        /* 标签样式 */
             <i class="fas fa-shield-alt me-2 text-warning"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
         </a>
         <div class="navbar-nav flex-row ms-auto">
-            <a class="btn btn-outline-secondary" href="/hardware"><i class="fas fa-arrow-left"></i></a>
+            <a class="btn btn-outline-secondary" href="/hardware" data-i18n-title="app.back" title="{{ t('app.back') }}"><i class="fas fa-arrow-left"></i></a>
         </div>
     </div>
 </nav>
@@ -471,9 +471,9 @@ n        /* 标签样式 */
         <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body">
-                    <i class="fas fa-check-circle me-2"></i> <span id="toast-msg">操作成功</span>
+                    <i class="fas fa-check-circle me-2"></i> <span id="toast-msg" data-i18n="app.operationSuccess">{{ t('app.operationSuccess') }}</span>
                 </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
         </div>
     </div>
@@ -484,11 +484,11 @@ n        /* 标签样式 */
             <div class="modal-content bg-dark border-danger shadow-lg">
                 <div class="modal-body p-4 text-center">
                     <i class="fas fa-exclamation-circle text-danger fs-1 mb-3" id="confirm-icon"></i>
-                    <h5 class="fw-bold" id="confirm-title">确认删除此规则？</h5>
-                    <p class="text-muted small mb-4" id="confirm-msg">删除后将无法恢复</p>
+                    <h5 class="fw-bold" id="confirm-title" data-i18n="logs.confirmDeleteRuleTitle">{{ t('logs.confirmDeleteRuleTitle') }}</h5>
+                    <p class="text-muted small mb-4" id="confirm-msg" data-i18n="logs.deleteUnrecoverable">{{ t('logs.deleteUnrecoverable') }}</p>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-secondary flex-grow-1" id="confirm-cancel-btn" data-bs-dismiss="modal">取消</button>
-                        <button class="btn btn-danger flex-grow-1 fw-bold" id="confirm-execute-btn">确认删除</button>
+                        <button class="btn btn-secondary flex-grow-1" id="confirm-cancel-btn" data-bs-dismiss="modal" data-i18n="app.cancel">{{ t('app.cancel') }}</button>
+                        <button class="btn btn-danger flex-grow-1 fw-bold" id="confirm-execute-btn" data-i18n="logs.confirmDelete">{{ t('logs.confirmDelete') }}</button>
                     </div>
                 </div>
             </div>
@@ -501,11 +501,11 @@ n        /* 标签样式 */
             <div class="modal-content bg-dark border-warning shadow-lg">
                 <div class="modal-body p-4 text-center">
                     <i class="fas fa-exclamation-triangle text-warning fs-1 mb-3"></i>
-                    <h5 class="fw-bold">未保存的修改</h5>
-                    <p class="text-muted small mb-4">您有未保存的设置，确定要放弃修改并关闭吗？</p>
+                    <h5 class="fw-bold" data-i18n="settings.unsavedTitle">{{ t('settings.unsavedTitle') }}</h5>
+                    <p class="text-muted small mb-4" data-i18n="settings.unsavedBody">{{ t('settings.unsavedBody') }}</p>
                     <div class="d-grid gap-2">
-                        <button class="btn btn-warning fw-bold" id="discard-confirm-btn">确认放弃</button>
-                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">继续编辑</button>
+                        <button class="btn btn-warning fw-bold" id="discard-confirm-btn" data-i18n="settings.discard">{{ t('settings.discard') }}</button>
+                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="settings.keepEditing">{{ t('settings.keepEditing') }}</button>
                     </div>
                 </div>
             </div>
@@ -517,12 +517,12 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i>更新日志</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i><span data-i18n="logs.changelogTitle">{{ t('logs.changelogTitle') }}</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div id="release-notes-content" class="small text-light d-flex flex-column gap-3">
-                        <span class="text-muted">加载中...</span>
+                        <span class="text-muted" data-i18n="app.loading">{{ t('app.loading') }}</span>
                     </div>
                 </div>
             </div>
@@ -534,33 +534,33 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary py-2">
-                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i>系统设置</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i><span data-i18n="settings.title">{{ t('settings.title') }}</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-0 d-flex" style="min-height: 450px;">
                     <!-- 左侧侧边栏 Tab -->
                     <div class="border-end border-secondary bg-black bg-opacity-25" style="width: 160px; flex-shrink: 0;">
                         <div class="nav flex-column nav-pills p-2" id="settings-tabs" role="tablist">
                             <button class="nav-link active text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-display" type="button">
-                                <i class="fas fa-desktop me-2"></i> 图表设置
+                                <i class="fas fa-desktop me-2"></i> <span data-i18n="settings.display">{{ t('settings.display') }}</span>
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-storage" type="button">
-                                <i class="fas fa-database me-2"></i> 存储管理
+                                <i class="fas fa-database me-2"></i> <span data-i18n="settings.storage">{{ t('settings.storage') }}</span>
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-alerts" type="button">
-                                <i class="fas fa-bell me-2"></i> 告警规则
+                                <i class="fas fa-bell me-2"></i> <span data-i18n="settings.alerts">{{ t('settings.alerts') }}</span>
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-summary" type="button">
-                                <i class="fas fa-file-alt me-2"></i> 概览报告
+                                <i class="fas fa-file-alt me-2"></i> <span data-i18n="settings.summary">{{ t('settings.summary') }}</span>
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-email" type="button">
-                                <i class="fas fa-envelope me-2"></i> 邮件通知
+                                <i class="fas fa-envelope me-2"></i> <span data-i18n="settings.email">{{ t('settings.email') }}</span>
                             </button>
                             <button class="nav-link text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-certificate" type="button">
-                                <i class="fas fa-certificate me-2"></i> 证书管理
+                                <i class="fas fa-certificate me-2"></i> <span data-i18n="settings.certificate">{{ t('settings.certificate') }}</span>
                             </button>
                             <button class="nav-link text-start py-3 mb-1 mt-auto border-top border-secondary border-opacity-25 rounded-0" data-bs-toggle="pill" data-bs-target="#tab-about" type="button">
-                                <i class="fas fa-info-circle me-2"></i> 关于项目
+                                <i class="fas fa-info-circle me-2"></i> <span data-i18n="settings.about">{{ t('settings.about') }}</span>
                             </button>
                         </div>
                     </div>
@@ -568,40 +568,48 @@ n        /* 标签样式 */
                     <div class="tab-content p-4 flex-grow-1 overflow-auto" style="max-height: 550px;">
                         <!-- 图表设置 Tab -->
                         <div class="tab-pane fade show active" id="tab-display">
-                            <h6 class="text-primary mb-4 fw-bold">基础设置</h6>
+                            <h6 class="text-primary mb-4 fw-bold" data-i18n="settings.basic">{{ t('settings.basic') }}</h6>
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">服务器名称</label>
-                                <input type="text" id="set-server-name" class="form-control bg-dark border-secondary text-light" placeholder="例如: MY_SERVER" oninput="markChanged()">
+                                <label class="form-label text-muted small fw-bold" data-i18n="settings.serverName">{{ t('settings.serverName') }}</label>
+                                <input type="text" id="set-server-name" class="form-control bg-dark border-secondary text-light" placeholder="{{ t('settings.serverNamePlaceholder') }}" data-i18n-placeholder="settings.serverNamePlaceholder" oninput="markChanged()">
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold" for="set-ui-language" data-i18n="app.language">{{ t('app.language') }}</label>
+                                <select id="set-ui-language" class="form-select bg-dark border-secondary text-light" onchange="markChanged()">
+                                    <option value="zh-CN" data-i18n="app.simplifiedChinese">{{ t('app.simplifiedChinese') }}</option>
+                                    <option value="en" data-i18n="app.english">{{ t('app.english') }}</option>
+                                </select>
+                                <div class="form-text text-muted-plus small mt-2" data-i18n="app.languageHelp">{{ t('app.languageHelp') }}</div>
                             </div>
 
-                            <h6 class="text-primary mb-4 fw-bold">采集延迟色彩阈值</h6>
+                            <h6 class="text-primary mb-4 fw-bold" data-i18n="settings.delayThresholds">{{ t('settings.delayThresholds') }}</h6>
                             <div class="row g-3 mb-5">
                                 <div class="col-md-6">
-                                    <label class="form-label text-warning small fw-bold">警告阈值 (WARN) - 黄色</label>
+                                    <label class="form-label text-warning small fw-bold" data-i18n="settings.warnThreshold">{{ t('settings.warnThreshold') }}</label>
                                     <div class="input-group input-group-sm">
                                         <input type="number" id="set-warn" class="form-control bg-dark border-secondary text-light" step="0.1">
-                                        <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                                        <span class="input-group-text bg-dark border-secondary text-muted" data-i18n="settings.seconds">{{ t('settings.seconds') }}</span>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-danger small fw-bold">危险阈值 (DANGER) - 红色</label>
+                                    <label class="form-label text-danger small fw-bold" data-i18n="settings.dangerThreshold">{{ t('settings.dangerThreshold') }}</label>
                                     <div class="input-group input-group-sm">
                                         <input type="number" id="set-danger" class="form-control bg-dark border-secondary text-light" step="0.1">
-                                        <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                                        <span class="input-group-text bg-dark border-secondary text-muted" data-i18n="settings.seconds">{{ t('settings.seconds') }}</span>
                                     </div>
                                 </div>
                             </div>
                             
-                            <h6 class="text-primary mb-4 fw-bold">页面看板小时级设置</h6>
+                            <h6 class="text-primary mb-4 fw-bold" data-i18n="settings.dashboardHours">{{ t('settings.dashboardHours') }}</h6>
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">Hardware 页面选项</label>
+                                <label class="form-label text-muted small fw-bold" data-i18n="settings.hardwareOptions">{{ t('settings.hardwareOptions') }}</label>
                                 <div id="check-hw-hours" class="d-flex flex-wrap gap-2">
                                     <!-- 动态生成勾选框 -->
                                 </div>
-                                <div class="form-text text-muted-plus small mt-2">>24H 将自动转换为天 (D) 展示</div>
+                                <div class="form-text text-muted-plus small mt-2" data-i18n="settings.daysHint">{{ t('settings.daysHint') }}</div>
                             </div>
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">History 页面选项</label>
+                                <label class="form-label text-muted small fw-bold" data-i18n="settings.historyOptions">{{ t('settings.historyOptions') }}</label>
                                 <div id="check-hist-hours" class="d-flex flex-wrap gap-2">
                                     <!-- 动态生成勾选框 -->
                                 </div>
@@ -610,35 +618,35 @@ n        /* 标签样式 */
 
                         <!-- 存储管理 Tab -->
                         <div class="tab-pane fade" id="tab-storage">
-                            <h6 class="text-primary mb-4 fw-bold">数据保留策略</h6>
+                            <h6 class="text-primary mb-4 fw-bold" data-i18n="settings.storagePolicy">{{ t('settings.storagePolicy') }}</h6>
                             <div class="alert alert-info bg-info bg-opacity-10 border-info border-opacity-25 py-3 mb-4">
                                 <i class="fas fa-info-circle me-2"></i>
-                                <span class="small text-info">缩短保留期后将有 3 天的“反悔期”。调回原时长可取消待处理的删除任务。</span>
+                                <span class="small text-info" data-i18n="settings.retentionGrace">{{ t('settings.retentionGrace') }}</span>
                             </div>
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">数据保留时长 (天)</label>
+                                <label class="form-label text-muted small fw-bold" data-i18n="settings.retentionDays">{{ t('settings.retentionDays') }}</label>
                                 <div class="input-group">
                                     <input type="number" id="set-retention" class="form-control bg-dark border-secondary text-light" min="7">
-                                    <span class="input-group-text bg-dark border-secondary text-muted">天</span>
+                                    <span class="input-group-text bg-dark border-secondary text-muted" data-i18n="settings.days">{{ t('settings.days') }}</span>
                                 </div>
                                 <div class="mt-3 d-flex justify-content-between align-items-center">
                                     <div id="retention-status"></div>
                                     <div class="text-muted small">
-                                        <i class="fas fa-hdd me-1"></i>数据库占用: <span id="db-size-val" class="text-light fw-bold">--</span>
+                                        <i class="fas fa-hdd me-1"></i><span data-i18n="settings.dbUsage">{{ t('settings.dbUsage') }}</span>: <span id="db-size-val" class="text-light fw-bold">--</span>
                                         <span class="mx-2 text-secondary">|</span>
-                                        <i class="fas fa-calendar-alt me-1"></i>已存储: <span id="stored-days-val" class="text-light fw-bold">--</span>
+                                        <i class="fas fa-calendar-alt me-1"></i><span data-i18n="settings.stored">{{ t('settings.stored') }}</span>: <span id="stored-days-val" class="text-light fw-bold">--</span>
                                         <span class="mx-2 text-secondary">|</span>
-                                        <i class="fas fa-save me-1"></i>磁盘剩余: <span id="disk-free-val" class="text-light fw-bold">--</span>
+                                        <i class="fas fa-save me-1"></i><span data-i18n="settings.diskFree">{{ t('settings.diskFree') }}</span>: <span id="disk-free-val" class="text-light fw-bold">--</span>
                                     </div>
                                 </div>
                             </div>
                             <hr class="border-secondary opacity-25 my-4">
-                            <h6 class="text-primary mb-3 fw-bold">低磁盘自动回收</h6>
+                            <h6 class="text-primary mb-3 fw-bold" data-i18n="settings.lowDiskAutoReclaim">{{ t('settings.lowDiskAutoReclaim') }}</h6>
                             <div class="bg-black bg-opacity-25 border border-secondary border-opacity-25 rounded p-3">
                                 <div class="d-flex justify-content-between align-items-center gap-3">
                                     <div>
-                                        <div class="fw-bold text-light">允许空间不足时自动删除最早历史日</div>
-                                        <div class="small text-muted mt-1">仅删除完整落在保护窗口之外的自然日；删除前后会尝试回收 SQLite 可用空间，无法安全回收时自动暂停。</div>
+                                        <div class="fw-bold text-light" data-i18n="settings.lowDiskAllow">{{ t('settings.lowDiskAllow') }}</div>
+                                        <div class="small text-muted mt-1" data-i18n="settings.lowDiskHelp">{{ t('settings.lowDiskHelp') }}</div>
                                     </div>
                                     <div class="form-check form-switch mb-0">
                                         <input class="form-check-input" type="checkbox" id="low-disk-auto-prune" onchange="markChanged()">
@@ -646,11 +654,11 @@ n        /* 标签样式 */
                                 </div>
                                 <div class="row g-2 mt-3 small">
                                     <div class="col-md-6 d-flex justify-content-between">
-                                        <span class="text-muted">SQLite 可回收空间</span>
+                                        <span class="text-muted" data-i18n="settings.sqliteReclaimable">{{ t('settings.sqliteReclaimable') }}</span>
                                         <span id="db-reclaimable-val" class="text-light fw-bold">--</span>
                                     </div>
                                     <div class="col-md-6 d-flex justify-content-between">
-                                        <span class="text-muted">自动删除保护状态</span>
+                                        <span class="text-muted" data-i18n="settings.autoDeleteProtect">{{ t('settings.autoDeleteProtect') }}</span>
                                         <span id="low-disk-protect-val" class="text-light fw-bold">--</span>
                                     </div>
                                 </div>
@@ -660,9 +668,9 @@ n        /* 标签样式 */
                         <!-- 告警规则 Tab -->
                         <div class="tab-pane fade" id="tab-alerts">
                             <div class="d-flex justify-content-between align-items-center mb-4">
-                                <h6 class="text-primary mb-0 fw-bold">自定义告警</h6>
+                                <h6 class="text-primary mb-0 fw-bold" data-i18n="settings.customAlerts">{{ t('settings.customAlerts') }}</h6>
                                 <button class="btn btn-sm btn-outline-primary" onclick="addNewAlertRule()">
-                                    <i class="fas fa-plus me-1"></i>添加规则
+                                    <i class="fas fa-plus me-1"></i><span data-i18n="settings.addRule">{{ t('settings.addRule') }}</span>
                                 </button>
                             </div>
                             <div id="alert-rules-container" class="d-flex flex-column gap-2 pb-3">
@@ -672,14 +680,14 @@ n        /* 标签样式 */
 
                         <!-- 概览报告 Tab -->
                         <div class="tab-pane fade" id="tab-summary">
-                            <h6 class="text-primary mb-4 fw-bold">定期概览报告</h6>
+                            <h6 class="text-primary mb-4 fw-bold" data-i18n="settings.summarySchedule">{{ t('settings.summarySchedule') }}</h6>
                             
                             <div class="mb-4">
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="summary-enabled" onchange="handleSummaryEnableChange(this.checked)">
-                                    <label class="form-check-label fw-bold text-light" for="summary-enabled">开启定期报告计划</label>
+                                    <label class="form-check-label fw-bold text-light" for="summary-enabled" data-i18n="settings.summaryEnable">{{ t('settings.summaryEnable') }}</label>
                                 </div>
-                                <div class="form-text text-muted small">开启后将按设定的时间点发送系统运行概览。</div>
+                                <div class="form-text text-muted small" data-i18n="settings.summaryEnableHelp">{{ t('settings.summaryEnableHelp') }}</div>
                             </div>
 
                             <hr class="border-secondary opacity-25 mb-4">
@@ -687,12 +695,12 @@ n        /* 标签样式 */
                             <!-- 日报设置 -->
                             <div class="mb-4 p-3 bg-black bg-opacity-25 rounded border border-secondary border-opacity-25">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <div class="fw-bold text-light"><i class="fas fa-calendar-day me-2 text-info"></i>日报设置</div>
+                                    <div class="fw-bold text-light"><i class="fas fa-calendar-day me-2 text-info"></i><span data-i18n="settings.daily">{{ t('settings.daily') }}</span></div>
                                     <div class="d-flex align-items-center gap-3">
                                         <button class="btn btn-link btn-sm text-info p-0 text-decoration-none fw-bold d-flex align-items-center" onclick="sendManualSummary('daily', this)">
                                             <i class="fas fa-paper-plane me-1 btn-icon"></i>
                                             <i class="fas fa-spinner fa-spin me-1 d-none btn-spinner"></i>
-                                            <span class="btn-text">立刻发送</span>
+                                            <span class="btn-text" data-i18n="settings.sendNow">{{ t('settings.sendNow') }}</span>
                                         </button>
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" id="summary-daily-enabled" onchange="markChanged()">
@@ -701,7 +709,7 @@ n        /* 标签样式 */
                                 </div>
                                 <div class="row g-3">
                                     <div class="col-12">
-                                        <label class="form-label text-muted small">每日发送时间</label>
+                                        <label class="form-label text-muted small" data-i18n="settings.dailyTime">{{ t('settings.dailyTime') }}</label>
                                         <input type="time" id="summary-daily-time" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
                                     </div>
                                 </div>
@@ -710,12 +718,12 @@ n        /* 标签样式 */
                             <!-- 周报设置 -->
                             <div class="mb-4 p-3 bg-black bg-opacity-25 rounded border border-secondary border-opacity-25">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <div class="fw-bold text-light"><i class="fas fa-calendar-week me-2 text-warning"></i>周报设置</div>
+                                    <div class="fw-bold text-light"><i class="fas fa-calendar-week me-2 text-warning"></i><span data-i18n="settings.weekly">{{ t('settings.weekly') }}</span></div>
                                     <div class="d-flex align-items-center gap-3">
                                         <button class="btn btn-link btn-sm text-warning p-0 text-decoration-none fw-bold d-flex align-items-center" onclick="sendManualSummary('weekly', this)">
                                             <i class="fas fa-paper-plane me-1 btn-icon"></i>
                                             <i class="fas fa-spinner fa-spin me-1 d-none btn-spinner"></i>
-                                            <span class="btn-text">立刻发送</span>
+                                            <span class="btn-text" data-i18n="settings.sendNow">{{ t('settings.sendNow') }}</span>
                                         </button>
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" id="summary-weekly-enabled" onchange="markChanged()">
@@ -724,19 +732,19 @@ n        /* 标签样式 */
                                 </div>
                                 <div class="row g-3">
                                     <div class="col-md-6">
-                                        <label class="form-label text-muted small">每周发送日</label>
+                                        <label class="form-label text-muted small" data-i18n="settings.weeklyDay">{{ t('settings.weeklyDay') }}</label>
                                         <select id="summary-weekly-day" class="form-select form-select-sm bg-dark border-secondary text-light" onchange="markChanged()">
-                                            <option value="1">周一</option>
-                                            <option value="2">周二</option>
-                                            <option value="3">周三</option>
-                                            <option value="4">周四</option>
-                                            <option value="5">周五</option>
-                                            <option value="6">周六</option>
-                                            <option value="0">周日</option>
+                                            <option value="1" data-i18n="settings.weekday.1">{{ t('settings.weekday.1') }}</option>
+                                            <option value="2" data-i18n="settings.weekday.2">{{ t('settings.weekday.2') }}</option>
+                                            <option value="3" data-i18n="settings.weekday.3">{{ t('settings.weekday.3') }}</option>
+                                            <option value="4" data-i18n="settings.weekday.4">{{ t('settings.weekday.4') }}</option>
+                                            <option value="5" data-i18n="settings.weekday.5">{{ t('settings.weekday.5') }}</option>
+                                            <option value="6" data-i18n="settings.weekday.6">{{ t('settings.weekday.6') }}</option>
+                                            <option value="0" data-i18n="settings.weekday.0">{{ t('settings.weekday.0') }}</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label text-muted small">发送时间</label>
+                                        <label class="form-label text-muted small" data-i18n="settings.sendTime">{{ t('settings.sendTime') }}</label>
                                         <input type="time" id="summary-weekly-time" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
                                     </div>
                                 </div>
@@ -745,12 +753,12 @@ n        /* 标签样式 */
                             <!-- 自定义报告 -->
                             <div class="mb-4 p-3 bg-black bg-opacity-25 rounded border border-secondary border-opacity-25">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <div class="fw-bold text-light"><i class="fas fa-clock me-2 text-success"></i>自定义间隔报告</div>
+                                    <div class="fw-bold text-light"><i class="fas fa-clock me-2 text-success"></i><span data-i18n="settings.customInterval">{{ t('settings.customInterval') }}</span></div>
                                     <div class="d-flex align-items-center gap-3">
                                         <button class="btn btn-link btn-sm text-success p-0 text-decoration-none fw-bold d-flex align-items-center" onclick="sendManualSummary('custom', this)">
                                             <i class="fas fa-paper-plane me-1 btn-icon"></i>
                                             <i class="fas fa-spinner fa-spin me-1 d-none btn-spinner"></i>
-                                            <span class="btn-text">立刻发送</span>
+                                            <span class="btn-text" data-i18n="settings.sendNow">{{ t('settings.sendNow') }}</span>
                                         </button>
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" id="summary-custom-enabled" onchange="markChanged()">
@@ -759,10 +767,10 @@ n        /* 标签样式 */
                                 </div>
                                 <div class="row g-3">
                                     <div class="col-12">
-                                        <label class="form-label text-muted small">发送间隔 (小时)</label>
+                                        <label class="form-label text-muted small" data-i18n="settings.sendIntervalHours">{{ t('settings.sendIntervalHours') }}</label>
                                         <div class="input-group input-group-sm">
                                             <input type="number" id="summary-custom-hours" class="form-control bg-dark border-secondary text-light" min="0.1" step="0.1" max="720" oninput="markChanged()">
-                                            <span class="input-group-text bg-dark border-secondary text-muted">小时</span>
+                                            <span class="input-group-text bg-dark border-secondary text-muted" data-i18n="settings.hours">{{ t('settings.hours') }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -771,12 +779,12 @@ n        /* 标签样式 */
 
                         <!-- 邮件通知 Tab -->
                         <div class="tab-pane fade" id="tab-email">
-                            <h6 class="text-primary mb-4 fw-bold">邮件发信配置</h6>
+                            <h6 class="text-primary mb-4 fw-bold" data-i18n="logs.emailConfig">{{ t('logs.emailConfig') }}</h6>
 
                             <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">收件人邮箱</label>
+                                <label class="form-label text-muted small fw-bold" data-i18n="logs.emailReceiver">{{ t('logs.emailReceiver') }}</label>
                                 <input type="text" id="email-receiver" class="form-control bg-dark border-secondary text-light" placeholder="a@ex.com, b@ex.com" oninput="markChanged()">
-                                <div class="form-text text-muted small">支持多个邮箱，使用逗号或分号分隔</div>
+                                <div class="form-text text-muted small" data-i18n="logs.emailReceiverHelp">{{ t('logs.emailReceiverHelp') }}</div>
                             </div>
 
                             <!-- 展开式详细配置 (二级菜单效果) -->
@@ -784,59 +792,59 @@ n        /* 标签样式 */
                                 <div class="accordion-item bg-transparent border-bottom border-secondary border-opacity-25">
                                     <h2 class="accordion-header">
                                         <button class="accordion-button collapsed bg-transparent text-primary px-0 py-3 shadow-none fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#email-advanced-config">
-                                            <i class="fas fa-tools me-2"></i> 发信服务器配置 (SMTP/MTA)
+                                            <i class="fas fa-tools me-2"></i><span data-i18n="logs.emailServerConfig">{{ t('logs.emailServerConfig') }}</span>
                                         </button>
                                     </h2>
                                     <div id="email-advanced-config" class="accordion-collapse collapse" data-bs-parent="#emailDetailAccordion">
                                         <div class="accordion-body px-0 py-3">
                                             <div class="mb-4">
-                                                <label class="form-label text-muted small fw-bold">发信模式</label>
+                                                <label class="form-label text-muted small fw-bold" data-i18n="logs.emailMode">{{ t('logs.emailMode') }}</label>
                                                 <div class="d-flex gap-2">
                                                     <input type="radio" class="btn-check" name="email_mode" id="email-mode-mta" value="mta" onchange="toggleEmailMode('mta'); markChanged()">
-                                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-mta">系统 MTA</label>
+                                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-mta" data-i18n="logs.systemMta">{{ t('logs.systemMta') }}</label>
                                                     
                                                     <input type="radio" class="btn-check" name="email_mode" id="email-mode-smtp" value="smtp" onchange="toggleEmailMode('smtp'); markChanged()">
-                                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-smtp">外部 SMTP</label>
+                                                    <label class="btn btn-outline-secondary btn-sm flex-grow-1" for="email-mode-smtp" data-i18n="logs.externalSmtp">{{ t('logs.externalSmtp') }}</label>
                                                 </div>
                                             </div>
 
                                             <div id="mta-settings" class="mb-4">
                                                 <div class="alert alert-warning bg-warning bg-opacity-10 border-warning border-opacity-25 py-2 mb-0">
                                                     <i class="fas fa-info-circle me-2"></i>
-                                                    <span class="small text-warning">MTA 仅在 Linux 下可用。</span>
+                                                    <span class="small text-warning" data-i18n="logs.mtaLinuxOnly">{{ t('logs.mtaLinuxOnly') }}</span>
                                                 </div>
                                             </div>
 
                                             <div id="smtp-settings" class="d-none">
                                                 <div class="row g-2 mb-3">
                                                     <div class="col-md-8">
-                                                        <label class="form-label text-muted small fw-bold">SMTP 服务器</label>
+                                                        <label class="form-label text-muted small fw-bold" data-i18n="logs.smtpServer">{{ t('logs.smtpServer') }}</label>
                                                         <input type="text" id="smtp-server" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="smtp.example.com" oninput="markChanged()">
                                                     </div>
                                                     <div class="col-md-4">
-                                                        <label class="form-label text-muted small fw-bold">端口</label>
+                                                        <label class="form-label text-muted small fw-bold" data-i18n="logs.smtpPort">{{ t('logs.smtpPort') }}</label>
                                                         <input type="number" id="smtp-port" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="465" oninput="markChanged()">
                                                     </div>
                                                 </div>
                                                 <div class="mb-3">
-                                                    <label class="form-label text-muted small fw-bold">SMTP 账号</label>
+                                                    <label class="form-label text-muted small fw-bold" data-i18n="logs.smtpUser">{{ t('logs.smtpUser') }}</label>
                                                     <input type="text" id="smtp-user" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
                                                 </div>
                                                 <div class="mb-3">
-                                                    <label class="form-label text-muted small fw-bold">SMTP 密码 / 授权码</label>
+                                                    <label class="form-label text-muted small fw-bold" data-i18n="logs.smtpPassword">{{ t('logs.smtpPassword') }}</label>
                                                     <input type="password" id="smtp-pass" class="form-control form-control-sm bg-dark border-secondary text-light" oninput="markChanged()">
                                                 </div>
                                                 <div class="mb-3">
                                                     <div class="form-check form-switch">
                                                         <input class="form-check-input" type="checkbox" id="smtp-encryption" onchange="markChanged()">
-                                                        <label class="form-check-label small text-muted" for="smtp-encryption">启用 SSL/TLS 加密</label>
+                                                        <label class="form-check-label small text-muted" for="smtp-encryption" data-i18n="logs.smtpEncryption">{{ t('logs.smtpEncryption') }}</label>
                                                     </div>
                                                 </div>
                                             </div>
 
                                             <div class="mb-3">
-                                                <label class="form-label text-muted small fw-bold">发件人展示名</label>
-                                                <input type="text" id="email-sender" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="例如: Server@ipmi.web" oninput="markChanged()">
+                                                <label class="form-label text-muted small fw-bold" data-i18n="logs.emailSenderName">{{ t('logs.emailSenderName') }}</label>
+                                                <input type="text" id="email-sender" class="form-control form-control-sm bg-dark border-secondary text-light" placeholder="{{ t('logs.emailSenderPlaceholder') }}" data-i18n-placeholder="logs.emailSenderPlaceholder" oninput="markChanged()">
                                             </div>
                                         </div>
                                     </div>
@@ -845,7 +853,7 @@ n        /* 标签样式 */
 
                             <div class="d-grid gap-2 mt-4">
                                 <button class="btn btn-outline-primary fw-bold" id="btn-test-email" onclick="sendTestEmail()">
-                                    <span id="test-email-text">发送测试邮件</span>
+                                    <span id="test-email-text" data-i18n="logs.sendTestEmail">{{ t('logs.sendTestEmail') }}</span>
                                     <i id="test-email-spinner" class="fas fa-spinner fa-spin d-none"></i>
                                 </button>
                             </div>
@@ -854,44 +862,52 @@ n        /* 标签样式 */
                         <!-- 证书管理 Tab -->
                         <div class="tab-pane fade" id="tab-certificate">
                             <div class="d-flex justify-content-between align-items-center mb-4">
-                                <h6 class="text-primary mb-0 fw-bold">HTTPS 证书</h6>
+                                <h6 class="text-primary mb-0 fw-bold" data-i18n="logs.certificateTitle">{{ t('logs.certificateTitle') }}</h6>
                                 <button class="btn btn-sm btn-outline-secondary" onclick="loadCertificateStatus()">
-                                    <i class="fas fa-sync-alt me-1"></i>刷新
+                                    <i class="fas fa-sync-alt me-1"></i><span data-i18n="logs.refresh">{{ t('logs.refresh') }}</span>
                                 </button>
                             </div>
 
                             <div class="bg-black bg-opacity-25 border border-secondary border-opacity-25 rounded p-3 mb-4">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="text-muted small">当前状态</span>
+                                    <span class="text-muted small" data-i18n="logs.currentStatus">{{ t('logs.currentStatus') }}</span>
                                     <span id="cert-status-badge" class="badge bg-secondary">--</span>
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="text-muted small">证书到期</span>
+                                    <span class="text-muted small" data-i18n="logs.certificateExpiry">{{ t('logs.certificateExpiry') }}</span>
                                     <span id="cert-expiry-val" class="text-light small font-monospace">--</span>
                                 </div>
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="text-muted small">剩余时间</span>
+                                    <span class="text-muted small" data-i18n="logs.remainingTime">{{ t('logs.remainingTime') }}</span>
                                     <span id="cert-days-val" class="text-light small">--</span>
                                 </div>
-                                <div class="small text-muted-plus mt-3">
-                                    上传证书会统一覆盖当前服务证书文件；保存前会先校验证书格式、有效期和私钥匹配关系。
+                                <div class="small text-muted-plus mt-3" data-i18n="logs.certificateHelp">
+                                    {{ t('logs.certificateHelp') }}
                                 </div>
                             </div>
 
                             <div class="row g-3 mb-4">
                                 <div class="col-md-6">
-                                    <label class="form-label text-muted small fw-bold">PEM / CRT 证书文件</label>
-                                    <input type="file" id="cert-file-input" class="form-control bg-dark border-secondary text-light" accept=".pem,.crt,.cer">
+                                    <label class="form-label text-muted small fw-bold" data-i18n="logs.certFile">{{ t('logs.certFile') }}</label>
+                                    <input type="file" id="cert-file-input" class="d-none" accept=".pem,.crt,.cer" onchange="updateFileName('cert-file-input', 'cert-file-name')">
+                                    <div class="input-group input-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('cert-file-input').click()" data-i18n="logs.chooseFile">{{ t('logs.chooseFile') }}</button>
+                                        <span id="cert-file-name" class="form-control bg-dark border-secondary text-light text-truncate">{{ t('logs.noFileSelected') }}</span>
+                                    </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-muted small fw-bold">KEY 私钥文件</label>
-                                    <input type="file" id="key-file-input" class="form-control bg-dark border-secondary text-light" accept=".key,.pem">
+                                    <label class="form-label text-muted small fw-bold" data-i18n="logs.keyFile">{{ t('logs.keyFile') }}</label>
+                                    <input type="file" id="key-file-input" class="d-none" accept=".key,.pem" onchange="updateFileName('key-file-input', 'key-file-name')">
+                                    <div class="input-group input-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('key-file-input').click()" data-i18n="logs.chooseFile">{{ t('logs.chooseFile') }}</button>
+                                        <span id="key-file-name" class="form-control bg-dark border-secondary text-light text-truncate">{{ t('logs.noFileSelected') }}</span>
+                                    </div>
                                 </div>
                             </div>
 
                             <div class="d-grid gap-2">
                                 <button class="btn btn-outline-primary fw-bold" id="btn-upload-cert" onclick="uploadCertificate()">
-                                    <span id="upload-cert-text">上传并替换证书</span>
+                                    <span id="upload-cert-text" data-i18n="logs.uploadCertificate">{{ t('logs.uploadCertificate') }}</span>
                                     <i id="upload-cert-spinner" class="fas fa-spinner fa-spin d-none"></i>
                                 </button>
                             </div>
@@ -907,23 +923,23 @@ n        /* 标签样式 */
 /___//_/   /_/  /_//___/   |__/|__//___//____/ </pre>
                                 <div class="mt-4 mb-3">
                                     <h5 class="mb-1 fw-bold">IPMI_WEB</h5>
-                                    <p class="text-muted small">精简、高效、实时的服务器资源监控方案</p>
+                                    <p class="text-muted small" data-i18n="about.tagline">{{ t('about.tagline') }}</p>
                                 </div>
                                 <div class="d-flex flex-column gap-2 w-100 px-5">
                                     <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3">
-                                        <span class="text-muted small">软件版本</span>
+                                        <span class="text-muted small" data-i18n="about.version">{{ t('about.version') }}</span>
                                         <span class="badge bg-primary rounded-pill font-monospace" id="about-ver-val">V --</span>
                                     </div>
                                     <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3">
-                                        <span class="text-muted small">代码仓库</span>
+                                        <span class="text-muted small" data-i18n="about.repository">{{ t('about.repository') }}</span>
                                         <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-primary text-decoration-none small hover-underline">
                                             <i class="fab fa-github me-1"></i>stlin256/IPMI_WEB
                                         </a>
                                     </div>
                                     <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3">
-                                        <span class="text-muted small">更新日志</span>
+                                        <span class="text-muted small" data-i18n="about.changelog">{{ t('about.changelog') }}</span>
                                         <button class="btn btn-link btn-sm text-primary p-0 text-decoration-none" onclick="openReleaseNotesModal()">
-                                            <i class="fas fa-list-alt me-1"></i>查看
+                                            <i class="fas fa-list-alt me-1"></i><span data-i18n="about.view">{{ t('about.view') }}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -937,9 +953,9 @@ n        /* 标签样式 */
                     </div>
                 </div>
                 <div class="modal-footer border-secondary py-2 bg-black bg-opacity-25">
-                    <button class="btn btn-sm btn-outline-secondary px-4" data-bs-dismiss="modal">关闭</button>
+                    <button class="btn btn-sm btn-outline-secondary px-4" data-bs-dismiss="modal" data-i18n="app.close">{{ t('app.close') }}</button>
                     <button class="btn btn-sm btn-primary px-5 fw-bold" id="btn-save-global" onclick="saveGlobalSettings()">
-                        <span id="save-btn-text">应用并保存</span>
+                        <span id="save-btn-text" data-i18n="app.applyAndSave">{{ t('app.applyAndSave') }}</span>
                         <i id="save-btn-spinner" class="fas fa-spinner fa-spin d-none"></i>
                     </button>
                 </div>
@@ -952,37 +968,37 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-file-import me-2"></i>导入配置</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-file-import me-2"></i><span data-i18n="logs.importTitle">{{ t('logs.importTitle') }}</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div id="import-precheck-view">
                         <div class="text-center py-5">
                             <i class="fas fa-file-upload fa-3x text-muted mb-3"></i>
-                            <h5>选择配置文件以开始</h5>
-                            <button class="btn btn-primary mt-3 px-4" onclick="document.getElementById('config-upload').click()">选择 JSON 文件</button>
+                            <h5 data-i18n="logs.importChoosePrompt">{{ t('logs.importChoosePrompt') }}</h5>
+                            <button class="btn btn-primary mt-3 px-4" onclick="document.getElementById('config-upload').click()" data-i18n="logs.chooseJsonFile">{{ t('logs.chooseJsonFile') }}</button>
                         </div>
                     </div>
                     <div id="import-diff-view" class="d-none">
                         <div class="alert alert-info small py-2 mb-3 d-flex justify-content-between align-items-center">
                             <div>
                                 <i class="fas fa-info-circle me-2"></i>
-                                备份版本: <span id="import-version-val" class="fw-bold me-3">--</span>
-                                导出时间: <span id="import-time-val" class="fw-bold">--</span>
+                                <span data-i18n="logs.backupVersion">{{ t('logs.backupVersion') }}</span>: <span id="import-version-val" class="fw-bold me-3">--</span>
+                                <span data-i18n="logs.exportTime">{{ t('logs.exportTime') }}</span>: <span id="import-time-val" class="fw-bold">--</span>
                             </div>
-                            <div class="text-muted">软件版本: <span id="import-sw-val">--</span></div>
+                            <div class="text-muted"><span data-i18n="logs.softwareVersion">{{ t('logs.softwareVersion') }}</span>: <span id="import-sw-val">--</span></div>
                         </div>
                         <div class="alert alert-warning small py-2 mb-3">
-                            <i class="fas fa-exclamation-triangle me-2"></i>请勾选您希望导入的项目。若缩短保留期，将自动触发 3 天反悔期。
+                            <i class="fas fa-exclamation-triangle me-2"></i><span data-i18n="logs.importWarning">{{ t('logs.importWarning') }}</span> <span data-i18n="logs.importRetentionWarning">{{ t('logs.importRetentionWarning') }}</span>
                         </div>
                         <div class="table-responsive" style="max-height: 400px;">
                             <table class="table table-dark table-sm align-middle small">
                                 <thead class="text-muted">
                                     <tr>
                                         <th width="40"><input type="checkbox" id="import-select-all" checked onchange="toggleImportSelectAll(this.checked)"></th>
-                                        <th>设置项</th>
-                                        <th>当前值</th>
-                                        <th>导入值</th>
+                                        <th data-i18n="logs.settingItem">{{ t('logs.settingItem') }}</th>
+                                        <th data-i18n="logs.currentValue">{{ t('logs.currentValue') }}</th>
+                                        <th data-i18n="logs.importValue">{{ t('logs.importValue') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody id="import-diff-table"></tbody>
@@ -993,8 +1009,8 @@ n        /* 标签样式 */
                     <input type="file" id="config-upload" accept=".json" hidden onchange="handleImport(this.files)">
                 </div>
                 <div class="modal-footer border-secondary d-none" id="import-modal-footer">
-                    <button class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal">取消</button>
-                    <button class="btn btn-success btn-sm px-4 fw-bold" onclick="executeImport()">确认导入</button>
+                    <button class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal" data-i18n="app.cancel">{{ t('app.cancel') }}</button>
+                    <button class="btn btn-success btn-sm px-4 fw-bold" onclick="executeImport()" data-i18n="logs.confirmImport">{{ t('logs.confirmImport') }}</button>
                 </div>
             </div>
         </div>
@@ -1002,18 +1018,18 @@ n        /* 标签样式 */
 
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
         <div class="d-flex align-items-center gap-3">
-            <h4 class="mb-0"><i class="fas fa-list me-2 text-primary"></i>系统日志</h4>
-            <span class="refresh-indicator" id="refreshIndicator" title="自动刷新中"></span>
+            <h4 class="mb-0"><i class="fas fa-list me-2 text-primary"></i><span data-i18n="logs.title">{{ t('logs.title') }}</span></h4>
+            <span class="refresh-indicator" id="refreshIndicator" data-i18n-title="logs.autoRefreshing" title="{{ t('logs.autoRefreshing') }}"></span>
             <button class="btn btn-outline-secondary btn-sm px-3" onclick="openDelaySettings()">
-                <i class="fas fa-cog me-1"></i>设置
+                <i class="fas fa-cog me-1"></i><span data-i18n="app.settings">{{ t('app.settings') }}</span>
             </button>
         </div>
         <div class="d-flex align-items-center gap-2">
             <button class="btn btn-outline-primary btn-sm px-3" onclick="exportConfig()">
-                <i class="fas fa-download me-1"></i>导出配置
+                <i class="fas fa-download me-1"></i><span data-i18n="logs.exportConfig">{{ t('logs.exportConfig') }}</span>
             </button>
             <button class="btn btn-outline-success btn-sm px-3" onclick="openImportModal()">
-                <i class="fas fa-upload me-1"></i>导入配置
+                <i class="fas fa-upload me-1"></i><span data-i18n="logs.importConfig">{{ t('logs.importConfig') }}</span>
             </button>
         </div>
     </div>
@@ -1023,29 +1039,29 @@ n        /* 标签样式 */
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark border-secondary">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title"><i class="fas fa-palette me-2"></i>延迟色彩阈值设置</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title"><i class="fas fa-palette me-2"></i><span data-i18n="settings.delayThresholds">{{ t('settings.delayThresholds') }}</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="mb-3">
-                        <label class="form-label text-warning small fw-bold">警告阈值 (WARN) - 黄色</label>
+                        <label class="form-label text-warning small fw-bold" data-i18n="settings.warnThreshold">{{ t('settings.warnThreshold') }}</label>
                         <div class="input-group">
                             <input type="number" id="input-warn" class="form-control bg-dark text-light border-secondary" step="0.1" min="0.1">
-                            <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                            <span class="input-group-text bg-dark border-secondary text-muted" data-i18n="settings.seconds">{{ t('settings.seconds') }}</span>
                         </div>
-                        <div class="form-text text-muted">延迟超过此值且低于危险阈值时显示为黄色</div>
+                        <div class="form-text text-muted" data-i18n="logs.warnDelayHelp">{{ t('logs.warnDelayHelp') }}</div>
                     </div>
                     <div class="mb-4">
-                        <label class="form-label text-danger small fw-bold">危险阈值 (DANGER) - 红色</label>
+                        <label class="form-label text-danger small fw-bold" data-i18n="settings.dangerThreshold">{{ t('settings.dangerThreshold') }}</label>
                         <div class="input-group">
                             <input type="number" id="input-danger" class="form-control bg-dark text-light border-secondary" step="0.1" min="0.1">
-                            <span class="input-group-text bg-dark border-secondary text-muted">秒</span>
+                            <span class="input-group-text bg-dark border-secondary text-muted" data-i18n="settings.seconds">{{ t('settings.seconds') }}</span>
                         </div>
-                        <div class="form-text text-muted">延迟超过此值时显示为红色</div>
+                        <div class="form-text text-muted" data-i18n="logs.dangerDelayHelp">{{ t('logs.dangerDelayHelp') }}</div>
                     </div>
                     <div class="d-grid gap-2">
                         <button class="btn btn-primary fw-bold" onclick="saveDelaySettings()">
-                            保存设置
+                            <span data-i18n="app.save">{{ t('app.save') }}</span>
                         </button>
                     </div>
                 </div>
@@ -1056,7 +1072,7 @@ n        /* 标签样式 */
     <!-- 24H 采集延迟图表 -->
     <div class="interval-chart-container chart-loading" id="chart-wrapper">
         <div class="chart-label">
-            <i class="fas fa-wave-square me-1"></i> 24H 采集延迟 (s)
+            <i class="fas fa-wave-square me-1"></i> <span data-i18n="logs.delayChart">{{ t('logs.delayChart') }}</span>
         </div>
         
         <!-- 顶部标注组 -->
@@ -1076,30 +1092,50 @@ n        /* 标签样式 */
         <div id="logs-content">
             <div class="text-center py-5 text-muted">
                 <i class="fas fa-spinner fa-spin fa-lg mb-3"></i>
-                <p>正在加载日志...</p>
+                <p data-i18n="logs.loading">{{ t('logs.loading') }}</p>
             </div>
         </div>
         <!-- 底部加载状态 -->
         <div id="load-more-indicator" class="text-center py-3 text-muted d-none">
-            <i class="fas fa-spinner fa-spin me-2"></i>正在加载更早的记录...
+            <i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="logs.loadingOlder">{{ t('logs.loadingOlder') }}</span>
         </div>
         <div id="all-loaded-msg" class="text-center py-3 text-muted small d-none">
-            已经显示全部记录
+            <span data-i18n="logs.allLoaded">{{ t('logs.allLoaded') }}</span>
         </div>
     </div>
 </div>
 
+<script>
+    window.I18N_MESSAGES = {{ i18n_messages | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script>
     let importModal;
 
     function showToast(msg, isError = false) {
         const toastEl = document.getElementById('opToast');
         const toastMsg = document.getElementById('toast-msg');
-        toastMsg.innerText = msg;
+        toastMsg.innerText = localizeServerMessage(msg);
         toastEl.classList.remove('bg-success', 'bg-danger');
         toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
         const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
         toast.show();
+    }
+
+    function localizeServerMessage(message) {
+        const text = String(message || '');
+        const exact = {
+            '概览报告已发送': 'logs.summarySent',
+            '请先填写收件人邮箱': 'logs.receiverRequired',
+            '请填写完整的 SMTP 配置项': 'logs.smtpIncomplete',
+            'MTA 模式仅支持 Linux 环境': 'logs.mtaLinuxOnlyError',
+            '测试邮件已发送，请检查收件箱': 'logs.testEmailSent'
+        };
+        if (exact[text]) return t(exact[text]);
+        if (text.startsWith('MTA 投递失败:')) {
+            return t('email.error.mtaDeliveryFailed', { message: text.slice('MTA 投递失败:'.length).trim() });
+        }
+        return text;
     }
 
     // 导出配置
@@ -1117,9 +1153,9 @@ n        /* 标签样式 */
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showToast('配置导出成功');
+            showToast(t('logs.exportConfigSuccess'));
         } catch (e) {
-            showToast('导出失败: ' + e.message, true);
+            showToast(t('logs.exportConfigFailed', { message: e.message }), true);
         }
     }
 
@@ -1179,10 +1215,10 @@ n        /* 标签样式 */
                     const oldMsg = msg.innerText;
                     const oldBtnText = btn.innerText;
 
-                    title.innerText = "版本兼容性提示";
+                    title.innerText = t('logs.versionCompatibility');
                     title.className = "fw-bold text-warning";
-                    msg.innerHTML = `检测到配置版本 (<span class="text-warning fw-bold">${configVersion}</span>) 高于当前软件版本 (<span class="text-success fw-bold">${currentSWVersion}</span>)。`;
-                    btn.innerText = "确认";
+                    msg.innerHTML = t('logs.configVersionNewer', { configVersion: `<span class="text-warning fw-bold">${configVersion}</span>`, currentVersion: `<span class="text-success fw-bold">${currentSWVersion}</span>` });
+                    btn.innerText = t('app.confirm');
                     btn.className = "btn btn-warning fw-bold";
                     if (cancelBtn) cancelBtn.style.display = 'none'; // 隐藏取消按钮，强制点击确认
 
@@ -1205,7 +1241,7 @@ n        /* 标签样式 */
 
                 await proceedPrecheck(config, currentSWVersion);
             } catch (err) {
-                errorEl.innerText = '解析失败: ' + err.message;
+                errorEl.innerText = t('logs.parseFailed', { message: err.message });
                 errorEl.classList.remove('d-none');
             }
         };
@@ -1237,13 +1273,13 @@ n        /* 标签样式 */
 
             // 显示元数据
             document.getElementById('import-version-val').innerText = data.version || '1';
-            document.getElementById('import-time-val').innerText = data.export_time || '未知';
+            document.getElementById('import-time-val').innerText = data.export_time || t('logs.unknown');
             // 修复：import-sw-val 应该始终显示当前软件系统的版本，而不是备份文件里的版本
             document.getElementById('import-sw-val').innerText = currentSWVersion;
 
             renderImportDiff(data);
         } catch (err) {
-            errorEl.innerText = '解析失败: ' + err.message;
+            errorEl.innerText = t('logs.parseFailed', { message: err.message });
             errorEl.classList.remove('d-none');
         }
     }
@@ -1258,7 +1294,7 @@ n        /* 标签样式 */
         const showRetentionWarning = retentionDiff && retentionDiff.changed && parseInt(retentionDiff.new) < parseInt(retentionDiff.old);
         const warningEl = document.querySelector('#import-diff-view .alert-warning.small');
         if (warningEl) {
-            warningEl.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>请勾选您希望导入的项目。${showRetentionWarning ? '若缩短保留期，将自动触发 3 天反悔期。' : ''}`;
+            warningEl.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${t('logs.importWarning')}${showRetentionWarning ? t('logs.importRetentionWarning') : ''}`;
         }
 
         const tbody = document.getElementById('import-diff-table');
@@ -1276,7 +1312,7 @@ n        /* 标签样式 */
                         <div class="d-flex align-items-center">
                             <i class="fas fa-sliders-h me-2 text-muted" style="width: 16px;"></i>
                             <span>${d.key}</span>
-                            ${!isChanged ? '<span class="badge bg-dark text-muted border border-secondary ms-2" style="font-size: 9px; padding: 2px 4px;">UNCHANGED</span>' : ''}
+                            ${!isChanged ? `<span class="badge bg-dark text-muted border border-secondary ms-2" style="font-size: 9px; padding: 2px 4px;">${t('logs.unchanged')}</span>` : ''}
                         </div>
                     </td>
                     <td class="text-muted font-monospace small">
@@ -1324,14 +1360,14 @@ n        /* 标签样式 */
                         </div>
                         ${detailHtml}
                     </td>
-                    <td class="text-muted small">指标: ${a.data.metric}</td>
+                    <td class="text-muted small">${t('logs.metric')}: ${t(`logs.alert.metric.${a.data.metric}`)}</td>
                     <td>
                         ${isChanged ? `
                             <span class="badge rounded-pill ${a.is_new ? 'bg-success' : 'bg-info'}" style="font-size: 10px;">
-                                ${a.is_new ? 'NEW RULE' : 'UPDATE'}
+                                ${a.is_new ? t('logs.newRule') : t('logs.update')}
                             </span>
                         ` : `
-                            <span class="badge border border-secondary text-muted rounded-pill" style="font-size: 10px;">NO CHANGE</span>
+                            <span class="badge border border-secondary text-muted rounded-pill" style="font-size: 10px;">${t('logs.noChange')}</span>
                         `}
                     </td>
                 </tr>
@@ -1370,10 +1406,10 @@ n        /* 标签样式 */
             });
             const result = await res.json();
             if (result.status === 'success') {
-                showToast('导入成功');
+                showToast(t('logs.importSuccess'));
                 setTimeout(() => location.reload(), 1000);
             } else {
-                throw new Error(result.error || '导入失败');
+                throw new Error(result.error || t('logs.importFailed'));
             }
         } catch (e) {
             showToast(e.message, true);
@@ -1448,12 +1484,135 @@ n        /* 标签样式 */
     let allLoaded = false;
     const PAGE_SIZE = 100;
 
+    const auditModuleFallbacks = {
+        SYSTEM: 'logs.audit.SYSTEM',
+        AUTH: 'logs.audit.AUTH',
+        CONFIG: 'logs.audit.CONFIG',
+        GPU: 'logs.audit.GPU',
+        FAN: 'logs.audit.FAN',
+        CALIBRATION: 'logs.audit.CALIBRATION',
+        ALERT: 'logs.audit.ALERT'
+    };
+
+    const configLabelKeys = {
+        '采集延迟(警告)': 'logs.config.log_delay_warn',
+        '采集延迟(危险)': 'logs.config.log_delay_danger',
+        '低磁盘自动回收开关': 'logs.config.low_disk_auto_prune_enabled',
+        '看板时效(硬件)': 'logs.config.dashboard_hours_hw',
+        '看板时效(历史)': 'logs.config.dashboard_hours_hist',
+        '邮件发送模式': 'logs.config.email_mode',
+        'SMTP服务器': 'logs.config.smtp_server',
+        'SMTP端口': 'logs.config.smtp_port',
+        'SMTP账号': 'logs.config.smtp_user',
+        'SMTP密码': 'logs.config.smtp_pass',
+        'SMTP加密开关': 'logs.config.smtp_encryption',
+        '邮件发件人展示名': 'logs.config.email_sender_name',
+        '邮件收件人列表': 'logs.config.email_receiver',
+        '概览报告总开关': 'logs.config.summary_enabled',
+        '日报开关': 'logs.config.summary_daily_enabled',
+        '日报时间': 'logs.config.summary_daily_time',
+        '周报开关': 'logs.config.summary_weekly_enabled',
+        '周报发送日': 'logs.config.summary_weekly_day',
+        '周报时间': 'logs.config.summary_weekly_time',
+        '自定义报告开关': 'logs.config.summary_custom_enabled',
+        '自定义报告间隔': 'logs.config.summary_custom_hours',
+        '服务器名称': 'logs.config.server_name',
+        '界面语言': 'logs.config.ui_language'
+    };
+
+    function localizeConfigValue(value) {
+        if (value === 'true') return t('logs.config.enabled');
+        if (value === 'false') return t('logs.config.disabled');
+        return value;
+    }
+
+    function firstDetailValue(details, keys, fallback = '') {
+        for (const key of keys) {
+            if (details[key] !== undefined && details[key] !== null && details[key] !== '') return details[key];
+        }
+        return fallback;
+    }
+
+    function localizeChangeLine(change) {
+        const text = String(change || '');
+        const match = text.match(/^(.+?):\s*(.*?)\s*->\s*(.*)$/);
+        if (!match) return text;
+        const label = t(configLabelKeys[match[1]] || match[1]);
+        return `${label}: ${localizeConfigValue(match[2])} -> ${localizeConfigValue(match[3])}`;
+    }
+
+    function localizeAuditMessage(log) {
+        const details = log.details || {};
+        if (log.module === 'AUTH' && log.action === 'LOGIN_FAIL') {
+            return t('logs.loginFailed', {
+                count: details.fail_count ?? '--',
+                wait: details.wait_time ?? 0
+            });
+        }
+        if (log.module === 'AUTH' && log.action === 'LOGIN_SUCCESS') return t('logs.loginSuccess');
+        if (log.module === 'CONFIG' && log.action === 'UPDATE_SETTINGS') {
+            const count = Array.isArray(details.changes) ? details.changes.length : 0;
+            return t('logs.settingsUpdated', { count });
+        }
+        if (log.module === 'CONFIG' && log.action === 'EXPORT') return t('logs.exportConfigDone');
+        if (log.module === 'CONFIG' && log.action === 'IMPORT') return t('logs.importConfigDone');
+        if (log.module === 'CONFIG' && log.action === 'IMPORT_FAIL') return t('logs.importConfigFailed', { message: firstDetailValue(details, ['error', 'message'], log.action) });
+        if (log.module === 'CONFIG' && log.action === 'UPDATE_DELAY') return t('logs.updateDelay');
+        if (log.module === 'CONFIG' && log.action === 'CERT_UPLOAD') return t('logs.certUploadAction');
+        if (log.module === 'SYSTEM' && log.action === 'SERVICE_RESTART') return t('logs.serviceRestart');
+        if (log.module === 'SYSTEM' && log.action === 'STARTUP') return t('logs.startup');
+        if (log.module === 'SYSTEM' && log.action === 'SUMMARY_MANUAL') return t('logs.summaryManual');
+        if (log.module === 'SYSTEM' && log.action === 'SUMMARY_SENT') return t('logs.summarySentAction');
+        if (log.module === 'SYSTEM' && log.action === 'RETENTION_PENDING') return t('logs.retentionPendingAction');
+        if (log.module === 'SYSTEM' && log.action === 'RETENTION_UPDATE') return t('logs.retentionUpdateAction');
+        if (log.module === 'SYSTEM' && log.action === 'ALERT_TRIGGER') return t('logs.alertTriggered', { name: firstDetailValue(details, ['rule_name', 'name'], '') });
+        if (log.module === 'SYSTEM' && log.action === 'ALERT_RECOVER') return t('logs.alertRecovered', { name: firstDetailValue(details, ['rule_name', 'name'], '') });
+        if (log.module === 'SYSTEM' && log.action === 'DATA_GAP') return t('logs.dataGap', { seconds: firstDetailValue(details, ['gap_seconds', 'seconds'], '--') });
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_SPACE_WARNING') return t('logs.lowDiskSpaceWarning');
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_SPACE_RECLAIMED') return t('logs.lowDiskSpaceReclaimed');
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_PRUNE_BLOCKED') return t('logs.lowDiskPruneBlocked');
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_PRUNE_ABORTED') return t('logs.lowDiskPruneAborted');
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_AUDIT_PRUNE') return t('logs.lowDiskAuditPrune', { day: firstDetailValue(details, ['day'], '') });
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_PRUNE') return t('logs.lowDiskPrune', { day: firstDetailValue(details, ['day'], '') });
+        if (log.module === 'SYSTEM' && log.action === 'LOW_DISK_PRUNE_EMPTY') return t('logs.lowDiskPruneEmpty');
+        if (log.module === 'SYSTEM' && log.action === 'EMAIL_TEST') {
+            return t('logs.emailTest', { receivers: details.receivers || details.receiver || '' });
+        }
+        if (log.module === 'CALIBRATION' && log.action === 'START') return t('logs.calibrationStarted');
+        if (log.module === 'CALIBRATION' && log.action === 'SUCCESS') return t('logs.calibrationSucceeded');
+        if (log.module === 'CALIBRATION' && log.action === 'FAIL') return t('logs.calibrationFailed');
+        if (log.module === 'GPU' && log.action === 'AGENT_ONLINE') return t('logs.gpuOnline');
+        if (log.module === 'GPU' && log.action === 'AGENT_OFFLINE') return t('logs.gpuOffline');
+        if (log.module === 'GPU' && log.action === 'AGENT_STOPPED') return t('logs.gpuStopped');
+        if (log.module === 'GPU' && String(log.action || '').startsWith('UPDATE_CONFIG')) return t('logs.gpuConfigUpdated');
+        if (log.module === 'FAN' && log.action === 'UPDATE_CONFIG') return t('logs.fanConfigUpdated');
+        if (log.module === 'FAN' && log.action === 'UPDATE_FIXED') return t('logs.fixedFanUpdated');
+        if (log.module === 'FAN' && log.action === 'UPDATE_TARGET_TEMP') return t('logs.targetTempUpdated');
+        if (String(log.action || '').includes('FAIL')) return t('logs.operationFailed', { message: firstDetailValue(details, ['error', 'message'], log.action) });
+        if (String(log.action || '').startsWith('UPDATE')) return t('logs.configUpdated');
+        return log.message || log.action || '';
+    }
+
+    function localizeAuditDetails(log) {
+        const details = log.details || {};
+        let content = '';
+        if (log.module === 'CONFIG' && log.action === 'UPDATE_SETTINGS' && Array.isArray(details.changes)) {
+            content = `${t('logs.changeDetails')}:\n` + details.changes.map(c => `  • ${localizeChangeLine(c)}`).join('\n');
+        } else if (Object.keys(details).length > 0) {
+            content = JSON.stringify(details, null, 2);
+        }
+        if (log.ua) {
+            content += (content ? '\n' : '') + `User-Agent: ${log.ua}`;
+        }
+        return content;
+    }
+
     function renderLogLine(log, idx) {
         const fingerprintId = getFingerprintId(log.operator, log.ua);
         const uaTag = parseUAInfo(log.ua);
         const safeTime = escapeHtml(log.time_str);
         const safeOperator = escapeHtml(log.operator);
-        const safeModule = escapeHtml(log.module);
+        const safeModule = escapeHtml(t(auditModuleFallbacks[log.module] || 'logs.audit.unknown'));
         const safeFingerprint = escapeAttr(fingerprintId);
         
         // 统一状态配置 - 所有状态使用等宽长度 [XXXX] 格式
@@ -1476,28 +1635,8 @@ n        /* 标签样式 */
         
         const detailsId = `detail-${log.timestamp}-${idx}`;
         
-        // 统一消息格式：只显示次数和罚时，不重复显示 message 中的内容
-        let mainMsg = log.message;
-        if (log.module === 'AUTH' && log.details && log.details.fail_count !== undefined) {
-            const count = log.details.fail_count;
-            const wait = log.details.wait_time || 0;
-            // 直接用次数和罚时格式
-            mainMsg = `登录失败 (次数: ${count}，罚时: ${wait}s)`;
-        }
-        
-        // 详情内容结构化渲染
-        let detailsContent = '';
-        if (log.details && Object.keys(log.details).length > 0) {
-            if (log.module === 'CONFIG' && log.action === 'UPDATE_SETTINGS' && log.details.changes) {
-                // 针对设置更新进行美化输出
-                detailsContent = "变更详情:\n" + log.details.changes.map(c => "  • " + c).join("\n");
-            } else {
-                detailsContent = JSON.stringify(log.details, null, 2);
-            }
-        }
-        if (log.ua) {
-            detailsContent += (detailsContent ? '\n' : '') + `User-Agent: ${log.ua}`;
-        }
+        const mainMsg = localizeAuditMessage(log);
+        const detailsContent = localizeAuditDetails(log);
         const safeMainMsg = escapeHtml(mainMsg);
         const safeDetailsContent = escapeHtml(detailsContent);
         const safeDetailsId = escapeAttr(detailsId);
@@ -1510,18 +1649,18 @@ n        /* 标签样式 */
                     <span class="cli-tag cli-tag-ip" 
                           data-fingerprint="${safeFingerprint}"
                           onclick="highlightFingerprint('${safeFingerprint}', event)"
-                          title="点击高亮相同指纹">${safeOperator}</span>
+                          title="${escapeAttr(t('logs.highlightFingerprint'))}">${safeOperator}</span>
                     ${log.operator !== 'SYSTEM' ? `
                     <span class="cli-tag cli-tag-ua" 
                           data-fingerprint="${safeFingerprint}"
                           onclick="highlightFingerprint('${safeFingerprint}', event)"
-                          title="点击高亮相同指纹">${uaTag}</span>
+                          title="${escapeAttr(t('logs.highlightFingerprint'))}">${uaTag}</span>
                     ` : ''}
                     <span class="fw-bold">${safeModule}</span>
                     <span class="text-muted">${safeMainMsg}</span>
                     ${detailsContent ? `
                         <a href="javascript:void(0)" class="text-primary ms-2" onclick="toggleDetails('${safeDetailsId}')">
-                            [详情]
+                            [${escapeHtml(t('logs.details'))}]
                         </a>
                     ` : ''}
                 </div>
@@ -1529,7 +1668,7 @@ n        /* 标签样式 */
             ${detailsContent ? `
                 <div class="cli-details collapse" id="${safeDetailsId}">
                     <div class="cli-details-title">
-                        <i class="fas fa-info-circle me-1"></i> 详细信息
+                        <i class="fas fa-info-circle me-1"></i> ${escapeHtml(t('logs.detailsTitle'))}
                     </div>
                     <pre>${safeDetailsContent}</pre>
                 </div>
@@ -1547,7 +1686,7 @@ n        /* 标签样式 */
             
             if (!data.logs || data.logs.length === 0) {
                 if (isFirstLoad) {
-                    content.innerHTML = '<div class="text-center py-5 text-muted">暂无日志记录</div>';
+                    content.innerHTML = `<div class="text-center py-5 text-muted">${t('logs.noRecords')}</div>`;
                     isFirstLoad = false;
                 }
                 return;
@@ -1581,7 +1720,7 @@ n        /* 标签样式 */
             
         } catch (e) {
             if (isFirstLoad) {
-                content.innerHTML = `<div class="alert alert-danger">加载失败: ${e.message}</div>`;
+                content.innerHTML = `<div class="alert alert-danger">${t('logs.loadFailed', { message: e.message })}</div>`;
                 isFirstLoad = false;
             }
         }
@@ -1644,7 +1783,7 @@ n        /* 标签样式 */
             btn.style.pointerEvents = 'none';
             icon.classList.add('d-none');
             spinner.classList.remove('d-none');
-            text.innerText = '发送中...';
+            text.innerText = t('logs.sending');
 
             const res = await fetch('/api/summary_email/manual', {
                 method: 'POST',
@@ -1652,10 +1791,10 @@ n        /* 标签样式 */
                 body: JSON.stringify({ type: type })
             });
             const data = await res.json();
-            if (data.status === 'success') showToast('报告发送成功');
+            if (data.status === 'success') showToast(t('logs.summarySent'));
             else showToast(data.message, true);
         } catch (e) {
-            showToast('请求失败', true);
+            showToast(t('logs.requestFailed'), true);
         } finally {
             btn.classList.remove('disabled');
             btn.style.pointerEvents = 'auto';
@@ -1693,10 +1832,10 @@ n        /* 标签样式 */
         const oldMsg = msg.innerText;
         const oldBtnText = btn.innerText;
 
-        title.innerText = "发信配置不完整";
+        title.innerText = t('logs.emailConfigIncompleteTitle');
         title.className = "fw-bold text-danger";
-        msg.innerHTML = `检测到收件人或发信服务器配置不完整。请先在「邮件通知」标签页中完成设置并保存。`;
-        btn.innerText = "去配置";
+        msg.innerHTML = t('logs.emailConfigIncompleteBody');
+        btn.innerText = t('logs.goConfigure');
         btn.className = "btn btn-primary fw-bold";
         
         btn.onclick = () => {
@@ -1775,6 +1914,7 @@ n        /* 标签样式 */
 
         const currentSnapshot = {
             server_name: document.getElementById('set-server-name').value,
+            ui_language: document.getElementById('set-ui-language').value,
             log_delay_warn: fmtVal(document.getElementById('set-warn').value),
             log_delay_danger: fmtVal(document.getElementById('set-danger').value),
             data_retention_days: fmtVal(document.getElementById('set-retention').value),
@@ -1808,6 +1948,7 @@ n        /* 标签样式 */
 
         const initialSnapshotComp = {
             server_name: initialSettingsSnapshot.server_name,
+            ui_language: initialSettingsSnapshot.ui_language,
             log_delay_warn: fmtVal(initialSettingsSnapshot.log_delay_warn),
             log_delay_danger: fmtVal(initialSettingsSnapshot.log_delay_danger),
             data_retention_days: fmtVal(initialSettingsSnapshot.data_retention_days),
@@ -1869,7 +2010,7 @@ n        /* 标签样式 */
             const el = document.getElementById('db-size-val');
             if (el) el.innerText = formatBytes(data.db_size_bytes || 0);
             const daysEl = document.getElementById('stored-days-val');
-            if (daysEl) daysEl.innerText = data.stored_days ? `${data.stored_days} 天` : '--';
+            if (daysEl) daysEl.innerText = data.stored_days ? `${data.stored_days} ${t('settings.days')}` : '--';
             const diskFreeEl = document.getElementById('disk-free-val');
             if (diskFreeEl) diskFreeEl.innerText = formatBytes(data.disk_free_bytes || 0);
             const reclaimEl = document.getElementById('db-reclaimable-val');
@@ -1886,11 +2027,11 @@ n        /* 标签样式 */
         const btn = document.getElementById('confirm-execute-btn');
         modalContent.className = `modal-content bg-dark ${options.borderClass || 'border-danger'} shadow-lg`;
         icon.className = `${options.iconClass || 'fas fa-exclamation-circle text-danger'} fs-1 mb-3`;
-        title.innerText = options.title || '确认操作';
+        title.innerText = options.title || t('app.confirm');
         btn.className = `btn ${options.confirmClass || 'btn-danger'} flex-grow-1 fw-bold`;
-        btn.innerText = options.confirmText || '确认';
+        btn.innerText = options.confirmText || t('app.confirm');
         const cancelBtn = document.getElementById('confirm-cancel-btn');
-        if (cancelBtn) cancelBtn.innerText = options.cancelText || '取消';
+        if (cancelBtn) cancelBtn.innerText = options.cancelText || t('app.cancel');
         btn.onclick = () => {
             onConfirm();
             confirmModal.hide();
@@ -1907,37 +2048,44 @@ n        /* 标签样式 */
         try {
             const res = await fetch('/api/certificate');
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || '读取证书状态失败');
+            if (!res.ok) throw new Error(data.error || t('logs.certReadFailed'));
 
             badge.className = 'badge';
             if (data.installed && data.valid) {
                 const daysLeft = Number(data.days_left);
                 if (!Number.isNaN(daysLeft) && daysLeft <= 14) {
                     badge.classList.add('bg-warning', 'text-dark');
-                    badge.innerText = '即将到期';
+                    badge.innerText = t('logs.expiresSoon');
                 } else {
                     badge.classList.add('bg-success');
-                    badge.innerText = data.https_active ? '已启用' : '已安装';
+                    badge.innerText = data.https_active ? t('logs.enabled') : t('logs.installed');
                 }
             } else if (data.cert_exists || data.key_exists) {
                 badge.classList.add('bg-danger');
-                badge.innerText = '配置不完整';
+                badge.innerText = t('logs.incomplete');
             } else {
                 badge.classList.add('bg-secondary');
-                badge.innerText = '未安装';
+                badge.innerText = t('logs.notInstalled');
             }
 
             expiry.innerText = data.expires_at_str || '--';
-            days.innerText = data.days_left === null || data.days_left === undefined ? '--' : `${data.days_left} 天`;
+            days.innerText = data.days_left === null || data.days_left === undefined ? '--' : `${data.days_left} ${t('settings.days')}`;
         } catch (e) {
             badge.className = 'badge bg-danger';
-            badge.innerText = '读取失败';
+            badge.innerText = t('logs.readFailed');
             const errEl = document.getElementById('cert-error-msg');
             if (errEl) {
                 errEl.innerText = e.message;
                 errEl.classList.remove('d-none');
             }
         }
+    }
+
+    function updateFileName(inputId, labelId) {
+        const input = document.getElementById(inputId);
+        const label = document.getElementById(labelId);
+        if (!input || !label) return;
+        label.innerText = input.files && input.files.length ? input.files[0].name : t('logs.noFileSelected');
     }
 
     async function uploadCertificate() {
@@ -1950,13 +2098,13 @@ n        /* 标签样式 */
 
         errEl.classList.add('d-none');
         if (!certInput.files.length || !keyInput.files.length) {
-            showConfirmModal('请同时选择证书文件和私钥文件。', () => {}, {
-                title: '证书上传失败',
+            showConfirmModal(t('logs.certSelectBoth'), () => {}, {
+                title: t('logs.certUploadFailed'),
                 iconClass: 'fas fa-times-circle text-danger',
                 borderClass: 'border-danger',
                 confirmClass: 'btn-danger',
-                confirmText: '知道了',
-                cancelText: '关闭'
+                confirmText: t('update.gotIt'),
+                cancelText: t('app.close')
             });
             return;
         }
@@ -1975,28 +2123,30 @@ n        /* 标签样式 */
                 body: formData
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || '证书上传失败');
+            if (!res.ok) throw new Error(data.error || t('logs.certUploadFailed'));
 
             certInput.value = '';
             keyInput.value = '';
+            updateFileName('cert-file-input', 'cert-file-name');
+            updateFileName('key-file-input', 'key-file-name');
             await loadCertificateStatus();
-            showConfirmModal('证书已保存。需要重启服务后，新证书才会被 HTTPS 服务加载。是否立即重启？', restartService, {
-                title: '重启服务以应用证书？',
+            showConfirmModal(t('logs.certSavedRestart'), restartService, {
+                title: t('logs.restartForCertTitle'),
                 iconClass: 'fas fa-sync-alt text-warning',
                 borderClass: 'border-warning',
                 confirmClass: 'btn-warning',
-                confirmText: '立即重启'
+                confirmText: t('logs.restartNow')
             });
         } catch (e) {
             errEl.innerText = e.message;
             errEl.classList.remove('d-none');
             showConfirmModal(e.message, () => {}, {
-                title: '证书上传失败',
+                title: t('logs.certUploadFailed'),
                 iconClass: 'fas fa-times-circle text-danger',
                 borderClass: 'border-danger',
                 confirmClass: 'btn-danger',
-                confirmText: '知道了',
-                cancelText: '关闭'
+                confirmText: t('update.gotIt'),
+                cancelText: t('app.close')
             });
         } finally {
             btn.disabled = false;
@@ -2009,57 +2159,56 @@ n        /* 标签样式 */
         try {
             const res = await fetch('/api/service/restart', { method: 'POST' });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || '重启请求失败');
-            showToast('服务正在重启，请稍后刷新页面');
+            if (!res.ok) throw new Error(data.error || t('logs.restartRequestFailed'));
+            showToast(t('logs.restarting'));
         } catch (e) {
-            showToast('重启失败: ' + e.message, true);
+            showToast(t('logs.restartFailed', { message: e.message }), true);
         }
     }
 
     const DASHBOARD_PRESETS = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720];
 
     function getReleaseNoteGroups(entry) {
-        const groups = [];
         const notesByLang = entry && entry.notes_by_lang && typeof entry.notes_by_lang === 'object'
             ? entry.notes_by_lang
             : {};
         const labels = entry && entry.language_labels && typeof entry.language_labels === 'object'
             ? entry.language_labels
             : {};
-        const orderedLangs = ['zh-CN', 'en']
-            .filter(lang => Array.isArray(notesByLang[lang]) && notesByLang[lang].length)
-            .concat(Object.keys(notesByLang).filter(lang => !['zh-CN', 'en'].includes(lang)));
-
-        orderedLangs.forEach(lang => {
-            const items = Array.isArray(notesByLang[lang]) ? notesByLang[lang].filter(Boolean) : [];
-            if (items.length) groups.push({ label: labels[lang] || lang, items });
-        });
-
-        if (!groups.length && Array.isArray(entry.items)) {
-            const items = entry.items.filter(Boolean);
-            if (items.length) groups.push({ label: 'Notes', items });
+        const pageLocale = (document.documentElement.lang || 'zh-CN').toLowerCase().startsWith('en') ? 'en' : 'zh-CN';
+        const currentItems = Array.isArray(notesByLang[pageLocale]) ? notesByLang[pageLocale].filter(Boolean) : [];
+        if (currentItems.length) {
+            return [{ label: labels[pageLocale] || pageLocale, items: currentItems }];
         }
-        return groups;
+        if (Object.keys(notesByLang).length) {
+            return [];
+        }
+        if (Array.isArray(entry.items)) {
+            const items = entry.items.filter(Boolean);
+            if (items.length) return [{ label: 'Notes', items }];
+        }
+        return [];
     }
 
     async function loadReleaseNotes(containerId = 'release-notes-content') {
         const container = document.getElementById(containerId);
         if (!container) return;
-        container.innerHTML = '<span class="text-muted">加载中...</span>';
+        container.innerHTML = `<span class="text-muted">${t('app.loading')}</span>`;
         try {
             const res = await fetch('/api/release_notes');
             const data = await res.json();
             const versions = Array.isArray(data.notes) ? data.notes : [];
             if (!versions.length) {
-                container.innerHTML = '<span class="text-muted">暂无更新日志</span>';
+                container.innerHTML = `<span class="text-muted">${t('logs.noReleaseNotes')}</span>`;
                 return;
             }
             container.innerHTML = versions.map(entry => {
                 const groups = getReleaseNoteGroups(entry);
                 const dateText = entry.date ? ` · ${escapeHtml(entry.date)}` : '';
+                const showGroupLabel = groups.length > 1;
                 const groupsHtml = groups.map(group => `
                     <div class="mb-2">
-                        <div class="text-muted-plus fw-bold mb-1">${escapeHtml(group.label)}</div>
+                        ${showGroupLabel ? `<div class="text-muted-plus fw-bold mb-1">${escapeHtml(group.label)}</div>` : ''}
                         <ul class="mb-0 ps-3">
                             ${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
                         </ul>
@@ -2068,12 +2217,12 @@ n        /* 标签样式 */
                 return `
                     <div>
                         <div class="text-primary fw-bold mb-1">V ${escapeHtml(entry.version || '')}${dateText}</div>
-                        ${groupsHtml || '<span class="text-muted">暂无更新内容</span>'}
+                        ${groupsHtml || `<span class="text-muted">${t('logs.noReleaseContent')}</span>`}
                     </div>
                 `;
             }).join('');
         } catch (e) {
-            container.innerHTML = `<span class="text-danger">加载失败: ${escapeHtml(e.message)}</span>`;
+            container.innerHTML = `<span class="text-danger">${escapeHtml(t('logs.loadReleaseFailed', { message: e.message }))}</span>`;
         }
     }
 
@@ -2088,18 +2237,18 @@ n        /* 标签样式 */
         const el = document.getElementById('low-disk-protect-val');
         if (!el) return;
         if ((settings.low_disk_auto_prune_enabled || 'false') !== 'true') {
-            el.innerText = '已禁用';
+            el.innerText = t('logs.disabled');
             el.className = 'text-muted fw-bold';
             return;
         }
         const blockedUntil = parseInt(settings.low_disk_prune_blocked_until || 0);
         if (blockedUntil && blockedUntil > Date.now() / 1000) {
             const until = new Date(blockedUntil * 1000).toLocaleString();
-            el.innerText = `暂停至 ${until}`;
+            el.innerText = t('logs.pausedUntil', { time: until });
             el.className = 'text-warning fw-bold';
             return;
         }
-        el.innerText = '保护中';
+        el.innerText = t('logs.protected');
         el.className = 'text-success fw-bold';
     }
 
@@ -2123,6 +2272,7 @@ n        /* 标签样式 */
             // 创建原始数据快照
             initialSettingsSnapshot = {
                 server_name: globalSettings.server_name || 'MY_SERVER',
+                ui_language: globalSettings.ui_language || '{{ locale }}',
                 log_delay_warn: parseFloat(globalSettings.log_delay_warn),
                 log_delay_danger: parseFloat(globalSettings.log_delay_danger),
                 data_retention_days: parseInt(globalSettings.data_retention_days),
@@ -2153,6 +2303,7 @@ n        /* 标签样式 */
             
             // 填充 UI
             document.getElementById('set-server-name').value = globalSettings.server_name || 'MY_SERVER';
+            document.getElementById('set-ui-language').value = globalSettings.ui_language || '{{ locale }}';
             document.getElementById('set-warn').value = globalSettings.log_delay_warn;
             document.getElementById('set-danger').value = globalSettings.log_delay_danger;
             document.getElementById('set-retention').value = globalSettings.data_retention_days;
@@ -2177,7 +2328,7 @@ n        /* 标签样式 */
             document.getElementById('smtp-port').value = globalSettings.smtp_port || '465';
             document.getElementById('smtp-user').value = globalSettings.smtp_user || '';
             document.getElementById('smtp-pass').value = globalSettings.smtp_pass || '';
-            document.getElementById('smtp-pass').placeholder = globalSettings.smtp_pass_set ? '已保存，留空保持不变' : '';
+            document.getElementById('smtp-pass').placeholder = globalSettings.smtp_pass_set ? t('logs.savedPasswordPlaceholder') : '';
             document.getElementById('smtp-encryption').checked = globalSettings.smtp_encryption === 'true';
             document.getElementById('email-sender').value = globalSettings.email_sender_name || '';
             document.getElementById('email-receiver').value = globalSettings.email_receiver || '';
@@ -2223,9 +2374,9 @@ n        /* 标签样式 */
             if (globalSettings.retention_change_ts > 0) {
                 const elapsed = (Date.now() / 1000) - globalSettings.retention_change_ts;
                 const remaining = Math.max(0, 3 * 24 - (elapsed / 3600)).toFixed(1);
-                statusEl.innerHTML = `<span class="badge bg-warning text-dark">待处理: ${globalSettings.pending_retention_days} 天 (剩余约 ${remaining} 小时生效)</span>`;
+                statusEl.innerHTML = `<span class="badge bg-warning text-dark">${t('logs.retentionPending', { days: globalSettings.pending_retention_days, hours: remaining })}</span>`;
             } else {
-                statusEl.innerHTML = `<span class="badge bg-success">当前已生效</span>`;
+                statusEl.innerHTML = `<span class="badge bg-success">${t('logs.activeNow')}</span>`;
             }
 
             // 渲染告警规则
@@ -2235,7 +2386,7 @@ n        /* 标签样式 */
             const aboutVer = document.getElementById('about-ver-val');
             if (aboutVer) aboutVer.innerText = `V ${currentSWVersion}`;
         } catch (e) {
-            showToast('加载设置失败: ' + e.message, true);
+            showToast(t('settings.loadFailed', {message: e.message}), true);
         }
     }
 
@@ -2248,7 +2399,7 @@ n        /* 标签样式 */
     function renderAlertRules() {
         const container = document.getElementById('alert-rules-container');
         if (alertRules.length === 0) {
-            container.innerHTML = '<div class="text-center py-4 text-muted small">暂无告警规则</div>';
+            container.innerHTML = `<div class="text-center py-4 text-muted small">${t('logs.noAlertRules')}</div>`;
             return;
         }
 
@@ -2267,12 +2418,12 @@ n        /* 标签样式 */
                             <input class="form-check-input" type="checkbox" ${rule.enabled ? 'checked' : ''} 
                                    onchange="updateRuleLocalByIndex(${idx}, 'enabled', this.checked ? 1 : 0)">
                         </div>
-                        <button class="btn btn-link btn-sm text-danger p-0 ms-1" onclick="markDeleteRuleByIndex(${idx})" title="标记删除">
+                        <button class="btn btn-link btn-sm text-danger p-0 ms-1" onclick="markDeleteRuleByIndex(${idx})" title="${escapeAttr(t('logs.markDelete'))}">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         ` : `
-                        <span class="badge bg-danger ms-2" style="font-size: 9px;">待删除</span>
-                        <button class="btn btn-link btn-sm text-success p-0 ms-1" onclick="undoDeleteRuleByIndex(${idx})" title="撤销删除">
+                        <span class="badge bg-danger ms-2" style="font-size: 9px;">${t('logs.pendingDelete')}</span>
+                        <button class="btn btn-link btn-sm text-success p-0 ms-1" onclick="undoDeleteRuleByIndex(${idx})" title="${escapeAttr(t('logs.undoDelete'))}">
                             <i class="fas fa-undo"></i>
                         </button>
                         `}
@@ -2290,14 +2441,14 @@ n        /* 标签样式 */
                             </select>
                             <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:85px; height:24px; font-size:10px;"
                                        onchange="updateRuleLocalByIndex(${idx}, 'metric', this.value)">
-                                <option value="cpu_temp" ${rule.metric==='cpu_temp'?'selected':''}>CPU温度</option>
-                                <option value="fan_rpm" ${rule.metric==='fan_rpm'?'selected':''}>风扇转速</option>
-                                <option value="power" ${rule.metric==='power'?'selected':''}>功耗</option>
-                                <option value="cpu_usage" ${rule.metric==='cpu_usage'?'selected':''}>CPU负载</option>
-                                <option value="mem_usage" ${rule.metric==='mem_usage'?'selected':''}>内存占用</option>
-                                <option value="gpu_temp" ${rule.metric==='gpu_temp'?'selected':''}>GPU温度</option>
-                                <option value="gpu_util" ${rule.metric==='gpu_util'?'selected':''}>GPU负载</option>
-                                <option value="gpu_mem" ${rule.metric==='gpu_mem'?'selected':''}>显存占用</option>
+                                <option value="cpu_temp" ${rule.metric==='cpu_temp'?'selected':''}>${t('logs.alert.metric.cpu_temp')}</option>
+                                <option value="fan_rpm" ${rule.metric==='fan_rpm'?'selected':''}>${t('logs.alert.metric.fan_rpm')}</option>
+                                <option value="power" ${rule.metric==='power'?'selected':''}>${t('logs.alert.metric.power')}</option>
+                                <option value="cpu_usage" ${rule.metric==='cpu_usage'?'selected':''}>${t('logs.alert.metric.cpu_usage')}</option>
+                                <option value="mem_usage" ${rule.metric==='mem_usage'?'selected':''}>${t('logs.alert.metric.mem_usage')}</option>
+                                <option value="gpu_temp" ${rule.metric==='gpu_temp'?'selected':''}>${t('logs.alert.metric.gpu_temp')}</option>
+                                <option value="gpu_util" ${rule.metric==='gpu_util'?'selected':''}>${t('logs.alert.metric.gpu_util')}</option>
+                                <option value="gpu_mem" ${rule.metric==='gpu_mem'?'selected':''}>${t('logs.alert.metric.gpu_mem')}</option>
                             </select>
                             <select class="form-select form-select-sm bg-dark border-secondary text-light py-0 px-1" style="width:45px; height:24px; font-size:11px;"
                                        onchange="updateRuleLocalByIndex(${idx}, 'operator', this.value)">
@@ -2313,11 +2464,11 @@ n        /* 标签样式 */
                         <div class="d-flex align-items-center gap-1 text-muted small" style="background: rgba(255,255,255,0.03); padding: 2px 6px; border-radius: 4px;">
                             <i class="fas fa-clock opacity-50" style="font-size:10px;"></i>
                             <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:38px; height:24px; font-size:11px;"
-                                                     value="${rule.duration}" onchange="updateRuleLocalByIndex(${idx}, 'duration', parseInt(this.value))" title="持续时间(秒)">
+                                                     value="${rule.duration}" onchange="updateRuleLocalByIndex(${idx}, 'duration', parseInt(this.value))" title="${escapeAttr(t('logs.durationSeconds'))}">
                             <span class="mx-0 opacity-25">/</span>
                             <input type="number" class="form-control form-control-sm bg-dark border-secondary text-light py-0 px-1" style="width:48px; height:24px; font-size:11px;"
-                                                       value="${rule.notify_interval}" onchange="updateRuleLocalByIndex(${idx}, 'notify_interval', parseInt(this.value))" title="通知频率(秒)">
-                            <span style="font-size: 9px; opacity: 0.5;">秒</span>
+                                                       value="${rule.notify_interval}" onchange="updateRuleLocalByIndex(${idx}, 'notify_interval', parseInt(this.value))" title="${escapeAttr(t('logs.notifySeconds'))}">
+                            <span style="font-size: 9px; opacity: 0.5;">${t('logs.secondsShort')}</span>
                         </div>
                     </div>
                     ` : ''}
@@ -2365,7 +2516,7 @@ n        /* 标签样式 */
         syncAllRulesFromUI();
         
         // 仅在前端 Push 暂存，不发起后端请求
-        const newRule = { name: "新规则", metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN", enabled: 1 };
+        const newRule = { name: t('logs.newAlertRule'), metric: "cpu_temp", operator: ">", threshold: 80, duration: 30, notify_interval: 600, level: "WARN", enabled: 1 };
         alertRules.push(newRule);
         renderAlertRules();
         markChanged();
@@ -2391,12 +2542,12 @@ n        /* 标签样式 */
 
     // 旧版直接删除函数（保留但不再使用）
     async function deleteRule(id) {
-        showConfirmModal('规则删除后将无法恢复，确定继续吗？', async () => {
+        showConfirmModal(t('logs.deleteRuleConfirm'), async () => {
             try {
                 await fetch(`/api/alert_rules?id=${id}`, { method: 'DELETE' });
                 await loadAlertRules();
-                showToast('规则已删除');
-            } catch (e) { showToast('删除失败', true); }
+                showToast(t('logs.ruleDeleted'));
+            } catch (e) { showToast(t('logs.deleteFailed'), true); }
         });
     }
 
@@ -2417,7 +2568,7 @@ n        /* 标签样式 */
         };
 
         if (!payload.email_receiver) {
-            showToast('请先填写收件人邮箱', true);
+            showToast(t('logs.receiverRequired'), true);
             return;
         }
 
@@ -2436,10 +2587,10 @@ n        /* 标签样式 */
             if (data.status === 'success') {
                 showToast(data.message);
             } else {
-                showToast(data.message || '发送失败', true);
+                showToast(data.message || t('logs.sendFailed'), true);
             }
         } catch (e) {
-            showToast('测试请求失败: ' + e.message, true);
+            showToast(t('logs.testRequestFailed', { message: e.message }), true);
         } finally {
             btn.disabled = false;
             text.classList.remove('d-none');
@@ -2468,6 +2619,7 @@ n        /* 标签样式 */
         // 封装统一 payload，减少请求次数和数据库锁定时间
         const payload = {
             server_name: document.getElementById('set-server-name').value,
+            ui_language: document.getElementById('set-ui-language').value,
             log_delay_warn: parseFloat(document.getElementById('set-warn').value),
             log_delay_danger: parseFloat(document.getElementById('set-danger').value),
             data_retention_days: parseInt(document.getElementById('set-retention').value),
@@ -2507,11 +2659,13 @@ n        /* 标签样式 */
             });
             
             if (res.ok) {
-                showToast('系统设置已应用并保存成功');
+                const languageChanged = payload.ui_language !== (initialSettingsSnapshot.ui_language || '{{ locale }}');
+                showToast(t('settings.saved'));
                 
                 // 保存成功后，更新快照，使脏检查回归一致状态，从而静默关闭
                 initialSettingsSnapshot = {
                     server_name: payload.server_name,
+                    ui_language: payload.ui_language,
                     log_delay_warn: payload.log_delay_warn,
                     log_delay_danger: payload.log_delay_danger,
                     data_retention_days: payload.data_retention_days,
@@ -2542,9 +2696,12 @@ n        /* 标签样式 */
                 settingsModal.hide();
                 delayConfig = { log_delay_warn: payload.log_delay_warn, log_delay_danger: payload.log_delay_danger };
                 drawIntervalChart();
+                if (languageChanged) {
+                    window.location.reload();
+                }
             }
         } catch (e) {
-            showToast('保存失败: ' + e.message, true);
+            showToast(t('settings.saveFailed', {message: e.message}), true);
         } finally {
             btn.disabled = false;
             text.classList.remove('d-none');
@@ -2596,7 +2753,7 @@ n        /* 标签样式 */
 
             // 2. 获取数据
             const response = await fetch('/api/recording_stats');
-            if (!response.ok) throw new Error('API Response Error');
+            if (!response.ok) throw new Error(t('logs.apiResponseError'));
             const data = await response.json();
             
             if (!data || !Array.isArray(data) || data.length === 0) {

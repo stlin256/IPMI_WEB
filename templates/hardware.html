@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hardware - {{ server_name }} Ops</title>
+    <title>{{ t('hardware.title') }} - {{ server_name }} Ops</title>
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
@@ -97,7 +97,7 @@
         <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
             <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
             <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden">New Logs</span>
+                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
             </span>
         </a>
         <div class="navbar-nav flex-row me-auto ms-4">
@@ -106,7 +106,7 @@
             <a class="nav-link me-3" href="/gpu">GPU</a>
             <a class="nav-link" href="/history">HIST</a>
         </div>
-        <a href="/logout" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i></a>
+        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
     </div>
 </nav>
 
@@ -380,20 +380,20 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary">
-                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sparkles me-2"></i>IPMI_WEB Updated</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sparkles me-2"></i><span data-i18n="update.title">{{ t('update.title') }}</span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body p-4">
                 <pre id="update-notice-logo" class="text-primary mb-4" style="font-family: 'SF Mono', Consolas, monospace; font-size: 8.5px; line-height: 1.1; white-space: pre; overflow: hidden; max-width: 100%; letter-spacing: 0;"></pre>
                 <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-25 border border-white border-opacity-10 rounded p-2 px-3 mb-3">
-                    <span class="text-muted small">当前版本</span>
+                    <span class="text-muted small" data-i18n="update.currentVersion">{{ t('update.currentVersion') }}</span>
                     <span class="badge bg-primary rounded-pill font-monospace" id="update-notice-version">V --</span>
                 </div>
-                <div id="update-notice-plain" class="text-muted small mb-0">版本已更新。</div>
+                <div id="update-notice-plain" class="text-muted small mb-0" data-i18n="update.updated">{{ t('update.updated') }}</div>
                 <div id="update-notice-notes" class="small text-light mb-0 d-none"></div>
             </div>
             <div class="modal-footer border-secondary">
-                <button type="button" class="btn btn-primary px-4 fw-bold" data-bs-dismiss="modal">知道了</button>
+                <button type="button" class="btn btn-primary px-4 fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ t('update.gotIt') }}</button>
             </div>
         </div>
     </div>
@@ -404,13 +404,17 @@
     <div id="opToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
         <div class="d-flex">
             <div class="toast-body">
-                <i class="fas fa-check-circle me-2"></i> <span id="toast-msg">Operation successful</span>
+                <i class="fas fa-check-circle me-2"></i> <span id="toast-msg" data-i18n="app.operationSuccess">{{ t('app.operationSuccess') }}</span>
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
     </div>
 </div>
 
+<script>
+    window.I18N_MESSAGES = {{ i18n_messages | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script>
     let mainChart, curveChart, miniCurveChart;
     let historyData = {}, currentCurve = {};
@@ -478,7 +482,7 @@
         });
         let body = {};
         try { body = await res.json(); } catch (_) {}
-        if (!res.ok) throw new Error(body.error || 'Request failed');
+        if (!res.ok) throw new Error(body.error || t('hardware.requestFailed'));
         return body;
     }
 
@@ -541,13 +545,13 @@
 
         postJson('/api/config/fixed_fan_speed', { enabled: isEnabled })
             .then(() => {
-                showToast(isEnabled ? 'Fixed Speed Enabled' : 'Fixed Speed Disabled');
+                showToast(isEnabled ? t('hardware.fixedEnabled') : t('hardware.fixedDisabled'));
                 refreshData();
             })
             .catch((err) => {
                 el.checked = !isEnabled;
                 updateFixedUIState(!isEnabled);
-                showToast(err.message || 'Failed to update setting', true);
+                showToast(err.message || t('settings.saveFailed', { message: '' }), true);
             });
     }
 
@@ -559,7 +563,7 @@
         if (isEnabled && maxRPM <= 0) {
             el.checked = false;
             updateTargetTempUIState(false);
-            showToast('Run calibration before enabling target temperature mode', true);
+            showToast(t('hardware.runCalibrationFirst'), true);
             return;
         }
 
@@ -573,13 +577,13 @@
 
         postJson('/api/config/target_temp_mode', { enabled: isEnabled })
             .then(() => {
-                showToast(isEnabled ? 'Target Temperature Mode Enabled' : 'Target Temperature Mode Disabled');
+                showToast(isEnabled ? t('hardware.targetTempEnabled') : t('hardware.targetTempDisabled'));
                 refreshData();
             })
             .catch((err) => {
                 el.checked = !isEnabled;
                 updateTargetTempUIState(!isEnabled);
-                showToast(err.message || 'Failed to update setting', true);
+                showToast(err.message || t('settings.saveFailed', { message: '' }), true);
                 refreshData();
             });
     }
@@ -598,10 +602,10 @@
             postJson('/api/config/fixed_fan_speed', { target: targetVal })
                 .then(() => {
                     lastSavedFixedTarget = targetVal;
-                    showToast(`Target Speed set to ${targetVal}%`);
+                    showToast(t('hardware.targetSpeedSet', { value: targetVal }));
                     refreshData();
                 })
-                .catch((err) => showToast(err.message || 'Failed to set target speed', true));
+                .catch((err) => showToast(err.message || t('hardware.setTargetSpeedFailed'), true));
         }, 700);
     }
 
@@ -619,10 +623,10 @@
             postJson('/api/config/target_temp_mode', { target: targetVal })
                 .then(() => {
                     lastSavedTargetTemp = targetVal;
-                    showToast(`Target Temperature set to ${targetVal}°C`);
+                    showToast(t('hardware.targetTempSet', { value: targetVal }));
                     refreshData();
                 })
-                .catch((err) => showToast(err.message || 'Failed to set target temperature', true));
+                .catch((err) => showToast(err.message || t('hardware.setTargetTempFailed'), true));
         }, 700);
     }
 
@@ -694,33 +698,33 @@
     }
 
     function getReleaseNoteGroups(entry) {
-        const groups = [];
         const notesByLang = entry && entry.notes_by_lang && typeof entry.notes_by_lang === 'object'
             ? entry.notes_by_lang
             : {};
         const labels = entry && entry.language_labels && typeof entry.language_labels === 'object'
             ? entry.language_labels
             : {};
-        const orderedLangs = ['zh-CN', 'en']
-            .filter(lang => Array.isArray(notesByLang[lang]) && notesByLang[lang].length)
-            .concat(Object.keys(notesByLang).filter(lang => !['zh-CN', 'en'].includes(lang)));
-
-        orderedLangs.forEach(lang => {
-            const items = Array.isArray(notesByLang[lang]) ? notesByLang[lang].filter(Boolean) : [];
-            if (items.length) groups.push({ label: labels[lang] || lang, items });
-        });
-
-        if (!groups.length && Array.isArray(entry.notes)) {
-            const items = entry.notes.filter(Boolean);
-            if (items.length) groups.push({ label: 'Notes', items });
+        const pageLocale = (document.documentElement.lang || 'zh-CN').toLowerCase().startsWith('en') ? 'en' : 'zh-CN';
+        const currentItems = Array.isArray(notesByLang[pageLocale]) ? notesByLang[pageLocale].filter(Boolean) : [];
+        if (currentItems.length) {
+            return [{ label: labels[pageLocale] || pageLocale, items: currentItems }];
         }
-        return groups;
+        if (Object.keys(notesByLang).length) {
+            return [];
+        }
+        if (Array.isArray(entry.notes)) {
+            const items = entry.notes.filter(Boolean);
+            if (items.length) return [{ label: 'Notes', items }];
+        }
+        return [];
     }
 
     function renderReleaseNoteGroups(entry) {
-        return getReleaseNoteGroups(entry).map(group => `
+        const groups = getReleaseNoteGroups(entry);
+        const showGroupLabel = groups.length > 1;
+        return groups.map(group => `
             <div class="mb-3">
-                <div class="text-primary fw-bold mb-1">${escapeHtml(group.label)}</div>
+                ${showGroupLabel ? `<div class="text-primary fw-bold mb-1">${escapeHtml(group.label)}</div>` : ''}
                 <ul class="mb-0 ps-3">
                     ${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
                 </ul>
@@ -783,7 +787,7 @@
                 let missing = [];
                 if (!d.env.ipmitool) missing.push('<strong>ipmitool</strong>');
                 if (!d.env.sensors) missing.push('<strong>lm-sensors</strong>');
-                envMsg.innerHTML = `The following components are not installed: ${missing.join(' and ')}. Some features may not work correctly.`;
+                envMsg.innerHTML = t('hardware.envMissingMessage', { components: missing.join(' / ') });
                 envWarn.classList.remove('d-none');
             } else {
                 envWarn.classList.add('d-none');
@@ -796,7 +800,7 @@
             maxRPM = d.max_rpm || 0;
             minRPM = d.min_rpm || 0;
             const calibrated = maxRPM > 0;
-            const rangeText = calibrated ? `${minRPM} - ${maxRPM} RPM` : "Not Calibrated";
+            const rangeText = calibrated ? `${minRPM} - ${maxRPM} RPM` : t('hardware.notCalibrated');
             document.getElementById('rpm-range-display').innerText = rangeText;
             updateTargetTempCalibrationState(calibrated);
 
@@ -817,12 +821,12 @@
 
             if (d.mode === 'fixed' || d.mode === 'target_temp') {
                 const isFixedMode = d.mode === 'fixed';
-                modeText.innerText = isFixedMode ? 'FIXED SPEED' : 'TARGET TEMP';
+                modeText.innerText = isFixedMode ? t('hardware.modeFixed').toUpperCase() : t('hardware.modeTargetTemp').toUpperCase();
                 modeText.className = `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`;
                 btn.className = 'btn w-100 py-2 fw-bold btn-secondary disabled';
-                btn.innerHTML = '<i class="fas fa-ban me-2"></i>Mode Locked';
+                btn.innerHTML = `<i class="fas fa-ban me-2"></i>${t('hardware.modeLocked')}`;
                 warnMsg.classList.remove('d-none');
-                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Disable ${isFixedMode ? 'Fixed Speed' : 'Target Temp'} to switch`;
+                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${t('hardware.disableModeToSwitch', { mode: isFixedMode ? t('metrics.fixedSpeed') : t('metrics.targetTemp') })}`;
 
                 if (isFixedMode) {
                     if (!fixedSwitch.checked) {
@@ -845,10 +849,10 @@
                 }
             } else {
                 const isAuto = d.mode === 'auto';
-                modeText.innerText = isAuto ? 'AUTOMATIC' : 'MANUAL';
+                modeText.innerText = isAuto ? t('hardware.modeAutomatic').toUpperCase() : t('hardware.modeManual').toUpperCase();
                 modeText.className = `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`;
                 btn.className = `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
-                btn.innerHTML = isAuto ? '<i class="fas fa-hand-paper me-2"></i>Switch to Manual' : '<i class="fas fa-robot me-2"></i>Switch to Auto';
+                btn.innerHTML = isAuto ? `<i class="fas fa-hand-paper me-2"></i>${t('hardware.switchToManual')}` : `<i class="fas fa-robot me-2"></i>${t('hardware.switchToAuto')}`;
                 btn.onclick = toggleMode;
                 warnMsg.classList.add('d-none');
 
@@ -1015,13 +1019,13 @@
        };
 
        if(document.getElementById('chk-pwr').checked)
-           datasets.push({label:'Power', data:historyData.power, borderColor:'#e3b341', backgroundColor: createGradient('#e3b341'), fill: true});
+           datasets.push({label:t('metrics.power'), data:historyData.power, borderColor:'#e3b341', backgroundColor: createGradient('#e3b341'), fill: true});
        
        if(document.getElementById('chk-temp').checked)
-           datasets.push({label:'Temp', data:historyData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient('#1f6feb'), fill: true});
+           datasets.push({label:t('metrics.temp'), data:historyData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient('#1f6feb'), fill: true});
        
        if(document.getElementById('chk-fan').checked)
-           datasets.push({label:'Fan', data:historyData.fan_rpm, borderColor:'#2ea043', yAxisID: 'y1'});
+           datasets.push({label:t('metrics.fan'), data:historyData.fan_rpm, borderColor:'#2ea043', yAxisID: 'y1'});
 
        mainChart.data.labels = historyData.times;
        mainChart.data.datasets = datasets;
@@ -1095,10 +1099,10 @@
         fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ curve: currentCurve }) })
             .then(() => { 
                 bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
-                showToast("Fan curve updated successfully");
+                showToast(t('hardware.fanCurveSaved'));
                 loadInitialConfig();
                 refreshData(); // <--- 关键修改：立刻强制刷新
-            }).catch(() => showToast("Failed to save curve", true));
+            }).catch(() => showToast(t('hardware.fanCurveSaveFailed'), true));
     }
 
     let pendingMode = null;
@@ -1106,17 +1110,17 @@
 
     function toggleMode() {
         const modeText = document.getElementById('mode-display').innerText;
-        if(modeText.includes('FIXED') || modeText.includes('TARGET')) {
-            showToast("Please disable active override mode first", true);
+        if(modeText.includes(t('hardware.modeFixed').toUpperCase()) || modeText.includes(t('hardware.modeTargetTemp').toUpperCase()) || modeText.includes('FIXED') || modeText.includes('TARGET')) {
+            showToast(t('hardware.disableOverrideFirst'), true);
             return;
         }
         
-        pendingMode = modeText === 'AUTOMATIC' ? 'manual' : 'auto';
+        pendingMode = (modeText === t('hardware.modeAutomatic').toUpperCase() || modeText === 'AUTOMATIC') ? 'manual' : 'auto';
         
         // 更新 Modal 内容
         const isAuto = pendingMode === 'auto';
         document.getElementById('mode-icon-confirm').className = `fas ${isAuto ? 'fa-robot text-success' : 'fa-hand-paper text-primary'} fs-1`;
-        document.getElementById('mode-msg-confirm').innerText = `Confirm switch to ${pendingMode.toUpperCase()} mode?`;
+        document.getElementById('mode-msg-confirm').innerText = t('hardware.confirmSwitchMode', { mode: pendingMode === 'auto' ? t('hardware.modeAutomatic') : t('hardware.modeManual') });
         document.getElementById('btn-confirm-mode').className = `btn ${isAuto ? 'btn-success' : 'btn-primary'} flex-grow-1 fw-bold`;
         
         modeModal.show();
@@ -1128,18 +1132,18 @@
         
         fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ mode: pendingMode }) })
         .then(() => {
-            showToast(`Switched to ${pendingMode.toUpperCase()} mode`);
+            showToast(t('hardware.switchedMode', { mode: pendingMode === 'auto' ? t('hardware.modeAutomatic') : t('hardware.modeManual') }));
             modeModal.hide();
             refreshData();
         }).catch(() => {
-            showToast("Failed to switch mode", true);
+            showToast(t('hardware.switchModeFailed'), true);
             modeModal.hide();
         });
     };
 
     let calibInterval;
     function startCalibration() {
-        if(!confirm("Calibration takes a few minutes. Fans will slow down then speed up. Continue?")) return;
+        if(!confirm(t('hardware.calibrationConfirm'))) return;
         bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
         const calibModal = new bootstrap.Modal(document.getElementById('calibModal'));
         calibModal.show();
@@ -1159,7 +1163,7 @@
                 clearInterval(calibInterval);
                 setTimeout(() => {
                     bootstrap.Modal.getInstance(document.getElementById('calibModal')).hide();
-                    alert("Calibration Complete!");
+                    alert(t('hardware.calibrationComplete'));
                     refreshData();
                 }, 1000);
             }
