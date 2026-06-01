@@ -32,7 +32,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, has_request_context
+from i18n import DEFAULT_LOCALE, I18n, normalize_locale, pick_browser_locale
 
 # --- 配置 ---
 def load_config():
@@ -53,7 +54,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.4.3'
+VERSION = '1.4.5'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -164,6 +165,148 @@ SENSITIVE_PLACEHOLDER = '********'
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+i18n = I18n(os.path.join(app.root_path, 'static', 'i18n', 'messages.json'))
+
+def get_saved_locale():
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT value FROM config WHERE key='ui_language'").fetchone()
+        conn.close()
+        return normalize_locale(row['value']) if row and row['value'] else None
+    except Exception:
+        return None
+
+def get_current_locale():
+    saved = get_saved_locale()
+    if saved:
+        return saved
+    if has_request_context():
+        return pick_browser_locale(request.accept_languages)
+    return DEFAULT_LOCALE
+
+def persist_initial_locale():
+    if not has_request_context():
+        return
+    locale = pick_browser_locale(request.accept_languages)
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT value FROM config WHERE key='ui_language'").fetchone()
+        if row is None or not normalize_locale(row['value']):
+            conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('ui_language', ?)", (locale,))
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def translate_current(key, **kwargs):
+    return i18n.t(get_current_locale(), key, **kwargs)
+
+def translate_locale(locale, key, **kwargs):
+    return i18n.t(locale or get_current_locale(), key, **kwargs)
+
+def first_detail_value(details, keys, fallback=''):
+    for key in keys:
+        value = details.get(key) if isinstance(details, dict) else None
+        if value not in (None, ''):
+            return value
+    return fallback
+
+def translate_audit_message(record, locale=None):
+    locale = locale or get_current_locale()
+    t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
+    details = parse_audit_details(record.get('details'))
+    module = record.get('module') or ''
+    action = record.get('action') or ''
+    level = record.get('level') or ''
+
+    if module == 'AUTH' and action == 'LOGIN_FAIL':
+        return t_locale('logs.loginFailed', count=details.get('fail_count', '--'), wait=details.get('wait_time', 0))
+    if module == 'AUTH' and action == 'LOGIN_SUCCESS':
+        return t_locale('logs.loginSuccess')
+    if module == 'CONFIG' and action == 'UPDATE_SETTINGS':
+        changes = details.get('changes') if isinstance(details, dict) else []
+        return t_locale('logs.settingsUpdated', count=len(changes) if isinstance(changes, list) else 0)
+    if module == 'CONFIG' and action == 'EXPORT':
+        return t_locale('logs.exportConfigDone')
+    if module == 'CONFIG' and action == 'IMPORT':
+        return t_locale('logs.importConfigDone')
+    if module == 'CONFIG' and action == 'IMPORT_FAIL':
+        return t_locale('logs.importConfigFailed', message=first_detail_value(details, ['error', 'message'], action))
+    if module == 'CONFIG' and action == 'UPDATE_DELAY':
+        return t_locale('logs.updateDelay')
+    if module == 'CONFIG' and action == 'CERT_UPLOAD':
+        return t_locale('logs.certUploadAction')
+    if module == 'SYSTEM' and action == 'SERVICE_RESTART':
+        return t_locale('logs.serviceRestart')
+    if module == 'SYSTEM' and action == 'STARTUP':
+        return t_locale('logs.startup')
+    if module == 'SYSTEM' and action == 'SUMMARY_MANUAL':
+        return t_locale('logs.summaryManual')
+    if module == 'SYSTEM' and action == 'SUMMARY_SENT':
+        return t_locale('logs.summarySentAction')
+    if module == 'SYSTEM' and action == 'RETENTION_PENDING':
+        return t_locale('logs.retentionPendingAction')
+    if module == 'SYSTEM' and action == 'RETENTION_UPDATE':
+        return t_locale('logs.retentionUpdateAction')
+    if module == 'SYSTEM' and action == 'ALERT_TRIGGER':
+        return t_locale('logs.alertTriggered', name=first_detail_value(details, ['rule_name', 'name'], ''))
+    if module == 'SYSTEM' and action == 'ALERT_RECOVER':
+        return t_locale('logs.alertRecovered', name=first_detail_value(details, ['rule_name', 'name'], ''))
+    if module == 'SYSTEM' and action == 'DATA_GAP':
+        return t_locale('logs.dataGap', seconds=first_detail_value(details, ['gap_seconds', 'seconds'], '--'))
+    if module == 'SYSTEM' and action == 'LOW_DISK_SPACE_WARNING':
+        return t_locale('logs.lowDiskSpaceWarning')
+    if module == 'SYSTEM' and action == 'LOW_DISK_SPACE_RECLAIMED':
+        return t_locale('logs.lowDiskSpaceReclaimed')
+    if module == 'SYSTEM' and action == 'LOW_DISK_PRUNE_BLOCKED':
+        return t_locale('logs.lowDiskPruneBlocked')
+    if module == 'SYSTEM' and action == 'LOW_DISK_PRUNE_ABORTED':
+        return t_locale('logs.lowDiskPruneAborted')
+    if module == 'SYSTEM' and action == 'LOW_DISK_AUDIT_PRUNE':
+        return t_locale('logs.lowDiskAuditPrune', day=first_detail_value(details, ['day'], ''))
+    if module == 'SYSTEM' and action == 'LOW_DISK_PRUNE':
+        return t_locale('logs.lowDiskPrune', day=first_detail_value(details, ['day'], ''))
+    if module == 'SYSTEM' and action == 'LOW_DISK_PRUNE_EMPTY':
+        return t_locale('logs.lowDiskPruneEmpty')
+    if module == 'SYSTEM' and action == 'EMAIL_TEST':
+        receivers = details.get('receivers') or details.get('receiver') or ''
+        if isinstance(receivers, list):
+            receivers = ', '.join(receivers)
+        return t_locale('logs.emailTest', receivers=receivers)
+    if module == 'CALIBRATION' and action == 'START':
+        return t_locale('logs.calibrationStarted')
+    if module == 'CALIBRATION' and action == 'SUCCESS':
+        return t_locale('logs.calibrationSucceeded')
+    if module == 'CALIBRATION' and action == 'FAIL':
+        return t_locale('logs.calibrationFailed')
+    if module == 'GPU' and action == 'AGENT_ONLINE':
+        return t_locale('logs.gpuOnline')
+    if module == 'GPU' and action == 'AGENT_OFFLINE':
+        return t_locale('logs.gpuOffline')
+    if module == 'GPU' and action == 'AGENT_STOPPED':
+        return t_locale('logs.gpuStopped')
+    if module == 'GPU' and str(action).startswith('UPDATE_CONFIG'):
+        return t_locale('logs.gpuConfigUpdated')
+    if module == 'FAN' and action == 'UPDATE_CONFIG':
+        return t_locale('logs.fanConfigUpdated')
+    if module == 'FAN' and action == 'UPDATE_FIXED':
+        return t_locale('logs.fixedFanUpdated')
+    if module == 'FAN' and action == 'UPDATE_TARGET_TEMP':
+        return t_locale('logs.targetTempUpdated')
+    if 'FAIL' in str(action) or level in ('ERROR', 'SECURITY'):
+        return t_locale('logs.operationFailed', message=first_detail_value(details, ['error', 'message'], action))
+    if str(action).startswith('UPDATE'):
+        return t_locale('logs.configUpdated')
+    return record.get('message') or action or ''
+
+@app.context_processor
+def inject_i18n():
+    locale = get_current_locale()
+    return {
+        'locale': locale,
+        'i18n_messages': i18n.catalog(locale),
+        't': lambda key, **kwargs: i18n.t(locale, key, **kwargs)
+    }
 
 def ip_in_networks(ip_value, networks):
     try:
@@ -183,6 +326,7 @@ def mask_config_value(key, value):
 # 强制 HTTPS 跳转逻辑
 @app.before_request
 def before_request():
+    persist_initial_locale()
     if HAS_CERT:
         # 检查是否为 https 或者是否有代理头
         is_https = request.is_secure or (
@@ -296,7 +440,7 @@ def get_certificate_status():
         'days_left': None,
         'subject': '',
         'issuer': '',
-        'error': '证书文件不存在'
+        'error': translate_current('logs.certFileMissing')
     }
     return {
         'installed': cert_exists and key_exists,
@@ -423,24 +567,26 @@ def reclaim_sqlite_space_after_prune(conn, required_gain=LOW_DISK_MIN_FREE_GAIN_
         'reclaimable_after_bytes': get_sqlite_space_stats(conn).get('reclaimable_bytes', 0)
     }
 
-def _read_uploaded_file(file_storage, label):
+def _read_uploaded_file(file_storage, label, locale=None):
+    t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
     if not file_storage or not file_storage.filename:
-        raise ValueError(f'请上传{label}文件')
+        raise ValueError(t_locale('logs.certErrorUploadFile', label=label))
     data = file_storage.read(MAX_CERT_UPLOAD_BYTES + 1)
     if not data:
-        raise ValueError(f'{label}文件为空')
+        raise ValueError(t_locale('logs.certErrorEmptyFile', label=label))
     if len(data) > MAX_CERT_UPLOAD_BYTES:
-        raise ValueError(f'{label}文件过大，最大支持 256KB')
+        raise ValueError(t_locale('logs.certErrorFileTooLarge', label=label))
     try:
         data.decode('utf-8')
     except UnicodeDecodeError:
-        raise ValueError(f'{label}必须是 PEM 文本文件')
+        raise ValueError(t_locale('logs.certErrorPemText', label=label))
     return data
 
-def _validate_certificate_bytes(data):
+def _validate_certificate_bytes(data, locale=None):
+    t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
     text = data.decode('utf-8', errors='ignore')
     if 'BEGIN CERTIFICATE' not in text or 'END CERTIFICATE' not in text:
-        raise ValueError('证书文件必须包含 PEM 格式的 CERTIFICATE 内容')
+        raise ValueError(t_locale('logs.certErrorMissingCertificate'))
     os.makedirs(cert_dir, exist_ok=True)
     temp_path = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.crt')
     try:
@@ -448,16 +594,16 @@ def _validate_certificate_bytes(data):
             f.write(data)
         info = _decode_certificate_info(temp_path)
         if not info['valid']:
-            raise ValueError(f'证书解析失败: {info["error"]}')
+            raise ValueError(t_locale('logs.certErrorParseFailed', message=info["error"]))
         now = time.time()
         starts_ts = info.get('starts_at')
         expires_ts = info.get('expires_at')
         if not expires_ts:
-            raise ValueError('证书缺少有效期，已拒绝保存')
+            raise ValueError(t_locale('logs.certErrorMissingValidity'))
         if starts_ts and starts_ts > now:
-            raise ValueError(f'证书尚未生效，生效时间: {info.get("starts_at_str") or starts_ts}')
+            raise ValueError(t_locale('logs.certErrorNotYetValid', time=info.get("starts_at_str") or starts_ts))
         if expires_ts <= now:
-            raise ValueError(f'证书已过期，过期时间: {info.get("expires_at_str") or expires_ts}')
+            raise ValueError(t_locale('logs.certErrorExpired', time=info.get("expires_at_str") or expires_ts))
         return info
     finally:
         try:
@@ -465,7 +611,8 @@ def _validate_certificate_bytes(data):
         except OSError:
             pass
 
-def _validate_private_key_bytes(data):
+def _validate_private_key_bytes(data, locale=None):
+    t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
     text = data.decode('utf-8', errors='ignore')
     key_markers = (
         'BEGIN PRIVATE KEY',
@@ -474,9 +621,10 @@ def _validate_private_key_bytes(data):
         'BEGIN ENCRYPTED PRIVATE KEY'
     )
     if not any(marker in text for marker in key_markers):
-        raise ValueError('私钥文件必须包含 PEM 格式的 PRIVATE KEY 内容')
+        raise ValueError(t_locale('logs.certErrorMissingPrivateKey'))
 
-def _validate_certificate_pair(cert_data, key_data):
+def _validate_certificate_pair(cert_data, key_data, locale=None):
+    t_locale = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
     os.makedirs(cert_dir, exist_ok=True)
     temp_cert = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.crt')
     temp_key = os.path.join(cert_dir, f'.upload_check_{threading.get_ident()}.key')
@@ -488,7 +636,7 @@ def _validate_certificate_pair(cert_data, key_data):
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(temp_cert, temp_key)
     except Exception as e:
-        raise ValueError(f'证书和私钥不匹配或私钥无法加载: {e}')
+        raise ValueError(t_locale('logs.certErrorPairMismatch', message=str(e)))
     finally:
         for path in (temp_cert, temp_key):
             try:
@@ -1468,6 +1616,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_enabled', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_hours', '24')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', 'MY_SERVER')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('ui_language', '')")
 
     # 兼容性升级与初始化：确保所有邮件相关配置项存在
     smtp_configs = [
@@ -1777,6 +1926,8 @@ def get_client_ip():
 
 def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f6feb'):
     """发送系统通知邮件 (支持 MTA 和 SMTP)"""
+    locale = get_current_locale()
+    mail_t = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT key, value FROM config WHERE key LIKE 'email_%' OR key LIKE 'smtp_%' OR key = 'last_access_domain'")
@@ -1792,7 +1943,7 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
     receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
     
     if not receivers:
-        return False, "未配置收件人邮箱"
+        return False, mail_t('email.error.noRecipients')
 
     mode = configs.get('email_mode', 'mta')
     sender_name = configs.get('email_sender_name', f'System@{SERVER_NAME}.local')
@@ -1808,6 +1959,8 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
 
         # 渲染 HTML 模板
         html_content = render_template('email_alert.html',
+                                       locale=locale,
+                                       t=lambda key, **kwargs: translate_locale(locale, key, **kwargs),
                                        subject=subject,
                                        server_name=SERVER_NAME,
                                        metric=metric,
@@ -1833,7 +1986,13 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
             msg['Message-ID'] = make_msgid()
 
             # 构造纯文本备选
-            plain_text = f"Subject: {subject}\nServer: {SERVER_NAME}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n{message}"
+            plain_text = mail_t(
+                'email.alertPlainText',
+                subject=subject,
+                server=SERVER_NAME,
+                time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                message=message
+            )
             msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
             msg.attach(MIMEText(html_content, 'html', 'utf-8'))
 
@@ -1858,17 +2017,17 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
                     smtp.login(user, password)
                     smtp.send_message(msg)
             
-            logging.info(f" [EMAIL] Successfully sent via SMTP: Subject='{subject}' To='{receiver}'")
-            return True, "邮件已通过 SMTP 发送"
+            logging.info(f" [EMAIL] Successfully sent via SMTP: Subject='{subject}' To='{', '.join(receivers)}'")
+            return True, mail_t('email.sentSmtp')
 
         else: # MTA 模式 (Linux Only)
             if platform.system() != 'Linux':
-                return False, "MTA 模式仅在 Linux 环境下可用，请切换为 SMTP 模式"
+                return False, mail_t('email.error.mtaLinuxOnlySwitch')
 
             # 构造带 HTML 的 MIME 报文
             mail_msg = [
                 f"From: {sender_name}",
-                f"To: {receiver}",
+                f"To: {', '.join(receivers)}",
                 f"Subject: {subject}",
                 "MIME-Version: 1.0",
                 "Content-Type: text/html; charset=UTF-8",
@@ -1883,16 +2042,16 @@ def send_system_mail(subject, message, metric=None, value=None, theme_color='#1f
             stdout, stderr = process.communicate(input="\n".join(mail_msg))
             
             if process.returncode == 0:
-                logging.info(f" [EMAIL] Successfully submitted to MTA: Subject='{subject}' To='{receiver}'")
-                return True, "邮件已交付给系统 MTA"
+                logging.info(f" [EMAIL] Successfully submitted to MTA: Subject='{subject}' To='{', '.join(receivers)}'")
+                return True, mail_t('email.sentMta')
             else:
                 err_msg = stderr.strip() or stdout.strip() or "Unknown MTA error"
                 logging.error(f" [EMAIL] MTA Submission Failed: {err_msg}")
-                return False, f"MTA 发送失败: {err_msg}"
+                return False, mail_t('email.error.mtaFailed', message=err_msg)
             
     except Exception as e:
         logging.error(f" [EMAIL] Failed: {str(e)}")
-        return False, f"发信失败: {str(e)}"
+        return False, mail_t('email.error.sendFailed', message=str(e))
 
 
 def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
@@ -1903,6 +2062,9 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     :param force_ts: 强制使用指定的时间戳（用于补发机制），None 表示使用当前时间
     :param is_manual: 是否为手动触发
     """
+    locale = get_current_locale()
+    mail_t = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
+
     # 如果 hours 未指定，根据 report_type 动态获取
     if hours is None:
         conn = get_db_connection()
@@ -1934,7 +2096,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     receiver_raw = configs.get('email_receiver', '')
     receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
     if not receivers:
-        return False, "未配置收件人邮箱"
+        return False, mail_t('email.error.noRecipients')
     
     mode = configs.get('email_mode', 'mta')
     sender_name = configs.get('email_sender_name', f'System@{SERVER_NAME}.local')
@@ -2045,14 +2207,24 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     conn_s.close()
 
     # 格式化报告类型标签
-    type_labels = {
-        'daily': ('日报', f'过去 {hours} 小时', f'每日 {configs.get("summary_daily_time", "08:00")} 发送'),
-        'weekly': ('周报', f'过去 {hours} 小时', f'每周 {(["周一","周二","周三","周四","周五","周六","周日"][int(configs.get("summary_weekly_day", 1))])} {configs.get("summary_weekly_time", "09:00")} 发送'),
-        'custom': ('自定义', f'过去 {hours} 小时', f'每 {hours} 小时自动发送'),
-        'manual': ('手动', f'过去 {hours} 小时', '手动触发发送')
+    weekly_day_index = int(configs.get("summary_weekly_day", 1))
+    weekly_day = mail_t(f'settings.weekday.{weekly_day_index % 7}')
+    report_type_keys = {
+        'daily': 'emailSummary.type.daily',
+        'weekly': 'emailSummary.type.weekly',
+        'custom': 'emailSummary.type.custom',
+        'manual': 'emailSummary.type.manual'
     }
-    raw_label, report_range, report_frequency = type_labels.get(report_type, ('概览报告', f'过去 {hours} 小时', '手动触发'))
-    report_type_label = f"{current_server_name}{raw_label}"
+    raw_label = mail_t(report_type_keys.get(report_type, 'emailSummary.type.summary'))
+    report_range = mail_t('emailSummary.pastHours', hours=hours)
+    frequency_map = {
+        'daily': mail_t('emailSummary.frequency.daily', time=configs.get("summary_daily_time", "08:00")),
+        'weekly': mail_t('emailSummary.frequency.weekly', day=weekly_day, time=configs.get("summary_weekly_time", "09:00")),
+        'custom': mail_t('emailSummary.frequency.custom', hours=hours),
+        'manual': mail_t('emailSummary.frequency.manual')
+    }
+    report_frequency = frequency_map.get(report_type, mail_t('emailSummary.frequency.manual'))
+    report_type_label = mail_t('emailSummary.reportName', server=current_server_name, label=raw_label)
     
     # 格式化日志
     log_entries = []
@@ -2060,7 +2232,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         log_time = datetime.fromtimestamp(row['timestamp']).strftime('%H:%M:%S')
         level = row['level']
         color = '#3fb950' if level == 'INFO' else '#d29922' if level == 'WARN' else '#f85149' if level in ('ERROR', 'SECURITY') else '#8b949e'
-        msg = f"[{row['module']}] {row['action']}: {row['message']}"
+        msg = f"[{mail_t('logs.audit.' + row['module'])}] {translate_audit_message(dict(row), locale)}"
         log_entries.append({'time': log_time, 'color': color, 'msg': msg[:100]})
     
     def coerce_float(value):
@@ -2468,7 +2640,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
     conn_d.close()
     
     # 优先级：数据库记录 > 当前请求头 (如果是手动) > localhost 兜底
-    base_domain = domain_row[0] if domain_row else (request.url_root.rstrip('/') if request else 'http://localhost:5000')
+    base_domain = domain_row[0] if domain_row else (request.url_root.rstrip('/') if has_request_context() else 'http://localhost:5000')
 
     cpu_max_for_color = coerce_float(hw_stats.get('cpu_max')) or 0.0
     net_rx_total = coerce_float(res_stats.get('net_rx_total')) or 0.0
@@ -2493,14 +2665,16 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
 
     # 准备模板数据 (添加 gpu_data)
     template_data = {
-        'subject': f'{report_type_label}报告 - {datetime.now().strftime("%Y-%m-%d")}',
+        'locale': locale,
+        't': lambda key, **kwargs: translate_locale(locale, key, **kwargs),
+        'subject': mail_t('emailSummary.subject', report=report_type_label, date=datetime.now().strftime("%Y-%m-%d")),
         'server_name': current_server_name,
         'report_type': report_type,
         'report_type_label': report_type_label,
-        'send_mode_label': '手动发送的邮件' if is_manual else report_frequency,
+        'send_mode_label': mail_t('emailSummary.manualSendMode') if is_manual else report_frequency,
         'report_time_start': time_start_str,
         'report_time_end': time_end_str,
-        'report_duration': f'{hours}小时',
+        'report_duration': mail_t('emailSummary.hoursDuration', hours=hours),
         'data_points': actual_points,
         'cpu_data_points': cpu_data_points,
         'uptime_percent': uptime_percent,
@@ -2543,7 +2717,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'gpu_interval_data': gpu_interval_data,
         'version': VERSION,
         'report_range': report_range,
-        'report_frequency': f"{hours}小时",
+        'report_frequency': report_frequency,
         'panel_url': base_domain,
         'cpu_info': cpu_info_str
     }
@@ -2584,7 +2758,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
         'receivers': receivers,
         'sender_name': sender_name,
         'duration_hours': hours,
-        'report_type_cn': type_labels.get(report_type, ('未知',))[0],
+        'report_type_label': raw_label,
         'scheduled_time': configs.get(f'summary_{report_type}_time', 'N/A') if report_type in ('daily', 'weekly') else 'Cron-like Fixed Point',
         'server_name': current_server_name
     }
@@ -2622,24 +2796,29 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
             msg.attach(msg_alternative)
 
             # 纯文本版本
-            plain_text = f"""{SERVER_NAME} {report_type_label}
-统计时间: {time_start_str} ~ {time_end_str}
-
-硬件状态:
-  CPU温度: 当前 {template_data['cpu_current_temp']}°C, 平均 {template_data['cpu_avg_temp']}°C, 峰值 {template_data['cpu_max_temp']}°C
-  系统功耗: 当前 {template_data['power_current']}W, 平均 {template_data['power_avg']}W, 峰值 {template_data['power_max']}W, 预估耗电 {template_data['power_total_kwh']} kWh
-  风扇转速: 平均 {template_data['fan_avg_rpm']} RPM
-
-资源消耗:
-  CPU占用: 平均 {template_data['cpu_avg_load']}%
-  内存使用: 平均 {template_data['mem_avg']}%
-  网络流量: 接收 {template_data['net_rx_total']}, 发送 {template_data['net_tx_total']}
-
-数据点: {actual_points} | 在线率: {uptime_percent}%
-
-生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-由 IPMI_WEB v{VERSION} 自动生成
-"""
+            plain_text = mail_t(
+                'emailSummary.plainText',
+                server=SERVER_NAME,
+                report=report_type_label,
+                start=time_start_str,
+                end=time_end_str,
+                cpu_current=template_data['cpu_current_temp'],
+                cpu_avg=template_data['cpu_avg_temp'],
+                cpu_max=template_data['cpu_max_temp'],
+                power_current=template_data['power_current'],
+                power_avg=template_data['power_avg'],
+                power_max=template_data['power_max'],
+                power_kwh=template_data['power_total_kwh'],
+                fan_avg=template_data['fan_avg_rpm'],
+                cpu_load_avg=template_data['cpu_avg_load'],
+                mem_avg=template_data['mem_avg'],
+                net_rx=template_data['net_rx_total'],
+                net_tx=template_data['net_tx_total'],
+                data_points=actual_points,
+                uptime=uptime_percent,
+                generated_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                version=VERSION
+            )
             msg_alternative.attach(MIMEText(plain_text, 'plain', 'utf-8'))
             msg_alternative.attach(MIMEText(html_content, 'html', 'utf-8'))
             
@@ -2686,7 +2865,7 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
 
         else:  # MTA 模式
             if platform.system() != 'Linux':
-                return False, "MTA 模式仅支持 Linux 环境"
+                return False, mail_t('logs.mtaLinuxOnlyError')
 
             mail_msg = [
                 f"From: {sender_name}",
@@ -2707,11 +2886,11 @@ def send_summary_email(report_type, hours=None, force_ts=None, is_manual=False):
                 logging.info(f" [SUMMARY_EMAIL] Sent {report_type} report via MTA")
                 return True, email_details
             else:
-                return False, f"MTA 发送失败: {stderr or stdout}"
+                return False, mail_t('email.error.mtaFailed', message=stderr or stdout)
             
     except Exception as e:
         logging.error(f" [SUMMARY_EMAIL] Failed to send {report_type}: {str(e)}")
-        return False, f"发送失败: {str(e)}"
+        return False, mail_t('email.error.sendFailed', message=str(e))
 
 def get_ipmi_dump():
     # 优先从异步采集的缓存中读取，如果不满 10 秒则视为有效，减少物理调用
@@ -3800,7 +3979,7 @@ def login():
         else:
             if cooling_down:
                 conn.close()
-                err = session_error or "密码错误次数过多，请稍后重试。"
+                err = session_error or translate_current('app.retryAfter', seconds=remaining)
                 return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
 
             # 密码错误：执行正常的阶梯式惩罚
@@ -3824,12 +4003,12 @@ def login():
                        details={'fail_count': fail_count, 'wait_time': wait_current}, operator=ip)
             
             # PRG 模式重定向
-            session['login_error'] = "密码错误次数过多，请稍后重试。"
+            session['login_error'] = translate_current('app.retryAfter', seconds=wait_current or 30)
             return redirect(url_for('login'))
 
     if cooling_down:
         conn.close()
-        err = session_error or "密码错误次数过多，请稍后重试。"
+        err = session_error or translate_current('app.retryAfter', seconds=remaining)
         return render_template('login.html', error=err, wait_seconds=remaining, server_name=SERVER_NAME)
     
     conn.close()
@@ -3904,14 +4083,15 @@ def api_certificate():
         return jsonify(get_certificate_status())
 
     try:
+        locale = get_current_locale()
         cert_upload = request.files.get('cert_file')
         key_upload = request.files.get('key_file')
-        cert_data = _read_uploaded_file(cert_upload, '证书')
-        key_data = _read_uploaded_file(key_upload, '私钥')
+        cert_data = _read_uploaded_file(cert_upload, translate_locale(locale, 'logs.certLabel'), locale)
+        key_data = _read_uploaded_file(key_upload, translate_locale(locale, 'logs.keyLabel'), locale)
 
-        cert_info = _validate_certificate_bytes(cert_data)
-        _validate_private_key_bytes(key_data)
-        _validate_certificate_pair(cert_data, key_data)
+        cert_info = _validate_certificate_bytes(cert_data, locale)
+        _validate_private_key_bytes(key_data, locale)
+        _validate_certificate_pair(cert_data, key_data, locale)
 
         _atomic_write_bytes(DEFAULT_CERT_FILE, cert_data, 0o644)
         _atomic_write_bytes(DEFAULT_KEY_FILE, key_data, 0o600)
@@ -3931,7 +4111,7 @@ def api_certificate():
         )
         return jsonify({
             'status': 'success',
-            'message': '证书已保存，重启服务后生效',
+            'message': translate_current('logs.certUploadSaved'),
             'certificate': get_certificate_status()
         })
     except ValueError as e:
@@ -4085,7 +4265,7 @@ def api_config_precheck():
     try:
         new_config = request.json
         if not new_config or 'settings' not in new_config:
-            return jsonify({'error': '无效的配置文件'}), 400
+            return jsonify({'error': translate_current('logs.invalidConfigFile')}), 400
             
         conn = get_db_connection()
         c = conn.cursor()
@@ -4259,7 +4439,7 @@ def api_config_precheck():
         metadata = new_config.get('metadata', {})
         return jsonify({
             'version': metadata.get('version', 1),
-            'export_time': metadata.get('export_time', '未知'),
+            'export_time': metadata.get('export_time', translate_current('logs.unknown')),
             'software_version': metadata.get('software_version', '未知'),
             'diffs': diffs,
             'alerts': alert_diffs
@@ -4442,7 +4622,8 @@ def api_settings():
                 'email_sender_name', 'email_receiver',
                 'summary_enabled', 'summary_daily_enabled', 'summary_daily_time',
                 'summary_weekly_enabled', 'summary_weekly_day', 'summary_weekly_time',
-                'summary_custom_enabled', 'summary_custom_hours', 'server_name')
+                'summary_custom_enabled', 'summary_custom_hours', 'server_name',
+                'ui_language')
         c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
         res = {row['key']: row['value'] for row in c.fetchall()}
         c.execute("SELECT value FROM config WHERE key='smtp_pass'")
@@ -4470,6 +4651,7 @@ def api_settings():
         res['low_disk_auto_prune_enabled'] = (
             'true' if str(res.get('low_disk_auto_prune_enabled', 'false')).lower() == 'true' else 'false'
         )
+        res['ui_language'] = normalize_locale(res.get('ui_language')) or get_current_locale()
         try:
             res['low_disk_prune_blocked_until'] = int(res.get('low_disk_prune_blocked_until', 0))
         except:
@@ -4574,11 +4756,14 @@ def api_settings():
                 'summary_weekly_time': '周报时间',
                 'summary_custom_enabled': '自定义报告开关',
                 'summary_custom_hours': '自定义报告间隔',
-                'server_name': '服务器名称'
+                'server_name': '服务器名称',
+                'ui_language': '界面语言'
             }
             for key, label in mapping.items():
                 if key in data:
                     new_v = data[key]
+                    if key == 'ui_language':
+                        new_v = normalize_locale(new_v) or DEFAULT_LOCALE
                     if key in SENSITIVE_CONFIG_KEYS and str(new_v) == '' and current_configs.get(key):
                         continue
                     if is_changed(key, new_v):
@@ -4680,7 +4865,7 @@ def api_summary_email_manual():
             # 如果发送成功，msg 包含的是发信详情字典
             write_audit('INFO', 'SYSTEM', 'SUMMARY_MANUAL', f"手动触发{type_cn}概览报告已发送", 
                        details=msg, operator=get_client_ip())
-            return jsonify({'status': 'success', 'message': '概览报告已发送'})
+            return jsonify({'status': 'success', 'message': translate_current('logs.summarySent')})
         else:
             return jsonify({'status': 'error', 'message': msg})
     except Exception as e:
@@ -4691,6 +4876,8 @@ def api_summary_email_manual():
 def api_test_email():
     """手动发送测试邮件"""
     try:
+        locale = get_current_locale()
+        mail_t = lambda key, **kwargs: translate_locale(locale, key, **kwargs)
         data = request.json or {}
         # 临时更新配置用于测试
         mode = data.get('email_mode', 'mta')
@@ -4699,7 +4886,7 @@ def api_test_email():
         receivers = [r.strip() for r in re.split(r'[,;\s]+', receiver_raw) if r.strip()]
         
         if not receivers:
-            return jsonify({'status': 'error', 'message': '请先填写收件人邮箱'})
+            return jsonify({'status': 'error', 'message': mail_t('logs.receiverRequired')})
         
         sender_name = data.get('email_sender_name', f'System@{SERVER_NAME}.local')
 
@@ -4711,15 +4898,17 @@ def api_test_email():
             'sender_name': sender_name
         }
 
-        subject = "IPMI_WEB 连通性测试"
-        message = "这是一封由系统设置发起的连通性测试邮件。如果您收到此信，说明您的邮件通知配置已生效。"
+        subject = mail_t('email.testSubject')
+        message = mail_t('email.testMessage')
         
         # 逻辑：直接使用 request 中的参数尝试发送
         # 1. 渲染 HTML 模板
         html_content = render_template('email_alert.html',
+                                       locale=locale,
+                                       t=lambda key, **kwargs: translate_locale(locale, key, **kwargs),
                                        subject=subject,
                                        server_name=SERVER_NAME,
-                                       metric="Connection Test",
+                                       metric=mail_t('email.connectionTest'),
                                        value="SUCCESS",
                                        time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                        version=VERSION,
@@ -4742,7 +4931,7 @@ def api_test_email():
                     conn_pwd.close()
 
             if not all([server, user, password]):
-                return jsonify({'status': 'error', 'message': '请填写完整的 SMTP 配置项'})
+                return jsonify({'status': 'error', 'message': mail_t('logs.smtpIncomplete')})
 
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
@@ -4773,7 +4962,7 @@ def api_test_email():
             
         else: # MTA 模式
             if platform.system() != 'Linux':
-                return jsonify({'status': 'error', 'message': 'MTA 模式仅支持 Linux 环境'})
+                return jsonify({'status': 'error', 'message': mail_t('logs.mtaLinuxOnlyError')})
 
             mail_msg = [
                 f"From: {sender_name}",
@@ -4790,11 +4979,11 @@ def api_test_email():
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             stdout, stderr = process.communicate(input="\n".join(mail_msg))
             if process.returncode != 0:
-                return jsonify({'status': 'error', 'message': f'MTA 投递失败: {stderr or stdout}'})
+                return jsonify({'status': 'error', 'message': mail_t('email.error.mtaDeliveryFailed', message=stderr or stdout)})
 
         write_audit('INFO', 'SYSTEM', 'EMAIL_TEST', f"发送测试邮件至 {', '.join(receivers)}", 
                    details=audit_details, operator=get_client_ip())
-        return jsonify({'status': 'success', 'message': '测试邮件已发送，请检查收件箱'})
+        return jsonify({'status': 'success', 'message': mail_t('logs.testEmailSent')})
 
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
@@ -4891,7 +5080,7 @@ def api_config_import():
     try:
         data = request.json or {}
         if not data or 'metadata' not in data or 'settings' not in data:
-            return jsonify({'error': '无效的配置文件格式'}), 400
+            return jsonify({'error': translate_current('logs.invalidConfigFormat')}), 400
             
         settings = data['settings']
         version = data['metadata'].get('version', 0)

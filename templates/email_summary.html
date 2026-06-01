@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ server_name }} 系统运行报告</title>
+    <title>{{ t('emailSummary.title', server=server_name) }}</title>
     <style>
         @media only screen and (max-width: 480px) {
             .mobile-padding { padding: 20px 15px !important; }
@@ -23,7 +23,7 @@
 <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #010409; color: #e6edf3; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
     <!-- Preheader -->
     <div style="display: none; max-height: 0px; overflow: hidden; mso-hide: all;">
-        {{ server_name }} {{ report_type_label|default('系统运行') }}报告 - {{ report_range }} 数据概览。发送方式：{{ send_mode_label|default('自动发送') }}
+        {{ t('emailSummary.preheader', server=server_name, report=report_type_label, range=report_range, mode=send_mode_label) }}
     </div>
     
     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
@@ -50,21 +50,21 @@
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 30px;">
                                 <tr>
                                     <td style="vertical-align: middle;">
-                                        <h2 style="margin: 0; color: #e6edf3; font-size: 24px; font-weight: 600;">{{ report_type_label|default('系统运行') }}报告</h2>
+                                        <h2 style="margin: 0; color: #e6edf3; font-size: 24px; font-weight: 600;">{{ t('emailSummary.heading', report=report_type_label) }}</h2>
                                         <div style="margin-top: 8px; display: inline-block; padding: 2px 8px; background-color: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); border-radius: 4px; color: #58a6ff; font-size: 11px; font-weight: bold;">
-                                            {{ send_mode_label|default('自动计划发送') }}
+                                            {{ send_mode_label|default(t('emailSummary.autoSend')) }}
                                         </div>
                                         <p style="margin: 8px 0 0; color: #8b949e; font-size: 13px;">
-                                            统计区间: {{ report_time_start }} ~ {{ report_time_end }}
+                                            {{ t('emailSummary.period') }}: {{ report_time_start }} ~ {{ report_time_end }}
                                         </p>
                                         <p style="margin: 5px 0 0; color: #8b949e; font-size: 12px;">
-                                            报告时长: {{ report_duration|default('24小时') }} | 
-                                            数据采集点: {{ data_points|default('--') }} 个
+                                            {{ t('emailSummary.duration') }}: {{ report_duration|default(t('emailSummary.hoursDuration', hours=24)) }} |
+                                            {{ t('emailSummary.dataPoints') }}: {{ data_points|default('--') }}
                                         </p>
                                     </td>
                                     <td align="right" class="uptime-container" style="vertical-align: middle;">
                                         <div style="display: inline-block; padding: 8px 12px; background-color: rgba(35,197,94,0.1); border: 1px solid #23c55e; border-radius: 50px; white-space: nowrap;">
-                                            <span style="color: #3fb950; font-size: 12px; font-weight: bold;">在线率: {{ uptime_percent|default('100') }}%</span>
+                                            <span style="color: #3fb950; font-size: 12px; font-weight: bold;">{{ t('emailSummary.uptime') }}: {{ uptime_percent|default('100') }}%</span>
                                         </div>
                                     </td>
                                 </tr>
@@ -72,7 +72,7 @@
                             
                             <!-- 硬件状态 -->
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #58a6ff; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">硬件状态</div>
+                                <div style="color: #58a6ff; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{{ t('emailSummary.hardwareStatus') }}</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
@@ -80,32 +80,32 @@
                                                 <tr>
                                                     <!-- CPU 温度 -->
                                                     <td class="data-cell" width="33%" style="padding: 10px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">CPU 温度</div>
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">{{ t('emailSummary.cpuTemp') }}</div>
                                                         <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            <span class="nowrap">当前: <span style="color: {{ temp_color|default('#e6edf3') }}; font-weight: bold;">{{ cpu_current_temp|default('--') }}°C</span></span><br>
-                                                            <span class="nowrap">平均: {{ cpu_avg_temp|default('--') }}°C</span><br>
-                                                            <span class="nowrap">峰值: {{ cpu_max_temp|default('--') }}°C</span>
+                                                            <span class="nowrap">{{ t('emailSummary.current') }}: <span style="color: {{ temp_color|default('#e6edf3') }}; font-weight: bold;">{{ cpu_current_temp|default('--') }}°C</span></span><br>
+                                                            <span class="nowrap">{{ t('emailSummary.average') }}: {{ cpu_avg_temp|default('--') }}°C</span><br>
+                                                            <span class="nowrap">{{ t('emailSummary.peak') }}: {{ cpu_max_temp|default('--') }}°C</span>
                                                         </div>
                                                     </td>
                                                     <!-- 系统功耗 -->
                                                     <td class="data-cell" width="33%" style="padding: 10px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">系统功耗</div>
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">{{ t('emailSummary.systemPower') }}</div>
                                                         <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            <span class="nowrap">当前: {{ power_current|default('--') }}W</span><br>
-                                                            <span class="nowrap">平均: {{ power_avg|default('--') }}W</span><br>
-                                                            <span class="nowrap">峰值: {{ power_max|default('--') }}W</span>
+                                                            <span class="nowrap">{{ t('emailSummary.current') }}: {{ power_current|default('--') }}W</span><br>
+                                                            <span class="nowrap">{{ t('emailSummary.average') }}: {{ power_avg|default('--') }}W</span><br>
+                                                            <span class="nowrap">{{ t('emailSummary.peak') }}: {{ power_max|default('--') }}W</span>
                                                         </div>
                                                         <div style="margin-top: 5px; font-size: 11px; color: #58a6ff;" class="nowrap">
-                                                            估算耗电: {{ power_total_kwh|default('--') }} kWh
+                                                            {{ t('emailSummary.estimatedEnergy') }}: {{ power_total_kwh|default('--') }} kWh
                                                         </div>
                                                     </td>
                                                     <!-- 风扇转速 -->
                                                     <td class="data-cell" width="33%" style="padding: 10px;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">风扇转速</div>
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">{{ t('emailSummary.fanSpeed') }}</div>
                                                         <div style="font-size: 13px; color: #e6edf3; line-height: 1.6;">
-                                                            <span class="nowrap">当前: {{ fan_current_rpm|default('--') }} RPM</span><br>
-                                                            <span class="nowrap">平均: {{ fan_avg_rpm|default('--') }} RPM</span><br>
-                                                            <span class="nowrap">峰值: {{ fan_max_rpm|default('--') }} RPM</span>
+                                                            <span class="nowrap">{{ t('emailSummary.current') }}: {{ fan_current_rpm|default('--') }} RPM</span><br>
+                                                            <span class="nowrap">{{ t('emailSummary.average') }}: {{ fan_avg_rpm|default('--') }} RPM</span><br>
+                                                            <span class="nowrap">{{ t('emailSummary.peak') }}: {{ fan_max_rpm|default('--') }} RPM</span>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -118,17 +118,17 @@
                             <!-- 区间趋势 -->
                             {% if chart_data is defined and chart_data|length > 0 %}
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">区间趋势</div>
+                                <div style="color: #a371f7; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{{ t('emailSummary.intervalTrends') }}</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
                                             <!-- 趋势图: CPU占用 -->
                                             <div style="margin-bottom: 12px;">
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    CPU 占用 <span style="color: #58a6ff;">均值: {{ chart_data.cpu_load_avg }}%</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.cpu_load_max }}%</span>
+                                                    {{ t('emailSummary.cpuUsage') }} <span style="color: #58a6ff;">{{ t('emailSummary.avgShort') }}: {{ chart_data.cpu_load_avg }}%</span> <span style="color: #484f58;">/ {{ t('emailSummary.peakShort') }}: {{ chart_data.cpu_load_max }}%</span>
                                                 </div>
                                                 {% if chart_data.cpu_cid %}
-                                                <img src="cid:{{ chart_data.cpu_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="CPU趋势" border="0" />
+                                                <img src="cid:{{ chart_data.cpu_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="{{ t('emailSummary.cpuTrendAlt') }}" border="0" />
                                                 {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
                                                     <defs>
@@ -146,18 +146,18 @@
                                             {% if chart_data.gpu_cid %}
                                             <div style="margin-bottom: 12px;">
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    GPU 占用 <span style="color: #76e3ea;">均值: {{ chart_data.gpu_load_avg }}%</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.gpu_load_max }}%</span>
+                                                    {{ t('emailSummary.gpuUsage') }} <span style="color: #76e3ea;">{{ t('emailSummary.avgShort') }}: {{ chart_data.gpu_load_avg }}%</span> <span style="color: #484f58;">/ {{ t('emailSummary.peakShort') }}: {{ chart_data.gpu_load_max }}%</span>
                                                 </div>
-                                                <img src="cid:{{ chart_data.gpu_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="GPU趋势" border="0" />
+                                                <img src="cid:{{ chart_data.gpu_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="{{ t('emailSummary.gpuTrendAlt') }}" border="0" />
                                             </div>
                                             {% endif %}
                                             <!-- 趋势图: 内存使用 -->
                                             <div style="margin-bottom: 12px;">
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    内存使用 <span style="color: #a371f7;">均值: {{ chart_data.mem_avg }}%</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.mem_max }}%</span>
+                                                    {{ t('emailSummary.memoryUsage') }} <span style="color: #a371f7;">{{ t('emailSummary.avgShort') }}: {{ chart_data.mem_avg }}%</span> <span style="color: #484f58;">/ {{ t('emailSummary.peakShort') }}: {{ chart_data.mem_max }}%</span>
                                                 </div>
                                                 {% if chart_data.mem_cid %}
-                                                <img src="cid:{{ chart_data.mem_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="内存趋势" border="0" />
+                                                <img src="cid:{{ chart_data.mem_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="{{ t('emailSummary.memoryTrendAlt') }}" border="0" />
                                                 {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
                                                     <defs>
@@ -174,10 +174,10 @@
                                             <!-- 趋势图: 系统功耗 -->
                                             <div>
                                                 <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">
-                                                    系统功耗 <span style="color: #f0883e;">均值: {{ chart_data.power_avg }}W</span> <span style="color: #484f58;">/ 峰值: {{ chart_data.power_max }}W</span>
+                                                    {{ t('emailSummary.systemPower') }} <span style="color: #f0883e;">{{ t('emailSummary.avgShort') }}: {{ chart_data.power_avg }}W</span> <span style="color: #484f58;">/ {{ t('emailSummary.peakShort') }}: {{ chart_data.power_max }}W</span>
                                                 </div>
                                                 {% if chart_data.power_cid %}
-                                                <img src="cid:{{ chart_data.power_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="功耗趋势" border="0" />
+                                                <img src="cid:{{ chart_data.power_cid }}" width="100%" height="40" style="display: block; border-radius: 4px; line-height: 40px; vertical-align: top; height: 40px;" alt="{{ t('emailSummary.powerTrendAlt') }}" border="0" />
                                                 {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block;">
                                                     <defs>
@@ -199,24 +199,24 @@
 
                             <!-- 网络流量 -->
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #f0883e; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">网络流量</div>
+                                <div style="color: #f0883e; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{{ t('emailSummary.networkTraffic') }}</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
                                             <table border="0" cellpadding="0" cellspacing="0" width="100%">
                                                 <tr>
                                                     <td class="data-cell" width="50%" style="padding: 10px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">接收流量 (RX)</div>
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">{{ t('emailSummary.rxTraffic') }}</div>
                                                         <div style="font-size: 18px; font-weight: bold; color: #3fb950;">{{ net_rx_total|default('--') }}</div>
                                                         <div style="margin-top: 5px; font-size: 12px; color: #8b949e;">
-                                                            平均带宽: {{ net_rx_avg|default('--') }}
+                                                            {{ t('emailSummary.avgBandwidth') }}: {{ net_rx_avg|default('--') }}
                                                         </div>
                                                     </td>
                                                     <td class="data-cell" width="50%" style="padding: 10px;">
-                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">发送流量 (TX)</div>
+                                                        <div style="font-size: 11px; color: #8b949e; margin-bottom: 5px;">{{ t('emailSummary.txTraffic') }}</div>
                                                         <div style="font-size: 18px; font-weight: bold; color: #58a6ff;">{{ net_tx_total|default('--') }}</div>
                                                         <div style="margin-top: 5px; font-size: 12px; color: #8b949e;">
-                                                            平均带宽: {{ net_tx_avg|default('--') }}
+                                                            {{ t('emailSummary.avgBandwidth') }}: {{ net_tx_avg|default('--') }}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -228,43 +228,43 @@
 
                             <!-- CPU 状态 -->
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #1f6feb; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">CPU 状态</div>
+                                <div style="color: #1f6feb; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{{ t('emailSummary.cpuStatus') }}</div>
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d;">
                                     <tr>
                                         <td style="padding: 15px;">
                                             <div style="font-size: 13px; color: #e6edf3; font-weight: bold; margin-bottom: 10px;">
                                                 {{ cpu_info|default('CPU 0') }}
-                                                <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ cpu_data_points|default('--') }} 个数据点</span>
+                                                <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ t('emailSummary.dataPointsCount', count=cpu_data_points|default('--')) }}</span>
                                             </div>
                                             <!-- 统计数据 -->
                                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 12px;">
                                                 <tr>
                                                     <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 10px; color: #8b949e;">平均温度</div>
+                                                        <div style="font-size: 10px; color: #8b949e;">{{ t('emailSummary.avgTemp') }}</div>
                                                         <div style="font-size: 13px; color: #f0883e; font-weight: bold;" class="nowrap">{{ cpu_avg_temp|default('--') }}°C</div>
-                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ cpu_max_temp|default('--') }}°C</div>
+                                                        <div style="font-size: 10px; color: #484f58;">{{ t('emailSummary.peakValue', value=cpu_max_temp|default('--') ~ '°C') }}</div>
                                                     </td>
                                                     <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 10px; color: #8b949e;">平均占用</div>
+                                                        <div style="font-size: 10px; color: #8b949e;">{{ t('emailSummary.avgUsage') }}</div>
                                                         <div style="font-size: 13px; color: #58a6ff; font-weight: bold;" class="nowrap">{{ cpu_avg_load|default('--') }}%</div>
-                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ cpu_max_load|default('--') }}%</div>
+                                                        <div style="font-size: 10px; color: #484f58;">{{ t('emailSummary.peakValue', value=cpu_max_load|default('--') ~ '%') }}</div>
                                                     </td>
                                                     <td class="data-cell" width="33%" style="padding: 5px;">
-                                                        <div style="font-size: 10px; color: #8b949e;">平均功耗</div>
+                                                        <div style="font-size: 10px; color: #8b949e;">{{ t('emailSummary.avgPower') }}</div>
                                                         <div style="font-size: 13px; color: #a371f7; font-weight: bold;" class="nowrap">{{ cpu_power_avg|default('--') }}W</div>
-                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ cpu_power_max|default('--') }}W</div>
+                                                        <div style="font-size: 10px; color: #484f58;">{{ t('emailSummary.peakValue', value=cpu_power_max|default('--') ~ 'W') }}</div>
                                                     </td>
                                                 </tr>
                                             </table>
                                             <!-- 三合一趋势图 -->
                                             <div style="margin-top: 10px;">
                                                 <div style="font-size: 10px; color: #8b949e; margin-bottom: 5px;">
-                                                    <span style="color: #f0883e;">● 温度</span>
-                                                    <span style="color: #58a6ff; margin-left: 8px;">● 占用</span>
-                                                    <span style="color: #a371f7; margin-left: 8px;">● 功耗</span>
+                                                    <span style="color: #f0883e;">● {{ t('emailSummary.temperature') }}</span>
+                                                    <span style="color: #58a6ff; margin-left: 8px;">● {{ t('emailSummary.usage') }}</span>
+                                                    <span style="color: #a371f7; margin-left: 8px;">● {{ t('emailSummary.power') }}</span>
                                                 </div>
                                                 {% if cpu_cid_name %}
-                                                <img src="cid:{{ cpu_cid_name }}" width="100%" height="40" style="display: block; border-radius: 4px; background-color: #161b22; line-height: 40px; vertical-align: top; height: 40px;" alt="CPU趋势" border="0" />
+                                                <img src="cid:{{ cpu_cid_name }}" width="100%" height="40" style="display: block; border-radius: 4px; background-color: #161b22; line-height: 40px; vertical-align: top; height: 40px;" alt="{{ t('emailSummary.cpuTrendAlt') }}" border="0" />
                                                 {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block; background-color: #161b22; border-radius: 4px;">
                                                     <!-- 三条曲线共享整个高度 -->
@@ -282,44 +282,44 @@
                             <!-- GPU 状态 -->
                             {% if gpu_interval_data is defined and gpu_interval_data|length > 0 %}
                             <div style="margin-bottom: 25px;">
-                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">GPU 状态</div>
+                                <div style="color: #76e3ea; font-size: 12px; margin-bottom: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{{ t('emailSummary.gpuStatus') }}</div>
                                 {% for gpu in gpu_interval_data %}
                                 <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #161b22; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px;">
                                     <tr>
                                         <td style="padding: 15px;">
                                             <div style="font-size: 13px; color: #e6edf3; font-weight: bold; margin-bottom: 10px;">
                                                 {{ gpu.name|default('GPU ' ~ loop.index) }}
-                                                <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ gpu.data_points }} 个数据点</span>
+                                                <span style="font-size: 10px; color: #8b949e; font-weight: normal; margin-left: 8px;">{{ t('emailSummary.dataPointsCount', count=gpu.data_points) }}</span>
                                             </div>
                                             <!-- 统计数据 -->
                                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 12px;">
                                                 <tr>
                                                     <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 10px; color: #8b949e;">平均温度</div>
+                                                        <div style="font-size: 10px; color: #8b949e;">{{ t('emailSummary.avgTemp') }}</div>
                                                         <div style="font-size: 13px; color: #f0883e; font-weight: bold;" class="nowrap">{{ gpu.avg_temp }}°C</div>
-                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ gpu.temp_max }}°C</div>
+                                                        <div style="font-size: 10px; color: #484f58;">{{ t('emailSummary.peakValue', value=gpu.temp_max ~ '°C') }}</div>
                                                     </td>
                                                     <td class="data-cell" width="33%" style="padding: 5px; border-right: 1px solid #30363d;">
-                                                        <div style="font-size: 10px; color: #8b949e;">平均占用</div>
+                                                        <div style="font-size: 10px; color: #8b949e;">{{ t('emailSummary.avgUsage') }}</div>
                                                         <div style="font-size: 13px; color: #58a6ff; font-weight: bold;" class="nowrap">{{ gpu.avg_util }}%</div>
-                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ gpu.util_max }}%</div>
+                                                        <div style="font-size: 10px; color: #484f58;">{{ t('emailSummary.peakValue', value=gpu.util_max ~ '%') }}</div>
                                                     </td>
                                                     <td class="data-cell" width="33%" style="padding: 5px;">
-                                                        <div style="font-size: 10px; color: #8b949e;">平均显存占用</div>
+                                                        <div style="font-size: 10px; color: #8b949e;">{{ t('emailSummary.avgVramUsage') }}</div>
                                                         <div style="font-size: 13px; color: #a371f7; font-weight: bold;" class="nowrap">{{ gpu.avg_mem }}%</div>
-                                                        <div style="font-size: 10px; color: #484f58;">峰值 {{ gpu.mem_max }}%</div>
+                                                        <div style="font-size: 10px; color: #484f58;">{{ t('emailSummary.peakValue', value=gpu.mem_max ~ '%') }}</div>
                                                     </td>
                                                 </tr>
                                             </table>
                                             <!-- 三合一趋势图 -->
                                             <div style="margin-top: 10px;">
                                                 <div style="font-size: 10px; color: #8b949e; margin-bottom: 5px;">
-                                                    <span style="color: #f0883e;">● 温度</span>
-                                                    <span style="color: #58a6ff; margin-left: 8px;">● 占用</span>
-                                                    <span style="color: #a371f7; margin-left: 8px;">● 显存</span>
+                                                    <span style="color: #f0883e;">● {{ t('emailSummary.temperature') }}</span>
+                                                    <span style="color: #58a6ff; margin-left: 8px;">● {{ t('emailSummary.usage') }}</span>
+                                                    <span style="color: #a371f7; margin-left: 8px;">● {{ t('emailSummary.vram') }}</span>
                                                 </div>
                                                 {% if gpu.cid_name %}
-                                                <img src="cid:{{ gpu.cid_name }}" width="100%" height="40" style="display: block; border-radius: 4px; background-color: #161b22; line-height: 40px; vertical-align: top; height: 40px;" alt="GPU趋势" border="0" />
+                                                <img src="cid:{{ gpu.cid_name }}" width="100%" height="40" style="display: block; border-radius: 4px; background-color: #161b22; line-height: 40px; vertical-align: top; height: 40px;" alt="{{ t('emailSummary.gpuTrendAlt') }}" border="0" />
                                                 {% else %}
                                                 <svg width="100%" height="40" viewBox="0 0 400 40" preserveAspectRatio="none" style="display: block; background-color: #161b22; border-radius: 4px;">
                                                     <!-- 三条曲线共享整个高度 -->
@@ -338,7 +338,7 @@
 
                             <!-- 终端风格滚动日志区 -->
                             <div style="margin-top: 30px;">
-                                <div style="color: #8b949e; font-size: 12px; margin-bottom: 10px; font-weight: bold; text-transform: uppercase;">系统事件日志</div>
+                                <div style="color: #8b949e; font-size: 12px; margin-bottom: 10px; font-weight: bold; text-transform: uppercase;">{{ t('emailSummary.eventLog') }}</div>
                                 <div style="background-color: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; max-height: 200px; overflow-y: auto;">
                                     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; line-height: 1.6;">
                                         {% if logs %}
@@ -356,9 +356,9 @@
                                 <div style="text-align: right; margin-top: 5px;">
                                     <span style="font-size: 10px; color: #484f58;">
                                         {% if report_type == 'weekly' %}
-                                            * 仅展示区间内重要安全与系统记录
+                                            * {{ t('emailSummary.weeklyLogNote') }}
                                         {% else %}
-                                            * 区间内完整事件记录
+                                            * {{ t('emailSummary.fullLogNote') }}
                                         {% endif %}
                                     </span>
                                 </div>
@@ -366,7 +366,7 @@
 
                             <div style="margin-top: 40px; text-align: center;">
                                 <a href="{{ panel_url }}" class="button-full" style="display: inline-block; padding: 14px 40px; background-color: #1f6feb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 15px rgba(31, 111, 235, 0.4);">
-                                    进入控制面板
+                                    {{ t('email.openPanel') }}
                                 </a>
                             </div>
                         </td>
@@ -380,7 +380,7 @@
                                 <span style="display: inline-block; padding: 2px 10px; background-color: #30363d; color: #8b949e; border-radius: 20px; font-size: 10px; margin-left: 5px;">v{{ version }}</span>
                             </p>
                             <p style="margin: 10px 0 0; font-size: 11px; color: #484f58;">
-                                发送频率: 每 {{ report_frequency }} | 数据区间: {{ report_range }}
+                                {{ t('emailSummary.footerFrequency', frequency=report_frequency, range=report_range) }}
                             </p>
                         </td>
                     </tr>

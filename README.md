@@ -50,9 +50,10 @@ IPMI_WEB 就是为这个场景做的轻量面板。它基于 Flask、SQLite、Ch
 | GPU 页 | 多卡温度、利用率、显存、功耗、核心频率、显存频率、ECC | 判断 GPU 是否降频、过热或受功耗限制 |
 | 风扇控制 | 自动、手动曲线、固定转速、目标温度、校准 | 在噪音和散热之间做可控调节 |
 | 审计日志 | 登录、配置、证书、GPU、低磁盘、系统事件 | 追踪谁在什么时候做了什么 |
-| 设置中心 | 图表选项、存储、告警、报告、邮件、证书、关于 | 管理长期运行参数 |
+| 设置中心 | 图表选项、语言、存储、告警、报告、邮件、证书、关于 | 管理长期运行参数 |
 | 存储生命周期 | 热数据保留、审计日志压缩、低磁盘安全回收 | 控制数据库体积，避免磁盘被写满 |
 | 安全 | 防爆破、可信代理、敏感字段脱敏、日志 XSS 防护、HTTPS | 让面板更适合放在代理后运行 |
+| i18n | 首次跟随浏览器语言，之后可固定中文或英文 | 让界面、日志和更新说明使用一致语言 |
 
 ### 页面说明
 
@@ -71,6 +72,8 @@ GPU 监控通过可选的 `gpu_agent.py` 采集远端或虚拟机内的 NVIDIA �
 #### 设置与审计
 
 日志页同时承担审计和设置入口。设置弹窗会先并行加载轻量配置和告警规则，存储状态、证书状态和更新日志再后台加载，从而减少点击设置按钮后的等待。证书上传会先在后端校验证书格式、有效期和私钥匹配关系，无效则拒绝保存并使用项目内渲染弹窗提示；有效时统一覆盖服务证书文件，并询问是否重启服务。
+
+界面语言首次访问会跟随浏览器语言；保存设置后可固定为中文或英文。登录页、导航、设置、动态提示、审计日志、邮件摘要、普通更新日志和版本更新弹窗都通过统一词表维护，更新说明只显示当前语言内容。
 
 ### 图表读法
 
@@ -227,15 +230,18 @@ IPMI_WEB is that panel. It combines Flask, SQLite, Chart.js, `ipmitool`, `lm-sen
 | GPU | Temperature, utilization, memory, power, clocks, ECC | Is the GPU throttling or constrained? |
 | Fan control | Auto, curve, fixed speed, target temperature, calibration | How do I balance noise and cooling? |
 | Audit logs | Login, config, certificates, GPU, storage, system events | Who did what, and when? |
-| Settings | Charts, retention, alerts, reports, email, certificates, about | How do I operate it long term? |
+| Settings | Charts, language, retention, alerts, reports, email, certificates, about | How do I operate it long term? |
 | Storage | Retention, compressed archives, low-disk safe reclaim | Will the database grow forever? |
 | Security | Anti-bruteforce, trusted proxies, masking, XSS hardening, HTTPS | Can I run it behind a proxy safely? |
+| i18n | Browser-language first visit, then pinned Chinese or English | Can the UI, logs, and release notes stay in one language? |
 
 ### Page guide
 
 The hardware page loads fast status data first and requests history without energy calculation for the small homepage chart. The history page uses backend SQL aggregation to keep responses bounded even for 30-day views. Insights can be preloaded quietly after the main chart so expanding it feels faster without blocking the first render.
 
 The settings modal opens immediately, then loads storage status, certificate status, and release notes in the background. Certificate uploads are validated before saving; invalid files are rejected and shown with the app's rendered modal instead of a browser-native alert.
+
+The UI language follows the browser on the first visit and can later be pinned to Chinese or English in settings. Login, navigation, settings, dynamic messages, audit logs, email summaries, changelog content, and version-update notices are maintained through a shared catalog, and release notes render only in the current language.
 
 ### Chart guide
 

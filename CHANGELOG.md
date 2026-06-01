@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.4.5 - 2026-06-01
+
+### 中文
+
+- 完善全站 i18n 覆盖，补齐硬件、GPU、历史、资源、设置、证书、导入导出、邮件摘要和审计日志中的残留硬编码文案。
+- 修复中文/英文切换后部分动态日志仍使用另一种语言的问题，审计与配置变更显示会按当前界面语言重建。
+- 修复首次打开页面可能卡死的问题，i18n 前端同步只在内容确实变化时更新 DOM。
+- 更新日志和版本更新弹窗现在严格按当前语言显示；中文模式不再混入英文更新说明，英文模式也不再混入中文。
+
+### English
+
+- Completed i18n coverage across hardware, GPU, history, resources, settings, certificates, import/export, email summaries, and audit-log copy.
+- Fixed dynamic logs that could still appear in the other language after switching Chinese/English; audit and configuration-change entries are rebuilt for the current UI language.
+- Fixed a first-page-load freeze by making frontend i18n synchronization update the DOM only when content actually changes.
+- Changelog and version-update modals now render strictly in the current language; Chinese mode no longer includes English release notes, and English mode no longer includes Chinese notes.
+
+## 1.4.4 - 2026-06-01
+
+### 中文
+
+- 新增中文/英文界面语言设置，首次访问会根据浏览器语言自动选择，之后可在系统设置中固定切换。
+- 新增独立 i18n 词表，登录页、页面标题、导航、系统设置入口和语言设置文案改为通过词表维护，减少模板与脚本中的重复硬编码。
+- 语言设置会随系统设置一起保存；切换语言后自动刷新当前页面，使服务端模板和前端提示同步生效。
+
+### English
+
+- Added Chinese/English UI language settings. The first visit follows the browser language, and administrators can later pin the language in System Settings.
+- Added a dedicated i18n catalog. Login, page titles, navigation, the settings entry, and language-setting copy are now maintained through the catalog instead of repeated hard-coded strings in templates and scripts.
+- Language changes are saved with system settings. After switching language, the current page reloads so server-rendered templates and frontend messages update together.
+
 ## 1.4.3 - 2026-05-31
 
 ### 中文
