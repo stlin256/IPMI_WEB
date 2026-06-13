@@ -448,6 +448,293 @@
         .chart-tooltip.visible {
             opacity: 1;
         }
+
+        /* Audit journal: compact editorial log stream */
+        .terminal-body.audit-journal {
+            position: relative;
+            padding: 12px;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 94%, transparent), color-mix(in srgb, var(--bg-card) 88%, transparent)),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 18px) !important;
+            border-color: color-mix(in srgb, var(--border-color) 82%, transparent);
+        }
+
+        #logs-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .cli-line {
+            --row-accent: var(--accent-blue);
+            position: relative;
+            display: grid;
+            grid-template-columns: 132px minmax(0, 1fr);
+            gap: 10px;
+            align-items: start;
+            min-width: 0;
+            padding: 10px 12px 10px 14px;
+            border: 1px solid color-mix(in srgb, var(--border-color) 62%, transparent);
+            border-radius: 8px;
+            background:
+                linear-gradient(90deg, color-mix(in srgb, var(--row-accent) 9%, transparent), transparent 38%),
+                color-mix(in srgb, var(--bg-elevated) 42%, transparent);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-main) 5%, transparent);
+            overflow: hidden;
+            transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
+        }
+
+        .cli-line::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 3px;
+            background: var(--row-accent);
+            opacity: 0.86;
+        }
+
+        .cli-line:hover {
+            transform: translateY(-1px);
+            border-color: color-mix(in srgb, var(--row-accent) 48%, var(--border-color));
+        }
+
+        .cli-line.log-success { --row-accent: var(--accent-green); }
+        .cli-line.log-fail { --row-accent: var(--accent-red); }
+        .cli-line.log-warn { --row-accent: var(--accent-yellow); }
+        .cli-line.log-info { --row-accent: var(--accent-blue); }
+
+        .cli-stamp {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .cli-time {
+            min-width: 0;
+            color: var(--text-muted);
+            font-family: "SF Mono", "Consolas", "Monaco", "Menlo", monospace;
+            font-size: 10.5px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-status {
+            min-width: 0;
+            width: fit-content;
+            max-width: 100%;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 7px;
+            border: 1px solid color-mix(in srgb, var(--row-accent) 46%, var(--border-color));
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--row-accent) 12%, transparent);
+            color: var(--row-accent);
+            font-family: "SF Mono", "Consolas", "Monaco", "Menlo", monospace;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .cli-status::before {
+            content: "";
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+        }
+
+        .cli-content {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-wrap: anywhere;
+            word-break: normal;
+            font-family: inherit;
+        }
+
+        .cli-meta {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .cli-tag {
+            max-width: min(20rem, 100%);
+            min-width: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 7px;
+            margin: 0;
+            border-radius: 6px;
+            font-size: 10.5px;
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cli-module {
+            min-width: 0;
+            max-width: 100%;
+            color: var(--text-main);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-message {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            min-width: 0;
+            color: var(--text-main);
+            line-height: 1.42;
+        }
+
+        .cli-message-text {
+            flex: 1 1 24rem;
+            min-width: min(16rem, 100%);
+            color: color-mix(in srgb, var(--text-main) 82%, var(--text-muted));
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        .cli-detail-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex: 0 0 auto;
+            width: 24px;
+            height: 22px;
+            padding: 0;
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 36%, var(--border-color));
+            border-radius: 6px;
+            color: var(--accent-blue);
+            background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .cli-detail-toggle i {
+            font-size: 10.5px;
+        }
+
+        .cli-detail-toggle:hover {
+            color: var(--text-main);
+            background: color-mix(in srgb, var(--accent-blue) 16%, transparent);
+        }
+
+        .highlighted.cli-tag,
+        .cli-tag.highlighted {
+            border-color: var(--accent-yellow) !important;
+            background: color-mix(in srgb, var(--accent-yellow) 18%, transparent) !important;
+            color: var(--text-main) !important;
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-yellow) 10%, transparent);
+        }
+
+        .cli-details {
+            margin: -2px 0 4px 142px;
+            padding: 12px 14px;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 72%, transparent), color-mix(in srgb, var(--bg-card) 74%, transparent)),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 16px);
+            border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .cli-details-title {
+            color: var(--text-muted);
+            font-size: 10.5px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .cli-details pre {
+            max-width: 100%;
+            font-size: 11px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        @media (max-width: 768px) {
+            .terminal-body.audit-journal {
+                padding: 8px;
+            }
+
+            #logs-content {
+                gap: 7px;
+            }
+
+            .cli-line {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 8px;
+                padding: 10px 10px 10px 12px;
+            }
+
+            .cli-stamp {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .cli-time {
+                flex: 1 1 auto;
+                font-size: 10px;
+            }
+
+            .cli-status {
+                flex: 0 0 auto;
+            }
+
+            .cli-message {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 24px;
+                align-items: start;
+                gap: 8px;
+            }
+
+            .cli-message-text {
+                display: block;
+                min-width: 0;
+            }
+
+            .cli-detail-toggle {
+                margin-top: 1px;
+            }
+
+            .cli-tag {
+                max-width: 100%;
+            }
+
+            .cli-details {
+                margin: 0 0 4px 0;
+                padding: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1078,7 +1365,7 @@
     </div>
 
     <!-- 日志容器 -->
-    <div class="terminal-body" id="logs-container" style="border-radius: 8px;">
+    <div class="terminal-body audit-journal" id="logs-container">
         <div id="logs-content">
             <div class="text-center py-5 text-muted">
                 <i class="fas fa-spinner fa-spin fa-lg mb-3"></i>
@@ -1462,9 +1749,13 @@
     }
 
     // 切换折叠
-    function toggleDetails(id) {
+    function toggleDetails(id, trigger) {
         const el = document.getElementById(id);
-        el.classList.toggle('show');
+        if (!el) return;
+        const isOpen = el.classList.toggle('show');
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', String(isOpen));
+        }
     }
 
     let lastTimestamp = 0;
@@ -1527,6 +1818,50 @@
     function translateMaybe(key, fallback = '') {
         const translated = t(key);
         return translated === key ? fallback : translated;
+    }
+
+    function looksLikeI18nKey(value) {
+        return /^[a-z][a-z0-9_-]*(\.[a-zA-Z0-9_-]+)+$/.test(String(value || '').trim());
+    }
+
+    function resolveLabel(key, fallback) {
+        const label = t(key);
+        return looksLikeI18nKey(label) ? fallback : label;
+    }
+
+    function humanizeAction(action) {
+        return String(action || '')
+            .toLowerCase()
+            .split('_')
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+    }
+
+    function auditModuleLabel(moduleName) {
+        const raw = String(moduleName || 'UNKNOWN');
+        const key = auditModuleFallbacks[raw] || 'logs.audit.unknown';
+        return resolveLabel(key, raw);
+    }
+
+    function auditMessageLabel(log) {
+        const localized = localizeAuditMessage(log);
+        const fallback = log.message || humanizeAction(log.action) || '';
+        return looksLikeI18nKey(localized) ? fallback : localized;
+    }
+
+    function formatAuditTime(log) {
+        const provided = String(log.time_str || '').trim();
+        if (provided) return provided;
+
+        const rawTimestamp = Number(log.timestamp);
+        if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return '';
+
+        const date = new Date(rawTimestamp > 1e12 ? rawTimestamp : rawTimestamp * 1000);
+        if (Number.isNaN(date.getTime())) return '';
+
+        const pad = value => String(value).padStart(2, '0');
+        return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     }
 
     function localizeAlertMetric(metric) {
@@ -1676,42 +2011,50 @@
     function renderLogLine(log, idx) {
         const fingerprintId = getFingerprintId(log.operator, log.ua);
         const uaTag = parseUAInfo(log.ua);
-        const safeTime = escapeHtml(log.time_str);
+        const safeTime = escapeHtml(formatAuditTime(log));
         const safeOperator = escapeHtml(log.operator);
-        const safeModule = escapeHtml(t(auditModuleFallbacks[log.module] || 'logs.audit.unknown'));
+        const safeModule = escapeHtml(auditModuleLabel(log.module));
         const safeFingerprint = escapeAttr(fingerprintId);
         
-        // 统一状态配置 - 所有状态使用等宽长度 [XXXX] 格式
+        // 统一状态配置
         const isSuccess = log.action === 'LOGIN_SUCCESS';
         const isFail = log.action === 'LOGIN_FAIL' || log.level === 'SECURITY' || log.level === 'ERROR';
         
         let statusClass = 'info';
-        let statusText = '[INFO]';
+        let statusText = 'INFO';
         
         if (isSuccess) {
             statusClass = 'success';
-            statusText = '[ OK ]';
+            statusText = 'OK';
         } else if (isFail) {
             statusClass = 'fail';
-            statusText = '[FAIL]';
+            statusText = 'FAIL';
         } else if (log.level === 'WARN') {
             statusClass = 'warn';
-            statusText = '[WARN]';
+            statusText = 'WARN';
         }
         
         const detailsId = `detail-${log.timestamp}-${idx}`;
         
-        const mainMsg = localizeAuditMessage(log);
+        const mainMsg = auditMessageLabel(log);
         const detailsContent = localizeAuditDetails(log);
         const safeMainMsg = escapeHtml(mainMsg);
         const safeDetailsContent = escapeHtml(detailsContent);
         const safeDetailsId = escapeAttr(detailsId);
+        const detailsLabel = resolveLabel('logs.details', 'Details');
+        const detailsTitle = resolveLabel('logs.detailsTitle', 'Details');
+        const safeDetailsLabel = escapeHtml(detailsLabel);
+        const safeDetailsLabelAttr = escapeAttr(detailsLabel);
+        const safeDetailsTitle = escapeHtml(detailsTitle);
         
         return `
-            <div class="cli-line fingerprint-group">
-                <span class="cli-time">${safeTime}</span>
-                <span class="cli-status ${statusClass}">${statusText}</span>
+            <div class="cli-line fingerprint-group log-${statusClass}">
+                <div class="cli-stamp">
+                    <span class="cli-time">${safeTime}</span>
+                    <span class="cli-status ${statusClass}">${statusText}</span>
+                </div>
                 <div class="cli-content">
+                    <div class="cli-meta">
                     <span class="cli-tag cli-tag-ip" 
                           data-fingerprint="${safeFingerprint}"
                           onclick="highlightFingerprint('${safeFingerprint}', event)"
@@ -1722,19 +2065,22 @@
                           onclick="highlightFingerprint('${safeFingerprint}', event)"
                           title="${escapeAttr(t('logs.highlightFingerprint'))}">${uaTag}</span>
                     ` : ''}
-                    <span class="fw-bold">${safeModule}</span>
-                    <span class="text-muted">${safeMainMsg}</span>
+                        <span class="cli-module">${safeModule}</span>
+                    </div>
+                    <div class="cli-message">
+                        <span class="cli-message-text">${safeMainMsg}</span>
                     ${detailsContent ? `
-                        <a href="javascript:void(0)" class="text-primary ms-2" onclick="toggleDetails('${safeDetailsId}')">
-                            [${escapeHtml(t('logs.details'))}]
+                        <a href="javascript:void(0)" class="cli-detail-toggle" onclick="toggleDetails('${safeDetailsId}', this)" aria-expanded="false" aria-controls="${safeDetailsId}" aria-label="${safeDetailsLabelAttr}" title="${safeDetailsLabelAttr}">
+                            <i class="fas fa-receipt"></i><span class="visually-hidden">${safeDetailsLabel}</span>
                         </a>
                     ` : ''}
+                    </div>
                 </div>
             </div>
             ${detailsContent ? `
                 <div class="cli-details collapse" id="${safeDetailsId}">
                     <div class="cli-details-title">
-                        <i class="fas fa-info-circle me-1"></i> ${escapeHtml(t('logs.detailsTitle'))}
+                        <i class="fas fa-info-circle me-1"></i> ${safeDetailsTitle}
                     </div>
                     <pre>${safeDetailsContent}</pre>
                 </div>
