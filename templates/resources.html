@@ -14,12 +14,12 @@
     
     <style>
         :root {
-            --accent-cpu: #2563eb;
-            --accent-mem: #8b5cf6;
-            --color-net-in: #16a34a;
-            --color-net-out: #0ea5e9;
-            --color-disk-r: #d97706;
-            --color-disk-w: #dc2626;
+            --accent-cpu: var(--accent-blue);
+            --accent-mem: var(--accent-magenta);
+            --color-net-in: var(--accent-green);
+            --color-net-out: var(--accent-cyan);
+            --color-disk-r: var(--accent-yellow);
+            --color-disk-w: var(--accent-red);
         }
         body { min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
         .res-shell { width: min(100%, 1680px); margin: 0 auto; }
@@ -46,9 +46,10 @@
             width: 2.6rem;
             height: 2.6rem;
             border-radius: 8px;
-            color: #fff;
-            background: linear-gradient(135deg, #2563eb, #16a34a);
-            box-shadow: 0 10px 28px rgba(37, 99, 235, 0.24);
+            color: #fff7e8;
+            background: var(--accent-red);
+            border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
+            box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-red) 16%, transparent);
         }
         .res-subline {
             margin-top: 0.75rem;
@@ -82,9 +83,7 @@
             border: 1px solid var(--border-color);
             border-radius: 8px;
             overflow: hidden;
-            background:
-                linear-gradient(90deg, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta)),
-                var(--border-color);
+            background: var(--border-color);
             box-shadow: var(--shadow-soft);
         }
         .res-signal {
@@ -93,7 +92,7 @@
             padding: 1rem;
             overflow: hidden;
             background:
-                linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 96%, transparent), color-mix(in srgb, var(--bg-elevated) 72%, transparent)),
+                var(--surface-sheen),
                 var(--bg-card);
         }
         .res-signal::after {
@@ -102,10 +101,10 @@
             left: 1rem;
             right: 1rem;
             bottom: 0.75rem;
-            height: 0.28rem;
+            height: 2px;
             border-radius: 999px;
-            background: linear-gradient(90deg, currentColor, transparent);
-            opacity: 0.42;
+            background: currentColor;
+            opacity: 0.36;
         }
         .res-signal-label {
             display: flex;
@@ -143,8 +142,8 @@
             content: "";
             display: block;
             height: 3px;
-            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta));
-            opacity: 0.82;
+            background: var(--accent-yellow);
+            opacity: 0.68;
         }
         .resource-card:hover {
             transform: translateY(-2px);

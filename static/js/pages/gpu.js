@@ -17,6 +17,15 @@
         return Math.max(0, Math.min(100, numeric));
     }
 
+    function colorWithAlpha(hexColor, alpha) {
+        const hex = String(hexColor || '').trim().replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(127, 127, 127, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
     function setStatus(text, className) {
         const statusBadge = document.getElementById('agent-status');
         if (!statusBadge) return;
@@ -220,21 +229,27 @@
         if (!canvas) return;
 
         const data = await window.IPMI.fetchJson(`/api/history_gpu?hours=1&index=${index}`, { timeoutMs: 20000 });
+        const palette = {
+            load: window.IPMI.cssVar('--accent-blue', '#526f83'),
+            memory: window.IPMI.cssVar('--accent-magenta', '#83555d'),
+            temp: window.IPMI.cssVar('--accent-red', '#a94e3f'),
+            clock: window.IPMI.cssVar('--accent-green', '#6e7d52')
+        };
         const datasets = [
             {
                 label: 'GPU Load %',
                 data: data.util_gpu,
-                borderColor: '#58a6ff',
+                borderColor: palette.load,
                 borderWidth: 2,
                 pointRadius: 0,
                 fill: true,
-                backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                backgroundColor: colorWithAlpha(palette.load, 0.11),
                 tension: 0.4
             },
             {
                 label: 'Mem Util %',
                 data: data.util_mem,
-                borderColor: '#bc8cff',
+                borderColor: palette.memory,
                 borderWidth: 1.5,
                 pointRadius: 0,
                 tension: 0.4
@@ -242,7 +257,7 @@
             {
                 label: 'Temp °C',
                 data: data.temp,
-                borderColor: '#ff7b72',
+                borderColor: palette.temp,
                 borderWidth: 1,
                 pointRadius: 0,
                 tension: 0.4
@@ -250,7 +265,7 @@
             {
                 label: 'Core Clock MHz',
                 data: data.clock_core,
-                borderColor: '#2ea043',
+                borderColor: palette.clock,
                 borderWidth: 1.5,
                 pointRadius: 0,
                 tension: 0.4,

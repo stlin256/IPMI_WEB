@@ -13,11 +13,10 @@
    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
     
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
         body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .navbar { background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .nav-link:hover, .nav-link.active { color: var(--text-main) !important; }
 
         @media (max-width: 576px) {
             .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
@@ -30,29 +29,29 @@
         .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; padding: 1rem; }
         
         .metric-box { padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-        .metric-box:hover { border-color: #58a6ff; transform: translateY(-2px); }
+        .metric-box:hover { border-color: color-mix(in srgb, var(--metric-accent) 55%, var(--border-color)); transform: translateY(-2px); }
         .metric-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 5px; }
         .metric-unit { font-size: 1rem; color: var(--text-muted); font-weight: normal; }
         .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
         
         .table-custom { font-size: 0.9rem; font-family: monospace; }
-        .table-custom th { background-color: #161b22 !important; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
+        .table-custom th { background-color: color-mix(in srgb, var(--bg-elevated) 70%, transparent) !important; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
         .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; padding: 10px 12px; }
         .table-striped>tbody>tr:nth-of-type(odd)>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.03) !important; color: var(--text-main) !important; }
-        .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.06) !important; color: #fff !important; }
+        .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: color-mix(in srgb, var(--accent-yellow) 9%, transparent) !important; color: var(--text-main) !important; }
         .scroll-container { max-height: 550px; overflow-y: auto; scrollbar-width: thin; }
 
         /* 传感器名称点击样式 */
         .sensor-name-link { color: var(--text-main); cursor: pointer; text-decoration: none; border-bottom: none; transition: all 0.2s; }
-        .sensor-name-link:hover { color: #1f6feb !important; }
+        .sensor-name-link:hover { color: var(--accent-red) !important; }
 
         /* 全宽 Modal 适配与美化 */
         @media (min-width: 992px) {
             .modal-xl-custom { max-width: 96vw; }
         }
         .modal-content-dark { 
-            background-color: #161b22; 
-            border: 1px solid #444c56; 
+            background-color: color-mix(in srgb, var(--bg-card) 96%, transparent);
+            border: 1px solid var(--border-color);
             box-shadow: 0 0 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
         }
         .modal-header-tint { background-color: rgba(255,255,255,0.03); }
@@ -60,24 +59,24 @@
         
         /* 标签美化 */
         .btn-check-custom + .btn { 
-            border-color: #444c56; color: var(--text-muted); background: #21262d; 
+            border-color: var(--border-color); color: var(--text-muted); background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
             border-radius: 6px; padding: 0.25rem 0.75rem; font-size: 0.85rem; font-weight: 600;
             white-space: nowrap; transition: all 0.2s;
         }
-        #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
-        #chk-temp:checked + .btn { background-color: rgba(31, 111, 235, 0.15); color: #58a6ff; border-color: #1f6feb; }
-        #chk-fan:checked + .btn { background-color: rgba(35, 134, 54, 0.15); color: #3fb950; border-color: #238636; }
+        #chk-pwr:checked + .btn { background-color: color-mix(in srgb, var(--accent-yellow) 14%, transparent); color: var(--accent-yellow); border-color: var(--accent-yellow); }
+        #chk-temp:checked + .btn { background-color: color-mix(in srgb, var(--accent-blue) 14%, transparent); color: var(--accent-blue); border-color: var(--accent-blue); }
+        #chk-fan:checked + .btn { background-color: color-mix(in srgb, var(--accent-green) 14%, transparent); color: var(--accent-green); border-color: var(--accent-green); }
 
         input[type=range] { touch-action: none; cursor: pointer; }
         
         /* 新增样式：处理禁用状态的视觉效果 */
         .fixed-control-group { transition: opacity 0.3s ease, filter 0.3s ease; }
         .fixed-control-group.disabled-visual { opacity: 0.5; filter: grayscale(0.8); pointer-events: none; }
-        .override-panel { border: 1px solid #30363d; border-radius: 10px; padding: 0.75rem; background: rgba(13, 17, 23, 0.45); }
+        .override-panel { border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; background: color-mix(in srgb, var(--bg-body) 42%, transparent); }
         
         /* 骨架屏流光扫过特效 */
         .skeleton-sweep {
-            position: relative; overflow: hidden; background-color: #0d1117; border-radius: 8px;
+            position: relative; overflow: hidden; background-color: color-mix(in srgb, var(--bg-body) 84%, transparent); border-radius: 8px;
         }
         .skeleton-sweep::after {
             content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -91,6 +90,205 @@
         .chart-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; display: none;
         }
+        .navbar {
+            background: color-mix(in srgb, var(--bg-card) 84%, transparent) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            backdrop-filter: blur(18px) saturate(1.25);
+        }
+        .hw-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .hw-shell::before {
+            content: "";
+            position: fixed;
+            inset: 3.5rem 0 auto;
+            height: 18rem;
+            pointer-events: none;
+            background:
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 4%, transparent) 0 1px, transparent 1px 7.5rem),
+                linear-gradient(180deg, color-mix(in srgb, var(--accent-yellow) 8%, transparent), transparent 72%);
+            opacity: 0.7;
+            mask-image: linear-gradient(to bottom, #000, transparent);
+            z-index: -1;
+        }
+        .hw-page-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 1.25rem;
+            align-items: end;
+            padding: 1.75rem 0 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .hw-title {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin: 0;
+            font-size: clamp(1.65rem, 2.8vw, 2.8rem);
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+        .hw-title-icon {
+            display: inline-grid;
+            place-items: center;
+            width: 2.6rem;
+            height: 2.6rem;
+            border-radius: 8px;
+            color: #fff7e8;
+            background: var(--accent-red);
+            border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
+            box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-red) 18%, transparent);
+        }
+        .hw-subline {
+            margin-top: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 750;
+        }
+        .hw-subline strong {
+            color: var(--text-main);
+            font-weight: 900;
+        }
+        .hw-health-strip {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1px;
+            min-width: min(100%, 520px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--border-color);
+            box-shadow: var(--shadow-soft);
+            isolation: isolate;
+        }
+        .hw-health-item {
+            position: relative;
+            padding: 0.85rem 1rem;
+            background: var(--surface-sheen), var(--bg-card);
+        }
+        .hw-health-item::after {
+            content: "";
+            position: absolute;
+            inset: auto 0 0;
+            height: 2px;
+            background: color-mix(in srgb, var(--accent-yellow) 68%, transparent);
+            opacity: 0.38;
+            transform: translateX(-100%);
+            animation: hw-scan 5.8s ease-in-out infinite;
+        }
+        .hw-health-item:nth-child(2)::after { animation-delay: 0.8s; }
+        .hw-health-item:nth-child(3)::after { animation-delay: 1.6s; }
+        .hw-health-label {
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .hw-health-value {
+            margin-top: 0.35rem;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 1.25rem;
+            font-weight: 950;
+            color: var(--text-main);
+        }
+        .hw-section-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .hw-section-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 4.25rem),
+                linear-gradient(180deg, color-mix(in srgb, var(--text-main) 3%, transparent), transparent 26%);
+            opacity: 0.5;
+        }
+        .hw-section-card > * {
+            position: relative;
+            z-index: 1;
+        }
+        .metric-box {
+            --metric-accent: var(--accent-cyan);
+            border-radius: 8px !important;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--metric-accent) 8%, transparent), transparent 68%),
+                var(--surface-sheen),
+                var(--bg-card) !important;
+            border-color: var(--border-color) !important;
+            box-shadow: var(--shadow-soft);
+        }
+        .metric-box[data-accent="thermal"] { --metric-accent: var(--accent-blue); }
+        .metric-box[data-accent="power"] { --metric-accent: var(--accent-yellow); }
+        .metric-box[data-accent="airflow"] { --metric-accent: var(--accent-green); }
+        .metric-box::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 3px;
+            background: var(--metric-accent);
+            opacity: 0.64;
+        }
+        .metric-value {
+            color: var(--text-main) !important;
+            font-weight: 950;
+        }
+        .metric-icon {
+            opacity: 0.16;
+            color: var(--metric-accent) !important;
+        }
+        .hw-mode-card {
+            min-height: 100%;
+            min-width: 0;
+            overflow: hidden;
+            background:
+                var(--surface-sheen),
+                var(--bg-card) !important;
+        }
+        .hw-mode-card #mode-display {
+            max-width: 100%;
+            font-size: clamp(1.08rem, 1.45vw, 1.55rem);
+            line-height: 1.12;
+            letter-spacing: 0;
+            color: var(--text-main);
+            overflow-wrap: anywhere;
+        }
+        .hw-mode-card .btn {
+            max-width: 100%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .hw-chart-body {
+            height: clamp(280px, 34vh, 380px);
+        }
+        .override-panel {
+            background:
+                color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+            border-color: var(--border-color);
+        }
+        .fixed-control-group .bg-dark {
+            border-color: var(--border-color) !important;
+            background: color-mix(in srgb, var(--bg-body) 70%, transparent) !important;
+        }
+        @keyframes hw-scan {
+            0%, 42% { transform: translateX(-100%); opacity: 0; }
+            56% { opacity: 0.62; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
+        @media (max-width: 992px) {
+            .hw-page-head { grid-template-columns: 1fr; align-items: start; }
+            .hw-health-strip { width: 100%; }
+        }
+        @media (max-width: 576px) {
+            .hw-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
+            .hw-page-head { padding-top: 1.15rem; }
+            .hw-health-strip { grid-template-columns: 1fr; }
+            .metric-box { padding: 1.1rem 0.75rem; }
+            .metric-value {
+                font-size: clamp(2rem, 10vw, 2.45rem);
+                letter-spacing: 0;
+                white-space: nowrap;
+            }
+            .metric-unit { display: inline-block; }
+        }
     </style>
 </head>
 <body>
@@ -98,7 +296,31 @@
 {% set active_page = 'hardware' %}
 {% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
+<main class="hw-shell container-fluid px-3 px-md-4 pb-4">
+    <section class="hw-page-head">
+        <div>
+            <h1 class="hw-title">
+                <span class="hw-title-icon"><i class="fas fa-server"></i></span>
+                <span data-i18n="hardware.title">{{ t('hardware.title') }}</span>
+            </h1>
+            <div class="hw-subline"><strong>{{ server_name }}</strong> · silicon telemetry command surface</div>
+        </div>
+        <div class="hw-health-strip" aria-label="Hardware live summary">
+            <div class="hw-health-item">
+                <div class="hw-health-label">Thermal</div>
+                <div class="hw-health-value"><span id="hw-strip-temp">--</span>°C</div>
+            </div>
+            <div class="hw-health-item">
+                <div class="hw-health-label">Power</div>
+                <div class="hw-health-value"><span id="hw-strip-power">--</span>W</div>
+            </div>
+            <div class="hw-health-item">
+                <div class="hw-health-label">Airflow</div>
+                <div class="hw-health-value"><span id="hw-strip-fan">--</span></div>
+            </div>
+        </div>
+    </section>
+
     <!-- 环境依赖警告栏 -->
     <div id="env-warning" class="alert alert-danger d-none mb-4 border-0 shadow-sm" role="alert">
         <div class="d-flex align-items-center">
@@ -113,28 +335,28 @@
     <div class="row g-3 mb-4">
         <!-- 顶部 4 个 Metric 卡片 -->
         <div class="col-6 col-md-3">
-            <div class="card metric-box">
+            <div class="card metric-box" data-accent="thermal">
                 <i class="fas fa-thermometer-half metric-icon text-primary"></i>
                 <div class="text-uppercase small text-muted fw-bold mb-1">CPU Max Temp</div>
                 <div class="metric-value text-primary"><span id="val-temp">--</span> <span class="metric-unit">°C</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card metric-box">
+            <div class="card metric-box" data-accent="power">
                 <i class="fas fa-bolt metric-icon text-warning"></i>
                 <div class="text-uppercase small text-muted fw-bold mb-1">Power Draw</div>
                 <div class="metric-value text-warning"><span id="val-power">--</span> <span class="metric-unit">W</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card metric-box">
+            <div class="card metric-box" data-accent="airflow">
                 <i class="fas fa-fan metric-icon text-success"></i>
                 <div class="text-uppercase small text-muted fw-bold mb-1">Fan Speed</div>
                 <div class="metric-value text-success"><span id="val-fan">--</span> <span class="metric-unit">RPM</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
+            <div class="card hw-mode-card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
                 <div class="text-uppercase small text-muted fw-bold mb-2">Fan Control Mode</div>
                 <div id="mode-display" class="h3 fw-bold mb-3">--</div>
                 <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch Mode</button>
@@ -144,7 +366,7 @@
     </div>
 
     <!-- 历史趋势图表 -->
-    <div class="card mb-4">
+    <div class="card hw-section-card mb-4">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div class="d-flex align-items-center">
                 <span class="fw-bold me-3"><i class="fas fa-history me-2"></i>Trends</span>
@@ -165,7 +387,7 @@
                 <label class="btn" for="chk-fan">Fan</label>
             </div>
         </div>
-        <div class="card-body p-3 position-relative" style="height: 320px;">
+        <div class="card-body p-3 position-relative hw-chart-body">
             <div id="chart-loader" class="chart-overlay skeleton-sweep"></div>
             <canvas id="mainChart"></canvas>
         </div>
@@ -174,7 +396,7 @@
     <div class="row g-4">
         <!-- 传感器列表 -->
         <div class="col-lg-8">
-            <div class="card h-100">
+            <div class="card hw-section-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="fas fa-list-ul me-2"></i>Sensors List</span>
                     <span class="badge bg-secondary" id="sensor-count">0</span>
@@ -190,7 +412,7 @@
         
         <!-- 风扇控制区域 (修改部分) -->
         <div class="col-lg-4">
-            <div class="card h-100">
+            <div class="card hw-section-card h-100">
                 <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Fan Configuration</div>
                 <div class="card-body d-flex flex-column py-3 px-4">
                     
@@ -266,7 +488,7 @@
             </div>
         </div>
     </div>
-</div>
+</main>
 
 <!-- 模式切换确认 Modal -->
 <div class="modal fade" id="modeConfirmModal" tabindex="-1" aria-hidden="true">
@@ -418,14 +640,36 @@
     let updateNoticeModal = null;
     let updateNoticePendingAck = false;
 
+    function cssVar(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+
+    function colorWithAlpha(hexColor, alpha) {
+        const hex = String(hexColor || '').trim().replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(127, 127, 127, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    const chartInk = () => ({
+        grid: cssVar('--border-color', '#3a3328'),
+        muted: cssVar('--text-muted', '#a8a092'),
+        power: cssVar('--accent-yellow', '#c6a15b'),
+        temp: cssVar('--accent-blue', '#6f8fa5'),
+        fan: cssVar('--accent-green', '#8a9b6f'),
+        red: cssVar('--accent-red', '#c35f4b')
+    });
+
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
         animation: { duration: 800, easing: 'easeOutQuart' },
         interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
         scales: { 
-            x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } }, 
-            y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
-            y1: { display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#8b949e' } }
+            x: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted, maxTicksLimit: 8 } },
+            y: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted } },
+            y1: { display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartInk().muted } }
         },
         elements: { 
             point: { radius: 0, hitRadius: 10 },
@@ -442,7 +686,7 @@
                 responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
-                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: '#1f6feb', tension: 0.3 } }
+                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: chartInk().temp, tension: 0.3 } }
             }
         });
 
@@ -482,7 +726,7 @@
                 const labels = Object.keys(d.curve).sort((a,b)=>a-b);
                 const data = labels.map(k=>d.curve[k]);
                 miniCurveChart.data.labels = labels;
-                miniCurveChart.data.datasets = [{data: data, borderColor: '#1f6feb', borderWidth: 2, fill: true, backgroundColor: 'rgba(31, 111, 235, 0.2)', tension: 0.3}];
+                miniCurveChart.data.datasets = [{data: data, borderColor: chartInk().temp, borderWidth: 2, fill: true, backgroundColor: colorWithAlpha(chartInk().temp, 0.14), tension: 0.3}];
                 miniCurveChart.update();
             }
 
@@ -783,6 +1027,9 @@
             document.getElementById('val-temp').innerText = d.temp;
             document.getElementById('val-power').innerText = d.power;
             document.getElementById('val-fan').innerText = d.fan_rpm;
+            document.getElementById('hw-strip-temp').innerText = d.temp;
+            document.getElementById('hw-strip-power').innerText = d.power;
+            document.getElementById('hw-strip-fan').innerText = `${d.fan_rpm} RPM`;
             
             // 更新全局 RPM 数据
             maxRPM = d.max_rpm || 0;
@@ -1007,13 +1254,13 @@
        };
 
        if(document.getElementById('chk-pwr').checked)
-           datasets.push({label:t('metrics.power'), data:historyData.power, borderColor:'#e3b341', backgroundColor: createGradient('#e3b341'), fill: true});
+           datasets.push({label:t('metrics.power'), data:historyData.power, borderColor: chartInk().power, backgroundColor: createGradient(chartInk().power), fill: true});
        
        if(document.getElementById('chk-temp').checked)
-           datasets.push({label:t('metrics.temp'), data:historyData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient('#1f6feb'), fill: true});
+           datasets.push({label:t('metrics.temp'), data:historyData.cpu_temp, borderColor: chartInk().temp, backgroundColor: createGradient(chartInk().temp), fill: true});
        
        if(document.getElementById('chk-fan').checked)
-           datasets.push({label:t('metrics.fan'), data:historyData.fan_rpm, borderColor:'#2ea043', yAxisID: 'y1'});
+           datasets.push({label:t('metrics.fan'), data:historyData.fan_rpm, borderColor: chartInk().fan, yAxisID: 'y1'});
 
        mainChart.data.labels = historyData.times;
        mainChart.data.datasets = datasets;
@@ -1063,7 +1310,7 @@
         const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
         curveChart = new Chart(ctx, {
             type: 'line', data: {
-                labels: labels, datasets: [{ data: labels.map(k => currentCurve[k]), borderColor: '#1f6feb', borderWidth: 2, tension: 0.3 }]
+                labels: labels, datasets: [{ data: labels.map(k => currentCurve[k]), borderColor: chartInk().temp, borderWidth: 2, tension: 0.3 }]
             },
             options: { 
                 plugins: { 
@@ -1078,7 +1325,7 @@
                         }
                     }
                 }, 
-                scales: { y: { min: 0, max: 100, grid: { color: '#333' } }, x: { grid: { color: '#333' } } } 
+                scales: { y: { min: 0, max: 100, grid: { color: chartInk().grid } }, x: { grid: { color: chartInk().grid } } }
             }
         });
     }
@@ -1229,10 +1476,10 @@
             finalValues = data.values.map(v => uniqueStates.indexOf(v));
         }
 
-        const themeColor = '#3fb950'; // 翡翠绿
+        const themeColor = chartInk().fan;
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(63, 185, 80, 0.3)');
-        gradient.addColorStop(1, 'rgba(63, 185, 80, 0)');
+        gradient.addColorStop(0, colorWithAlpha(themeColor, 0.22));
+        gradient.addColorStop(1, colorWithAlpha(themeColor, 0));
 
         sensorDetailChart = new Chart(ctx, {
             type: 'line',
@@ -1268,13 +1515,13 @@
                 },
                 scales: {
                     x: { 
-                        grid: { color: '#30363d' }, 
-                        ticks: { color: '#8b949e', maxTicksLimit: 10 } 
+                        grid: { color: chartInk().grid },
+                        ticks: { color: chartInk().muted, maxTicksLimit: 10 }
                     },
                     y: { 
-                        grid: { color: '#30363d' }, 
+                        grid: { color: chartInk().grid },
                         ticks: { 
-                            color: '#8b949e',
+                            color: chartInk().muted,
                             stepSize: isNumeric ? undefined : 1,
                             callback: function(value) {
                                 if (!isNumeric && yLabels) return yLabels[value];

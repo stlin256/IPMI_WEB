@@ -32,7 +32,7 @@
             meta.setAttribute('name', 'theme-color');
             document.head.appendChild(meta);
         }
-        meta.setAttribute('content', theme === 'light' ? '#f5f7fb' : '#0b1020');
+        meta.setAttribute('content', theme === 'light' ? '#f3ead7' : '#12110e');
     }
 
     function labelFor(theme) {

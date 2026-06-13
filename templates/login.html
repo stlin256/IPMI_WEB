@@ -21,8 +21,7 @@
             inset: 0;
             z-index: -1;
             background:
-                linear-gradient(115deg, transparent 0 44%, color-mix(in srgb, var(--accent-cyan) 16%, transparent) 44% 45%, transparent 45%),
-                linear-gradient(65deg, transparent 0 55%, color-mix(in srgb, var(--accent-magenta) 14%, transparent) 55% 56%, transparent 56%),
+                radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent-yellow) 9%, transparent), transparent 19rem),
                 repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 4%, transparent) 0 1px, transparent 1px 72px),
                 repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 72px);
         }
@@ -48,7 +47,7 @@
             display: inline-flex;
             align-items: center;
             gap: 0.55rem;
-            color: var(--accent-yellow);
+            color: var(--accent-red);
             font-family: 'SF Mono', Consolas, monospace;
             font-size: 0.82rem;
             font-weight: 850;
@@ -58,7 +57,7 @@
             content: "";
             width: 2.25rem;
             height: 2px;
-            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-yellow));
+            background: currentColor;
         }
         .login-wordmark {
             margin: 1rem 0 0;
@@ -86,9 +85,10 @@
             height: 3.5rem;
             margin-bottom: 1.25rem;
             border-radius: 8px;
-            color: #07100d;
-            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta));
-            box-shadow: 0 16px 34px color-mix(in srgb, var(--accent-cyan) 24%, transparent);
+            color: #fff7e8;
+            background: var(--accent-red);
+            border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
+            box-shadow: 0 16px 34px color-mix(in srgb, var(--accent-red) 18%, transparent);
         }
         .logo-icon { font-size: 1.55rem; }
         .form-control { padding: 0.78rem 1rem; }

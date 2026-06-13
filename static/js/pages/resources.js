@@ -1,12 +1,23 @@
 (function () {
-    const chartPalette = {
-        cpu: '#1f6feb',
-        memory: '#a371f7',
-        netIn: '#2ea043',
-        netOut: '#388bfd',
-        diskRead: '#d29922',
-        diskWrite: '#f85149'
-    };
+    function chartPalette() {
+        return {
+            cpu: window.IPMI.cssVar('--accent-blue', '#526f83'),
+            memory: window.IPMI.cssVar('--accent-magenta', '#83555d'),
+            netIn: window.IPMI.cssVar('--accent-green', '#6e7d52'),
+            netOut: window.IPMI.cssVar('--accent-cyan', '#637f75'),
+            diskRead: window.IPMI.cssVar('--accent-yellow', '#a5792e'),
+            diskWrite: window.IPMI.cssVar('--accent-red', '#a94e3f')
+        };
+    }
+
+    function colorMix(hexColor, alpha) {
+        const hex = String(hexColor || '').trim().replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(127, 127, 127, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
 
     let cpuMemChart;
     let netChart;
@@ -98,8 +109,9 @@
             }
         });
 
-        gaugeCpuChart = new Chart(document.getElementById('gaugeCpu'), gaugeConfig(chartPalette.cpu));
-        gaugeMemChart = new Chart(document.getElementById('gaugeMem'), gaugeConfig(chartPalette.memory));
+        const palette = chartPalette();
+        gaugeCpuChart = new Chart(document.getElementById('gaugeCpu'), gaugeConfig(palette.cpu));
+        gaugeMemChart = new Chart(document.getElementById('gaugeMem'), gaugeConfig(palette.memory));
     }
 
     function updateGauge(chart, value) {
@@ -184,30 +196,34 @@
 
     const loadHistory = window.IPMI.createAbortableLoader(async (signal) => {
         const data = await window.IPMI.fetchJson('/api/history', { signal, timeoutMs: 20000 });
+        const palette = chartPalette();
 
         cpuMemChart.data.labels = data.times;
         cpuMemChart.data.datasets = [
-            { label: 'CPU %', data: data.res.cpu, borderColor: chartPalette.cpu, backgroundColor: 'rgba(31, 111, 235, 0.1)', borderWidth: 2, fill: true, tension: 0.3 },
-            { label: 'RAM %', data: data.res.mem, borderColor: chartPalette.memory, backgroundColor: 'rgba(163, 113, 247, 0.05)', borderWidth: 2, fill: true, tension: 0.3 }
+            { label: 'CPU %', data: data.res.cpu, borderColor: palette.cpu, backgroundColor: colorMix(palette.cpu, 0.11), borderWidth: 2, fill: true, tension: 0.3 },
+            { label: 'RAM %', data: data.res.mem, borderColor: palette.memory, backgroundColor: colorMix(palette.memory, 0.08), borderWidth: 2, fill: true, tension: 0.3 }
         ];
         cpuMemChart.update('none');
 
         netChart.data.labels = data.times;
         netChart.data.datasets = [
-            { label: 'In', data: data.res.net_in, borderColor: chartPalette.netIn, borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
-            { label: 'Out', data: data.res.net_out, borderColor: chartPalette.netOut, borderWidth: 1.5, borderDash: [3, 3], tension: 0.3, pointRadius: 0 }
+            { label: 'In', data: data.res.net_in, borderColor: palette.netIn, borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
+            { label: 'Out', data: data.res.net_out, borderColor: palette.netOut, borderWidth: 1.5, borderDash: [3, 3], tension: 0.3, pointRadius: 0 }
         ];
         netChart.update('none');
 
         diskChart.data.labels = data.times;
         diskChart.data.datasets = [
-            { label: 'Read', data: data.res.disk_r, backgroundColor: chartPalette.diskRead, barPercentage: 0.7 },
-            { label: 'Write', data: data.res.disk_w, backgroundColor: chartPalette.diskWrite, barPercentage: 0.7 }
+            { label: 'Read', data: data.res.disk_r, backgroundColor: palette.diskRead, barPercentage: 0.7 },
+            { label: 'Write', data: data.res.disk_w, backgroundColor: palette.diskWrite, barPercentage: 0.7 }
         ];
         diskChart.update('none');
     });
 
     function rethemeCharts() {
+        const palette = chartPalette();
+        if (gaugeCpuChart) gaugeCpuChart.data.datasets[0].backgroundColor[0] = palette.cpu;
+        if (gaugeMemChart) gaugeMemChart.data.datasets[0].backgroundColor[0] = palette.memory;
         updateGauge(gaugeCpuChart, gaugeCpuChart?.data.datasets[0].data[0] || 0);
         updateGauge(gaugeMemChart, gaugeMemChart?.data.datasets[0].data[0] || 0);
         if (window.IPMICharts) window.IPMICharts.refreshAll();
