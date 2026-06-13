@@ -63,23 +63,8 @@
 </head>
 <body>
 
-<nav class="navbar navbar-expand navbar-dark sticky-top">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
-            </span>
-        </a>
-        <div class="navbar-nav flex-row me-auto ms-4">
-            <a class="nav-link me-3" href="/hardware">HW</a>
-            <a class="nav-link active me-3" href="/resources">RES</a>
-            <a class="nav-link me-3" href="/gpu">GPU</a>
-            <a class="nav-link" href="/history">HIST</a>
-        </div>
-        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
-    </div>
-</nav>
+{% set active_page = 'resources' %}
+{% include 'partials/main_nav.html' %}
 
 <div class="container-fluid mt-4 px-3 px-md-4">
     <!-- 顶部概览：合并为2个大卡片 -->
@@ -366,10 +351,6 @@
     checkLogStatus();
     setInterval(checkLogStatus, 5000);
 </script>
-<footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
-    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
-        <i class="fab fa-github me-1"></i>GitHub @stlin256
-    </a>
-</footer>
+{% include 'partials/footer.html' %}
 </body>
 </html>
