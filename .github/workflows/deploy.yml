@@ -1,0 +1,124 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_name:
+        description: "Systemd service to restart after deploy"
+        required: false
+        default: "ipmi-web"
+      remote_path:
+        description: "Deployment directory on the target host"
+        required: false
+        default: "/opt/IPMI_WEB"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Validate, package, and deploy over SSH
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      REMOTE_PATH: ${{ inputs.remote_path }}
+      SERVICE_NAME: ${{ inputs.service_name }}
+
+    steps:
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_KEY"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Validate sources
+        run: |
+          python -m compileall app.py gpu_agent.py i18n.py cpu_power_probe.py hardware_info_probe.py
+          python .github/scripts/frontend_ci_check.py
+
+      - name: Build deploy package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='app.log' \
+            --exclude='config.json' \
+            --exclude='data.db*' \
+            -czf dist/ipmi-web-${GITHUB_SHA}.tar.gz \
+            app.py gpu_agent.py i18n.py cpu_power_probe.py hardware_info_probe.py \
+            requirements.txt config.json.example README.md CHANGELOG.md DEVELOPMENT_GUIDE.md \
+            static templates cert img
+
+      - name: Install SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload package
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -P "$DEPLOY_PORT" "dist/ipmi-web-${GITHUB_SHA}.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/ipmi-web-${GITHUB_SHA}.tar.gz"
+
+      - name: Activate release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' -- \
+            "$REMOTE_PATH" "$SERVICE_NAME" "$GITHUB_SHA" <<'REMOTE'
+          set -euo pipefail
+          remote_path="$1"
+          service_name="$2"
+          release_sha="$3"
+          release_dir="$remote_path/releases/$release_sha"
+
+          mkdir -p "$release_dir"
+          tar -xzf "/tmp/ipmi-web-$release_sha.tar.gz" -C "$release_dir"
+          cd "$release_dir"
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+          if [ ! -f "$remote_path/config.json" ] && [ -f "$release_dir/config.json.example" ]; then
+            cp "$release_dir/config.json.example" "$remote_path/config.json"
+          fi
+          ln -sfn "$remote_path/config.json" "$release_dir/config.json"
+          ln -sfn "$release_dir" "$remote_path/current"
+
+          if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$service_name.service" >/dev/null 2>&1; then
+            sudo systemctl restart "$service_name"
+          fi
+          REMOTE

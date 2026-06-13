@@ -1,0 +1,65 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Validate and package artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Validate sources
+        run: |
+          python -m compileall app.py gpu_agent.py i18n.py cpu_power_probe.py hardware_info_probe.py
+          python .github/scripts/frontend_ci_check.py
+
+      - name: Build release tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref_name="${GITHUB_REF_NAME:-manual-${GITHUB_RUN_NUMBER}}"
+          safe_ref="${ref_name//\//-}"
+          mkdir -p dist
+          tar \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='app.log' \
+            --exclude='config.json' \
+            --exclude='data.db*' \
+            -czf "dist/ipmi-web-${safe_ref}.tar.gz" \
+            app.py gpu_agent.py i18n.py cpu_power_probe.py hardware_info_probe.py \
+            requirements.txt config.json.example README.md CHANGELOG.md DEVELOPMENT_GUIDE.md \
+            static templates cert img
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipmi-web-${{ github.run_number }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
