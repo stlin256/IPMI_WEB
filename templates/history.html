@@ -12,11 +12,10 @@
    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
         body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .navbar { background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .nav-link:hover, .nav-link.active { color: var(--text-main) !important; }
 
         @media (max-width: 576px) {
             .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
@@ -25,11 +24,56 @@
             .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
         }
         
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 8px 24px rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; }
-        .card-header { background-color: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-color); padding: 1.25rem; }
+        .history-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .history-page-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 1rem;
+            padding: 1.45rem 0 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .history-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0;
+            font-size: clamp(1.55rem, 2.6vw, 2.55rem);
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+        .history-title-icon {
+            display: inline-grid;
+            place-items: center;
+            width: 2.45rem;
+            height: 2.45rem;
+            border-radius: 8px;
+            color: #fff7e8;
+            background: var(--accent-yellow);
+            border: 1px solid color-mix(in srgb, var(--accent-yellow) 72%, var(--border-color));
+        }
+        .history-subline {
+            margin-top: 0.6rem;
+            color: var(--text-muted);
+            font-weight: 750;
+        }
+        .history-live-mark {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 0.4rem 0.7rem;
+            color: var(--accent-green);
+            font-weight: 850;
+            background: color-mix(in srgb, var(--bg-card) 82%, transparent);
+            white-space: nowrap;
+        }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-soft); border-radius: 8px; overflow: hidden; }
+        .card-header { background: var(--surface-sheen), color-mix(in srgb, var(--bg-card) 88%, transparent); border-bottom: 1px solid var(--border-color); padding: 1.05rem; }
         
-        .form-select { background-color: #21262d; border-color: #30363d; color: #c9d1d9; border-radius: 6px; padding: 0.4rem 0.8rem; }
-        .form-select:focus { border-color: #58a6ff; box-shadow: none; }
+        .form-select { background-color: color-mix(in srgb, var(--bg-elevated) 84%, transparent); border-color: var(--border-color); color: var(--text-main); border-radius: 6px; padding: 0.4rem 0.8rem; }
+        .form-select:focus { border-color: var(--accent-blue); box-shadow: var(--focus-ring); }
         
         /* 横向滚动容器 */
         .scrollable-tabs-container {
@@ -52,11 +96,11 @@
         
         /* 胶囊样式优化 */
         .btn-check-custom + .btn { 
-            border-color: #444c56; color: var(--text-muted); background: #21262d; 
+            border-color: var(--border-color); color: var(--text-muted); background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
             border-radius: 8px; padding: 0.5rem 1.25rem; font-size: 0.95rem; font-weight: 600;
             white-space: nowrap; transition: all 0.2s;
         }
-        .btn-check-custom:hover + .btn { background: #30363d; color: #fff; border-color: #57606a; }
+        .btn-check-custom:hover + .btn { background: color-mix(in srgb, var(--accent-yellow) 10%, transparent); color: var(--text-main); border-color: var(--accent-yellow); }
 
         /* Insights Mobile Adjustments */
         @media (max-width: 768px) {
@@ -66,42 +110,39 @@
         }
 
         /* 骨架屏动画 */
-        .skeleton { background: linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; }
+        .skeleton { background: linear-gradient(90deg, color-mix(in srgb, var(--bg-card) 95%, transparent) 25%, color-mix(in srgb, var(--bg-elevated) 80%, transparent) 50%, color-mix(in srgb, var(--bg-card) 95%, transparent) 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; }
         @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .skeleton-text { height: 1.5rem; margin-bottom: 0.5rem; border-radius: 4px; }
         .skeleton-chart { height: 300px; border-radius: 12px; }
 
-        /* CPU Temp - Blue (#1f6feb) */
-        #chk-temp:checked + .btn { background-color: rgba(31, 111, 235, 0.15); color: #79c0ff; border-color: #1f6feb; }
-        /* Fan - Green (#3fb950) */
-        #chk-fan:checked + .btn { background-color: rgba(63, 185, 80, 0.15); color: #3fb950; border-color: #238636; }
-        /* Sys Power - Gold (#d29922) */
-        #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
-        /* CPU Power Total - Orange (#f0883e) */
-        #chk-cpu-pwr:checked + .btn { background-color: rgba(240, 136, 62, 0.15); color: #f0883e; border-color: #f0883e; }
-        
-        /* CPU Util - Light Blue (#79c0ff) */
-        #chk-cpu:checked + .btn { background-color: rgba(121, 192, 255, 0.15); color: #79c0ff; border-color: #58a6ff; }
-        /* RAM Util - Purple (#bc8cff) */
-        #chk-ram:checked + .btn { background-color: rgba(188, 140, 255, 0.15); color: #bc8cff; border-color: #a371f7; }
-
-        /* Net In - Deep Green (#2ea043) */
-        #chk-net-in:checked + .btn { background-color: rgba(46, 160, 67, 0.15); color: #3fb950; border-color: #2ea043; }
-        /* Net Out - Blue (#388bfd) */
-        #chk-net-out:checked + .btn { background-color: rgba(56, 139, 253, 0.15); color: #79c0ff; border-color: #388bfd; }
-        /* Disk Read - Yellow (#d29922) */
-        #chk-disk-r:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
-        /* Disk Write - Red (#f85149) */
-        #chk-disk-w:checked + .btn { background-color: rgba(248, 81, 73, 0.15); color: #ff7b72; border-color: #f85149; }
-
-        /* GPU Temp - Cyan (#39c5bb) */
-        #chk-gpu-temp:checked + .btn { background-color: rgba(57, 197, 187, 0.15); color: #39c5bb; border-color: #39c5bb; }
-        /* GPU Util - Coral Red (#ff7b72) */
-        #chk-gpu-util:checked + .btn { background-color: rgba(255, 123, 114, 0.15); color: #ff7b72; border-color: #ff7b72; }
-        /* GPU Power - Red (#f85149) */
-        #chk-gpu-pwr:checked + .btn { background-color: rgba(248, 81, 73, 0.15); color: #f85149; border-color: #f85149; }
-        /* GPU Memory - Pink (#da367f) */
-        #chk-gpu-mem:checked + .btn { background-color: rgba(218, 54, 127, 0.15); color: #da367f; border-color: #da367f; }
+        #chk-temp:checked + .btn,
+        #chk-cpu:checked + .btn,
+        #chk-net-out:checked + .btn { background-color: color-mix(in srgb, var(--accent-blue) 14%, transparent); color: var(--accent-blue); border-color: var(--accent-blue); }
+        #chk-fan:checked + .btn,
+        #chk-net-in:checked + .btn { background-color: color-mix(in srgb, var(--accent-green) 14%, transparent); color: var(--accent-green); border-color: var(--accent-green); }
+        #chk-pwr:checked + .btn,
+        #chk-disk-r:checked + .btn { background-color: color-mix(in srgb, var(--accent-yellow) 14%, transparent); color: var(--accent-yellow); border-color: var(--accent-yellow); }
+        #chk-cpu-pwr:checked + .btn,
+        #chk-disk-w:checked + .btn,
+        #chk-gpu-util:checked + .btn,
+        #chk-gpu-pwr:checked + .btn { background-color: color-mix(in srgb, var(--accent-red) 14%, transparent); color: var(--accent-red); border-color: var(--accent-red); }
+        #chk-ram:checked + .btn,
+        #chk-gpu-mem:checked + .btn { background-color: color-mix(in srgb, var(--accent-magenta) 14%, transparent); color: var(--accent-magenta); border-color: var(--accent-magenta); }
+        #chk-gpu-temp:checked + .btn { background-color: color-mix(in srgb, var(--accent-cyan) 14%, transparent); color: var(--accent-cyan); border-color: var(--accent-cyan); }
+        .history-stat-value {
+            max-width: 100%;
+            overflow-wrap: normal;
+            word-break: normal;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            font-size: clamp(1.05rem, 2vw, 1.5rem);
+        }
+        @media (max-width: 576px) {
+            .history-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
+            .history-page-head { align-items: start; flex-direction: column; padding-top: 1.1rem; }
+            .scrollable-tabs-container { gap: 0.45rem; padding: 0.45rem 0; }
+            .btn-check-custom + .btn { padding: 0.42rem 0.62rem; font-size: 0.82rem; }
+        }
     </style>
 </head>
 <body>
@@ -109,7 +150,7 @@
 {% set active_page = 'history' %}
 {% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
+<main class="history-shell container-fluid px-3 px-md-4 pb-4">
     <!-- Energy Date Modal -->
     <div class="modal fade" id="energyModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -130,7 +171,18 @@
         </div>
     </div>
 
-    <div class="card h-100">
+    <section class="history-page-head">
+        <div>
+            <h1 class="history-title">
+                <span class="history-title-icon"><i class="fas fa-chart-line"></i></span>
+                <span data-i18n="history.title">{{ t('history.title') }}</span>
+            </h1>
+            <div class="history-subline">{{ server_name }} · editorial telemetry archive</div>
+        </div>
+        <div class="history-live-mark"><i class="fas fa-layer-group"></i> multi-signal view</div>
+    </section>
+
+    <div class="card h-100 mt-4">
         <div class="card-header d-flex justify-content-between align-items-center py-3 flex-wrap gap-3">
             <div class="d-flex align-items-center gap-2">
                 <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i>History Explorer</span>
@@ -206,37 +258,37 @@
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
                         <div class="text-uppercase small text-muted fw-bold mb-1">Max Temp</div>
-                        <div class="h4 mb-0 font-monospace text-primary" id="stat-temp">--°C</div>
+                        <div class="h4 mb-0 font-monospace text-primary history-stat-value" id="stat-temp">--°C</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
                         <div class="text-uppercase small text-muted fw-bold mb-1">Avg Load</div>
-                        <div class="h4 mb-0 font-monospace text-success" id="stat-load">--%</div>
+                        <div class="h4 mb-0 font-monospace text-success history-stat-value" id="stat-load">--%</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
                         <div class="text-uppercase small text-muted fw-bold mb-1">Peak Net</div>
-                        <div class="h4 mb-0 font-monospace text-warning" id="stat-net">-- KB/s</div>
+                        <div class="h4 mb-0 font-monospace text-warning history-stat-value" id="stat-net">-- KB/s</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
                         <div class="text-uppercase small text-muted fw-bold mb-1">Peak Disk</div>
-                        <div class="h4 mb-0 font-monospace text-info" id="stat-disk">-- MB/s</div>
+                        <div class="h4 mb-0 font-monospace text-info history-stat-value" id="stat-disk">-- MB/s</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
                         <div class="text-uppercase small text-muted fw-bold mb-1">Interval</div>
-                        <div class="h4 mb-0 font-monospace text-warning" id="stat-energy-interval">-- kWh</div>
+                        <div class="h4 mb-0 font-monospace text-warning history-stat-value" id="stat-energy-interval">-- kWh</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100" style="cursor: pointer" onclick="changeEnergyStartDate()" title="Click to change start date">
                         <div class="text-uppercase small text-muted fw-bold mb-1" id="energy-total-title">Energy</div>
-                        <div class="h4 mb-0 font-monospace text-danger" id="stat-energy-total">-- kWh</div>
+                        <div class="h4 mb-0 font-monospace text-danger history-stat-value" id="stat-energy-total">-- kWh</div>
                         <div class="small text-muted mt-1" id="stat-energy-date" style="font-size: 0.65rem; white-space: nowrap">since --</div>
                     </div>
                 </div>
@@ -322,7 +374,7 @@
             <div id="loading" class="text-center text-muted mt-3" style="display:none"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>
         </div>
     </div>
-</div>
+</main>
 
 <script>
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};
@@ -334,6 +386,55 @@
     let isBaseDataLoading = false;
     let baseAbortController = null;
     let insightsAbortController = null;
+
+    function cssVar(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+
+    function chartInk() {
+        return {
+            text: cssVar('--text-main', '#f2ead8'),
+            muted: cssVar('--text-muted', '#a8a092'),
+            grid: cssVar('--border-color', '#3a3328'),
+            panel: cssVar('--bg-card', '#1e1c17'),
+            blue: cssVar('--accent-blue', '#6f8fa5'),
+            cyan: cssVar('--accent-cyan', '#7f9c91'),
+            green: cssVar('--accent-green', '#8a9b6f'),
+            yellow: cssVar('--accent-yellow', '#c6a15b'),
+            red: cssVar('--accent-red', '#c35f4b'),
+            magenta: cssVar('--accent-magenta', '#9b6b74'),
+            ember: cssVar('--accent-ember', '#b8784d')
+        };
+    }
+
+    function colorWithAlpha(hexColor, alpha) {
+        const hex = String(hexColor || '').trim().replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(127, 127, 127, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function historyPalette() {
+        const ink = chartInk();
+        return {
+            temp: ink.blue,
+            gpuTemp: ink.cyan,
+            fan: ink.green,
+            power: ink.yellow,
+            gpuPower: ink.red,
+            cpuPower: ink.ember,
+            cpu: ink.blue,
+            ram: ink.magenta,
+            gpuUtil: ink.red,
+            gpuMem: ink.magenta,
+            netIn: ink.green,
+            netOut: ink.cyan,
+            diskRead: ink.yellow,
+            diskWrite: ink.red
+        };
+    }
 
     // 准星同步插件 (增加 group_id 隔离逻辑)
     const crosshairPlugin = {
@@ -351,7 +452,7 @@
                 ctx.moveTo(x, top);
                 ctx.lineTo(x, bottom);
                 ctx.lineWidth = 1;
-                ctx.strokeStyle = '#57606a';
+                ctx.strokeStyle = chartInk().muted;
                 ctx.stroke();
                 ctx.restore();
             }
@@ -395,18 +496,18 @@
         plugins: {
             legend: { 
                 position: 'top', align: 'end',
-                labels: { color: '#e6edf3', usePointStyle: true, boxWidth: 10, padding: 15, font: { size: 11, weight: 'bold' } } 
+                labels: { color: chartInk().text, usePointStyle: true, boxWidth: 10, padding: 15, font: { size: 11, weight: 'bold' } }
             },
             tooltip: { 
-                backgroundColor: 'rgba(22, 27, 34, 0.98)', borderColor: '#444c56', borderWidth: 1, 
-                titleColor: '#fff', bodyColor: '#e6edf3', padding: 12, bodySpacing: 8,
+                backgroundColor: chartInk().panel, borderColor: chartInk().grid, borderWidth: 1,
+                titleColor: chartInk().text, bodyColor: chartInk().text, padding: 12, bodySpacing: 8,
                 titleFont: { size: 14, weight: 'bold' }, bodyFont: { family: "'SF Mono', monospace" }
             }
         },
         scales: {
-            x: { grid: { color: 'rgba(48, 54, 61, 0.4)', drawBorder: false }, ticks: { color: '#8b949e', font: { size: 11 }, maxTicksLimit: 10 } },
-            y: { grid: { color: 'rgba(48, 54, 61, 0.4)', drawBorder: false }, ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace", size: 11 } } },
-            y1: { type: 'linear', display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace", size: 11 } } }
+            x: { grid: { color: chartInk().grid, drawBorder: false }, ticks: { color: chartInk().muted, font: { size: 11 }, maxTicksLimit: 10 } },
+            y: { grid: { color: chartInk().grid, drawBorder: false }, ticks: { color: chartInk().muted, font: { family: "'SF Mono', monospace", size: 11 } } },
+            y1: { type: 'linear', display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartInk().muted, font: { family: "'SF Mono', monospace", size: 11 } } }
         }
     };
 
@@ -581,14 +682,14 @@
                 }
             },
             plugins: {
-                legend: { position: 'top', align: 'end', labels: { color: '#8b949e', usePointStyle: true, boxWidth: 8 } },
-                tooltip: { backgroundColor: 'rgba(22, 27, 34, 0.95)', titleColor: '#fff' }
+                legend: { position: 'top', align: 'end', labels: { color: chartInk().muted, usePointStyle: true, boxWidth: 8 } },
+                tooltip: { backgroundColor: chartInk().panel, titleColor: chartInk().text }
             }
         };
         
         charts.pwrDist = new Chart(document.getElementById('chartPowerDist'), {
             type: 'doughnut',
-            data: { labels: ['CPU', 'GPU', 'Others'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#58a6ff', '#76e3ea', '#8b949e'], borderWidth: 0 }] },
+            data: { labels: ['CPU', 'GPU', 'Others'], datasets: [{ data: [0, 0, 0], backgroundColor: [chartInk().blue, chartInk().cyan, chartInk().muted], borderWidth: 0 }] },
             options: { 
                 ...deepCommonOptions, 
                 cutout: '70%', 
@@ -611,8 +712,8 @@
 
         const pctScale = { 
             min: 0, max: 100, 
-            ticks: { color: '#8b949e', callback: v => v + '%' },
-            grid: { color: 'rgba(48,54,61,0.2)', drawBorder: false }
+            ticks: { color: chartInk().muted, callback: v => v + '%' },
+            grid: { color: chartInk().grid, drawBorder: false }
         };
 
         charts.loadDist = new Chart(document.getElementById('chartLoadDist'), {
@@ -639,14 +740,14 @@
 
         charts.vramEff = new Chart(document.getElementById('chartVRAMEff'), {
             type: 'bubble',
-            data: { datasets: [{ label: 'GPU efficiency', data: [], backgroundColor: 'rgba(57, 197, 187, 0.5)', borderColor: 'rgba(57, 197, 187, 0.8)', borderWidth: 1 }] },
+            data: { datasets: [{ label: 'GPU efficiency', data: [], backgroundColor: colorWithAlpha(chartInk().cyan, 0.45), borderColor: chartInk().cyan, borderWidth: 1 }] },
             options: { 
                 ...deepCommonOptions,
                 interaction: { mode: 'nearest', intersect: true }, // 修正气泡图交互模式
                 onHover: null,
                 scales: { 
-                    x: { ...pctScale, title: { display: true, text: 'GPU Core Util %', color: '#8b949e' } },
-                    y: { ...pctScale, title: { display: true, text: 'VRAM Util %', color: '#8b949e' } }
+                    x: { ...pctScale, title: { display: true, text: 'GPU Core Util %', color: chartInk().muted } },
+                    y: { ...pctScale, title: { display: true, text: 'VRAM Util %', color: chartInk().muted } }
                 },
                 plugins: {
                     ...deepCommonOptions.plugins,
@@ -731,7 +832,8 @@
     }
 
     function cpuPkgColorByIndex(idx) {
-        const palette = ['#58a6ff', '#a371f7', '#3fb950', '#d29922', '#ff7b72', '#39c5bb'];
+        const ink = chartInk();
+        const palette = [ink.blue, ink.magenta, ink.green, ink.yellow, ink.red, ink.cyan];
         return palette[idx % palette.length];
     }
 
@@ -961,22 +1063,23 @@
         const ctxPower = document.getElementById('chartPower').getContext('2d');
         const ctxLoad = document.getElementById('chartLoad').getContext('2d');
         const ctxIO = document.getElementById('chartIO').getContext('2d');
+        const palette = historyPalette();
 
         // --- 温度图表 (Temp + Fan) ---
         if(document.getElementById('chk-temp').checked) 
-            dsTemp.push({label:t('history.cpuTemp'), data:rawData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient(ctxTemp, '#1f6feb'), fill: true});
+            dsTemp.push({label:t('history.cpuTemp'), data:rawData.cpu_temp, borderColor: palette.temp, backgroundColor: createGradient(ctxTemp, palette.temp), fill: true});
         if(rawData.gpu && rawData.gpu.temp && document.getElementById('chk-gpu-temp').checked)
-            dsTemp.push({label:t('history.gpuTemp'), data:rawData.gpu.temp, borderColor:'#39c5bb', backgroundColor: createGradient(ctxTemp, '#39c5bb'), fill: true});
+            dsTemp.push({label:t('history.gpuTemp'), data:rawData.gpu.temp, borderColor: palette.gpuTemp, backgroundColor: createGradient(ctxTemp, palette.gpuTemp), fill: true});
         if(document.getElementById('chk-fan').checked) 
-            dsTemp.push({label:t('metrics.fanSpeed'), data:rawData.fan_rpm, borderColor:'#3fb950', yAxisID: 'y1'});
+            dsTemp.push({label:t('metrics.fanSpeed'), data:rawData.fan_rpm, borderColor: palette.fan, yAxisID: 'y1'});
 
         // --- 功耗图表 ---
         if(document.getElementById('chk-pwr').checked) 
-            dsPower.push({label:t('history.sysPower'), data:rawData.power, borderColor:'#d29922', backgroundColor: createGradient(ctxPower, '#d29922'), fill: true});
+            dsPower.push({label:t('history.sysPower'), data:rawData.power, borderColor: palette.power, backgroundColor: createGradient(ctxPower, palette.power), fill: true});
         if(rawData.gpu && rawData.gpu.power && document.getElementById('chk-gpu-pwr').checked)
-            dsPower.push({label:t('history.gpuPower'), data:rawData.gpu.power, borderColor:'#f85149'});
+            dsPower.push({label:t('history.gpuPower'), data:rawData.gpu.power, borderColor: palette.gpuPower});
         if(rawData.cpu_power && document.getElementById('chk-cpu-pwr').checked)
-            dsPower.push({label:t('history.cpuPower'), data:rawData.cpu_power, borderColor:'#f0883e', backgroundColor: createGradient(ctxPower, '#f0883e'), fill: true});
+            dsPower.push({label:t('history.cpuPower'), data:rawData.cpu_power, borderColor: palette.cpuPower, backgroundColor: createGradient(ctxPower, palette.cpuPower), fill: true});
 
         if (rawData.cpu_pkg_power) {
             const pkgKeys = Object.keys(rawData.cpu_pkg_power).sort((a, b) => {
@@ -1002,23 +1105,23 @@
 
         // --- 负载图表 (Load + GPU Mem) ---
         if(document.getElementById('chk-cpu').checked)
-            dsLoad.push({label:t('history.cpuUtil'), data:rawData.cpu_load, borderColor:'#79c0ff', backgroundColor: createGradient(ctxLoad, '#79c0ff'), fill: true});
+            dsLoad.push({label:t('history.cpuUtil'), data:rawData.cpu_load, borderColor: palette.cpu, backgroundColor: createGradient(ctxLoad, palette.cpu), fill: true});
         if(document.getElementById('chk-ram').checked)
-            dsLoad.push({label:t('history.ramUtil'), data:rawData.mem_load, borderColor:'#bc8cff', backgroundColor: createGradient(ctxLoad, '#bc8cff'), fill: true});
+            dsLoad.push({label:t('history.ramUtil'), data:rawData.mem_load, borderColor: palette.ram, backgroundColor: createGradient(ctxLoad, palette.ram), fill: true});
         if(rawData.gpu && rawData.gpu.util_gpu && document.getElementById('chk-gpu-util').checked)
-            dsLoad.push({label:t('history.gpuUtil'), data:rawData.gpu.util_gpu, borderColor:'#ff7b72', backgroundColor: createGradient(ctxLoad, '#ff7b72'), fill: true});
+            dsLoad.push({label:t('history.gpuUtil'), data:rawData.gpu.util_gpu, borderColor: palette.gpuUtil, backgroundColor: createGradient(ctxLoad, palette.gpuUtil), fill: true});
         if(rawData.gpu && rawData.gpu.mem_used && document.getElementById('chk-gpu-mem').checked)
-            dsLoad.push({label:t('history.gpuMem'), data:rawData.gpu.mem_used, borderColor:'#da367f', yAxisID: 'y1'});
+            dsLoad.push({label:t('history.gpuMem'), data:rawData.gpu.mem_used, borderColor: palette.gpuMem, yAxisID: 'y1'});
 
         // --- IO 图表 ---
         if(document.getElementById('chk-net-in').checked)
-            dsIO.push({label:t('history.netIn'), data:rawData.net_in, borderColor:'#2ea043'});
+            dsIO.push({label:t('history.netIn'), data:rawData.net_in, borderColor: palette.netIn});
         if(document.getElementById('chk-net-out').checked)
-            dsIO.push({label:t('history.netOut'), data:rawData.net_out, borderColor:'#388bfd'});
+            dsIO.push({label:t('history.netOut'), data:rawData.net_out, borderColor: palette.netOut});
         if(document.getElementById('chk-disk-r').checked)
-            dsIO.push({label:t('history.diskRead'), data:rawData.disk_r, borderColor:'#d29922'});
+            dsIO.push({label:t('history.diskRead'), data:rawData.disk_r, borderColor: palette.diskRead});
         if(document.getElementById('chk-disk-w').checked)
-            dsIO.push({label:t('history.diskWrite'), data:rawData.disk_w, borderColor:'#f85149'});
+            dsIO.push({label:t('history.diskWrite'), data:rawData.disk_w, borderColor: palette.diskWrite});
 
         // 更新四个图表
         const updateSingleChart = (chart, ds) => {
@@ -1056,8 +1159,8 @@
 
             // 2. 负载分布
             charts.loadDist.data.datasets = [
-                { label: 'CPU', data: ana.cpu_load_dist, backgroundColor: 'rgba(31, 111, 235, 0.7)' },
-                { label: 'GPU', data: ana.gpu_load_dist, backgroundColor: 'rgba(57, 197, 187, 0.7)' }
+                { label: 'CPU', data: ana.cpu_load_dist, backgroundColor: colorWithAlpha(historyPalette().cpu, 0.7) },
+                { label: 'GPU', data: ana.gpu_load_dist, backgroundColor: colorWithAlpha(historyPalette().gpuTemp, 0.7) }
             ];
             charts.loadDist.update();
 
@@ -1068,8 +1171,8 @@
             // 4. 温度分布 (高精度 1度步长)
             charts.tempDist.data.labels = ana.cpu_temp_labels;
             charts.tempDist.data.datasets = [
-                { label: 'CPU', data: ana.cpu_temp_dist, borderColor: '#1f6feb', backgroundColor: 'rgba(31, 111, 235, 0.1)', fill: true, pointRadius: 0 },
-                { label: 'GPU', data: ana.gpu_temp_dist, borderColor: '#39c5bb', backgroundColor: 'rgba(57, 197, 187, 0.1)', fill: true, pointRadius: 0 }
+                { label: 'CPU', data: ana.cpu_temp_dist, borderColor: historyPalette().temp, backgroundColor: colorWithAlpha(historyPalette().temp, 0.1), fill: true, pointRadius: 0 },
+                { label: 'GPU', data: ana.gpu_temp_dist, borderColor: historyPalette().gpuTemp, backgroundColor: colorWithAlpha(historyPalette().gpuTemp, 0.1), fill: true, pointRadius: 0 }
             ];
             charts.tempDist.update();
         }

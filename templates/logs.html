@@ -10,19 +10,11 @@
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <style>
-        :root { 
-            --bg-body: #0d1117; 
-            --border-color: #30363d; 
-            --text-main: #e6edf3; 
-            --text-muted: #8b949e;
-            --text-success: #3fb950;
-            --text-danger: #f85149;
-            --text-warning: #d29922;
-            --text-blue: #58a6ff;
-            --accent-blue: #1f6feb;
-            --accent-red: #f85149;
-            --accent-green: #3fb950;
-            --accent-yellow: #d29922;
+        :root {
+            --text-success: var(--accent-green);
+            --text-danger: var(--accent-red);
+            --text-warning: var(--accent-yellow);
+            --text-blue: var(--accent-blue);
         }
         body { 
             background-color: var(--bg-body); 
@@ -38,16 +30,17 @@
         
         /* 统一导航栏样式 */
         .navbar { 
-            background-color: rgba(22, 27, 34, 0.95) !important; 
+            background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important;
             backdrop-filter: blur(10px); 
             border-bottom: 1px solid var(--border-color); 
             flex-shrink: 0;
         }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .nav-link:hover, .nav-link.active { color: var(--text-main) !important; }
         
         /* CLI 风格容器 */
         .cli-container { 
+            width: min(100%, 1680px);
             padding: 0 20px;
             max-width: 100%;
             flex: 1;
@@ -63,7 +56,7 @@
             align-items: flex-start;
             padding: 8px 0;
             line-height: 1.5;
-            border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
         }
         .cli-line:last-child { border-bottom: none; }
         
@@ -85,7 +78,9 @@
         
         .cli-content {
             flex-grow: 1;
-            word-break: break-all;
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
             font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
         }
         
@@ -103,26 +98,26 @@
             border: 1px solid transparent;
         }
         .cli-tag-ip { 
-            background: rgba(31, 111, 235, 0.15); 
+            background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
             color: var(--text-blue); 
-            border-color: rgba(31, 111, 235, 0.3); 
+            border-color: color-mix(in srgb, var(--accent-blue) 35%, transparent);
         }
-        .cli-tag-ip:hover { background: rgba(31, 111, 235, 0.25); }
+        .cli-tag-ip:hover { background: color-mix(in srgb, var(--accent-blue) 22%, transparent); }
         .cli-tag-ua { 
-            background: rgba(139, 148, 158, 0.15); 
+            background: color-mix(in srgb, var(--text-muted) 14%, transparent);
             color: var(--text-muted); 
-            border-color: rgba(139, 148, 158, 0.3); 
+            border-color: color-mix(in srgb, var(--text-muted) 28%, transparent);
         }
-        .cli-tag-ua:hover { background: rgba(139, 148, 158, 0.25); color: var(--text-main); }
+        .cli-tag-ua:hover { background: color-mix(in srgb, var(--text-muted) 20%, transparent); color: var(--text-main); }
         
         /* 高亮效果 */
         .highlighted .cli-tag-ip {
-            background: rgba(31, 111, 235, 0.4) !important;
+            background: color-mix(in srgb, var(--accent-blue) 30%, transparent) !important;
             border-color: var(--accent-blue) !important;
-            box-shadow: 0 0 12px rgba(31, 111, 235, 0.5);
+            box-shadow: 0 0 12px color-mix(in srgb, var(--accent-blue) 22%, transparent);
         }
         .highlighted .cli-tag-ua {
-            background: rgba(31, 111, 235, 0.3) !important;
+            background: color-mix(in srgb, var(--accent-blue) 22%, transparent) !important;
             border-color: var(--accent-blue) !important;
         }
         
@@ -130,7 +125,7 @@
         .cli-details {
             margin: 8px 0;
             padding: 16px;
-            background: rgba(13, 17, 23, 0.95);
+            background: color-mix(in srgb, var(--bg-body) 82%, transparent);
             border-radius: 8px;
             border: 1px solid var(--border-color);
             overflow: hidden;
@@ -186,7 +181,7 @@
             align-items: center;
             padding: 6px 0;
             font-size: 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-color) 48%, transparent);
         }
         .cli-history-item:last-child { border-bottom: none; }
         .cli-history-time {
@@ -201,12 +196,13 @@
         }
         
         .terminal-body {
-            background: #0d1117;
+            background: var(--surface-sheen), color-mix(in srgb, var(--bg-card) 96%, transparent);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 16px;
             flex: 1;
             overflow-y: auto;
+            overflow-x: hidden;
             min-height: 0;
         }
         
@@ -311,7 +307,7 @@
         .terminal-body::-webkit-scrollbar { width: 8px; }
         .terminal-body::-webkit-scrollbar-track { background: var(--bg-body); }
         .terminal-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-        .terminal-body::-webkit-scrollbar-thumb:hover { background: #484f58; }
+        .terminal-body::-webkit-scrollbar-thumb:hover { background: var(--accent-yellow); }
 
         /* 动画效果 */
         .fade-in-up { animation: fadeInUp 0.3s ease-out; }
@@ -329,9 +325,9 @@
         .rule-card {
             transition: all 0.2s ease;
             border: 1px solid var(--border-color) !important;
-            background: rgba(255,255,255,0.02) !important;
+            background: color-mix(in srgb, var(--bg-card) 88%, transparent) !important;
         }
-        .rule-card:hover { border-color: var(--accent-blue) !important; background: rgba(255,255,255,0.04) !important; }
+        .rule-card:hover { border-color: var(--accent-yellow) !important; background: color-mix(in srgb, var(--accent-yellow) 8%, transparent) !important; }
 
         /* 响应式艺术字 */
         .about-ascii {
@@ -354,7 +350,7 @@
 
         /* 1. 图表容器比例 */
         .interval-chart-container {
-            background: rgba(22, 27, 34, 0.4);
+            background: color-mix(in srgb, var(--bg-card) 78%, transparent);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             margin-bottom: 12px;
@@ -369,7 +365,7 @@
         }
 
         .chart-loading {
-            background: rgba(13, 17, 23, 0.8) !important;
+            background: color-mix(in srgb, var(--bg-body) 78%, transparent) !important;
         }
 
         /* 流光动画 */
@@ -383,7 +379,7 @@
             background: linear-gradient(
                 90deg, 
                 transparent 25%, 
-                rgba(255, 255, 255, 0.06) 50%, 
+                color-mix(in srgb, var(--text-main) 7%, transparent) 50%,
                 transparent 75%
             );
             animation: chart-shimmer 1.5s infinite linear;
@@ -427,16 +423,16 @@
             font-size: 11px;
             font-weight: bold;
             padding: 1px 6px;
-            background: rgba(13, 17, 23, 0.8);
+            background: color-mix(in srgb, var(--bg-body) 82%, transparent);
             border-radius: 4px;
-            border: 1px solid rgba(255,255,255,0.05);
+            border: 1px solid var(--border-color);
             transition: color 0.3s ease;
         }
 
         /* Chart tooltip */
         .chart-tooltip {
             position: absolute;
-            background: rgba(13, 17, 23, 0.95);
+            background: color-mix(in srgb, var(--bg-card) 96%, transparent);
             border: 1px solid var(--border-color);
             border-radius: 4px;
             padding: 4px 8px;
@@ -2804,9 +2800,10 @@
         const getColor = (val) => {
             const warn = parseFloat(delayConfig.log_delay_warn) || 1.5;
             const danger = parseFloat(delayConfig.log_delay_danger) || 5.0;
-            if (val <= warn) return '#1a7f37'; 
-            if (val <= danger) return '#d29922';
-            return '#f85149';
+            const styles = getComputedStyle(document.documentElement);
+            if (val <= warn) return styles.getPropertyValue('--accent-green').trim() || '#6e7d52';
+            if (val <= danger) return styles.getPropertyValue('--accent-yellow').trim() || '#a5792e';
+            return styles.getPropertyValue('--accent-red').trim() || '#a94e3f';
         };
 
         try {
@@ -2928,9 +2925,10 @@
                 const ts = typeof item === 'object' ? item.t : null;
                 
                 const getColor = (v) => {
-                    if (v <= delayConfig.log_delay_warn) return '#1a7f37'; // 进一步加深绿色
-                    if (v <= delayConfig.log_delay_danger) return '#d29922'; // 黄色
-                    return '#f85149';                 // 红色
+                    const styles = getComputedStyle(document.documentElement);
+                    if (v <= delayConfig.log_delay_warn) return styles.getPropertyValue('--accent-green').trim() || '#6e7d52';
+                    if (v <= delayConfig.log_delay_danger) return styles.getPropertyValue('--accent-yellow').trim() || '#a5792e';
+                    return styles.getPropertyValue('--accent-red').trim() || '#a94e3f';
                 };
 
                 // 计算时间点
