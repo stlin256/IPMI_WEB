@@ -598,12 +598,12 @@
 </div>
 
 <!-- Modal 保持不变 -->
-<div class="modal fade" id="curveModal" tabindex="-1">
+<div class="modal fade" id="curveModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
                 <h5 class="modal-title" data-i18n="hardware.manualFanCurve">Manual Fan Curve (Target RPM %)</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex justify-content-end mb-3">
@@ -619,14 +619,14 @@
                 </div>
             </div>
             <div class="modal-footer border-top border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.close">Close</button>
-                <button type="button" class="btn btn-success" onclick="saveCurve()" data-i18n="app.applyAndSave">Save & Apply</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.close">{{ t('app.close') }}</button>
+                <button type="button" class="btn btn-success" onclick="saveCurve()" data-i18n="app.applyAndSave">{{ t('app.applyAndSave') }}</button>
             </div>
         </div>
     </div>
 </div>
 
-<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1">
+<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-0 pb-0">
@@ -649,14 +649,14 @@
 </div>
 
 <!-- 传感器详细历史 Modal -->
-<div class="modal fade" id="sensorDetailModal" tabindex="-1">
+<div class="modal fade" id="sensorDetailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-xl-custom modal-dialog-centered">
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary py-2">
                 <h5 class="modal-title fs-6 fw-bold text-primary">
                     <i class="fas fa-chart-line me-2"></i><span id="modal-sensor-name" data-i18n="hardware.sensorTrend">Sensor Trend</span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body p-3">
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -704,7 +704,7 @@
             <div class="toast-body">
                 <i class="fas fa-check-circle me-2"></i> <span id="toast-msg" data-i18n="app.operationSuccess">{{ t('app.operationSuccess') }}</span>
             </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
         </div>
     </div>
 </div>
