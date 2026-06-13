@@ -230,77 +230,18 @@
             .cli-history-item { flex-wrap: wrap; }
             .cli-history-time { min-width: 80px; }
             
-            /* 系统设置 Modal 移动端优化 */
-            #settingsModal .modal-body { 
-                flex-direction: column !important; 
-                min-height: auto !important;
-            }
-            #settingsModal .border-end { 
-                border-end-width: 0 !important; 
-                border-bottom: 1px solid var(--border-color) !important; 
-                width: 100% !important; 
-                flex-shrink: 0; 
-            }
-            #settingsModal .nav { 
-                flex-direction: row !important; 
-                overflow-x: auto; 
-                overflow-y: hidden; 
-                flex-wrap: nowrap !important;
-                padding-bottom: 5px !important;
-            }
-            #settingsModal .nav-link { 
-                flex-shrink: 0; 
-                padding: 10px 12px !important; 
-                font-size: 12px !important;
-                white-space: nowrap;
-            }
-            #settingsModal .nav-link i { margin-right: 4px !important; }
-            #settingsModal .tab-content { 
-                max-height: 50vh; 
-                overflow-y: auto;
-                padding: 15px !important;
-            }
-            #settingsModal .modal-dialog {
-                margin: 10px !important;
-                max-width: calc(100% - 20px) !important;
-            }
-            #settingsModal .modal-content {
-                max-height: 90vh !important;
-            }
-            
             /* 页面标题栏按钮移动端优化 */
             .d-flex.flex-wrap.justify-content-between { gap: 10px !important; }
             .d-flex.align-items-center.gap-3 { gap: 10px !important; flex-wrap: wrap; }
             .d-flex.align-items-center.gap-2 { gap: 8px !important; flex-wrap: wrap; justify-content: flex-end; }
             .btn-sm { padding: 6px 12px !important; font-size: 12px !important; }
-            
-            /* 设置表单控件优化 */
-            #settingsModal .form-label { font-size: 12px !important; margin-bottom: 4px !important; }
-            #settingsModal .form-control, #settingsModal .form-select {
-                font-size: 13px !important;
-                padding: 8px 10px !important;
-            }
-            #settingsModal .input-group-text { padding: 8px 10px !important; font-size: 12px !important; }
-            
-            /* 告警规则卡片优化 */
-            #settingsModal .rule-card .card-body { padding: 10px !important; }
-            #settingsModal .rule-card .d-flex { flex-wrap: wrap !important; gap: 8px !important; }
-            #settingsModal .rule-card input[type="text"] { min-width: 100px !important; }
-            
-            /* 报告设置卡片优化 */
-            #settingsModal .p-3.bg-black.bg-opacity-25 { padding: 12px !important; }
-            #settingsModal .p-3.bg-black.bg-opacity-25 .row { margin: 0 !important; }
-            #settingsModal .p-3.bg-black.bg-opacity-25 .col-12, 
-            #settingsModal .p-3.bg-black.bg-opacity-25 .col-md-6 { 
-                padding: 0 5px !important; 
-            }
         }
         
         /* 极小屏优化 (小于 400px) */
         @media (max-width: 400px) {
-            #settingsModal .nav-link { padding: 8px 10px !important; font-size: 11px !important; }
-            #settingsModal .nav-link i { display: none !important; }
-            #settingsModal .tab-content { padding: 10px !important; }
+            .cli-container {
+                padding-inline: 12px;
+            }
         }
         
         /* 滚动条美化 */
