@@ -34,7 +34,7 @@ jobs:
 
       - name: Validate sources
         run: |
-          python -m compileall app.py gpu_agent.py i18n.py cpu_power_probe.py hardware_info_probe.py
+          python -m compileall app.py gpu_agent.py i18n.py
           python .github/scripts/frontend_ci_check.py
 
       - name: Build release tarball
@@ -52,7 +52,7 @@ jobs:
             --exclude='config.json' \
             --exclude='data.db*' \
             -czf "dist/ipmi-web-${safe_ref}.tar.gz" \
-            app.py gpu_agent.py i18n.py cpu_power_probe.py hardware_info_probe.py \
+            app.py gpu_agent.py i18n.py \
             requirements.txt config.json.example README.md CHANGELOG.md DEVELOPMENT_GUIDE.md \
             static templates cert img
 

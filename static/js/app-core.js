@@ -162,29 +162,6 @@
         return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
-    function shouldTransitionLink(anchor, event) {
-        if (!anchor || event.defaultPrevented || event.button !== 0) return false;
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
-        if (anchor.target && anchor.target !== '_self') return false;
-        if (anchor.hasAttribute('download')) return false;
-        if (anchor.dataset.bsToggle || anchor.getAttribute('role') === 'button') return false;
-
-        const rawHref = anchor.getAttribute('href') || '';
-        if (!rawHref || rawHref.startsWith('#')) return false;
-        if (/^(javascript:|mailto:|tel:)/i.test(rawHref)) return false;
-
-        let url;
-        try {
-            url = new URL(anchor.href, window.location.href);
-        } catch (_) {
-            return false;
-        }
-        if (url.origin !== window.location.origin) return false;
-        if (url.href === window.location.href) return false;
-        if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return false;
-        return true;
-    }
-
     function initPageMotion() {
         const root = document.documentElement;
         if (prefersReducedMotion()) {
@@ -200,18 +177,7 @@
             markReady();
         }
 
-        document.addEventListener('click', (event) => {
-            const anchor = event.target.closest && event.target.closest('a[href]');
-            if (!shouldTransitionLink(anchor, event)) return;
-            event.preventDefault();
-            root.classList.add('ipmi-page-leaving');
-            window.setTimeout(() => {
-                window.location.href = anchor.href;
-            }, 120);
-        }, true);
-
         window.addEventListener('pageshow', () => {
-            root.classList.remove('ipmi-page-leaving');
             root.classList.add('ipmi-page-ready');
         });
     }

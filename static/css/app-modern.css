@@ -78,18 +78,6 @@ body {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-    @view-transition {
-        navigation: auto;
-    }
-
-    ::view-transition-old(root) {
-        animation: ipmi-page-exit 150ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-    }
-
-    ::view-transition-new(root) {
-        animation: ipmi-page-enter 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-    }
-
     html.ipmi-motion-enabled:not(.ipmi-page-ready) body {
         opacity: 0;
         transform: translateY(8px);
@@ -102,12 +90,6 @@ body {
             transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
     }
 
-    html.ipmi-page-leaving body {
-        opacity: 0;
-        pointer-events: none;
-        transform: translateY(-4px);
-        transition-duration: 120ms;
-    }
 }
 
 html[data-bs-theme="light"] body {
