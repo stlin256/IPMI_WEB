@@ -9,6 +9,7 @@
     <link href="{{ url_for('static', filename='css/app-modern.css') }}" rel="stylesheet">
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app-core.js') }}"></script>
     <style>
         :root {
             --text-success: var(--accent-green);
@@ -4080,9 +4081,7 @@
 
     // 自动刷新
     function startAutoRefresh() {
-        setInterval(() => {
-            loadLogs();
-        }, 3000); // 每3秒检查新日志
+        window.IPMI.poll(loadLogs, 3000, { visibleOnly: true, immediate: false });
     }
 
     document.addEventListener('DOMContentLoaded', async () => {

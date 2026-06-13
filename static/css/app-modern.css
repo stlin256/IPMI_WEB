@@ -55,6 +55,61 @@ body {
     text-rendering: optimizeLegibility;
 }
 
+@keyframes ipmi-page-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes ipmi-page-exit {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    @view-transition {
+        navigation: auto;
+    }
+
+    ::view-transition-old(root) {
+        animation: ipmi-page-exit 150ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    ::view-transition-new(root) {
+        animation: ipmi-page-enter 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    html.ipmi-motion-enabled:not(.ipmi-page-ready) body {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    html.ipmi-motion-enabled.ipmi-page-ready body {
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+            transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+
+    html.ipmi-page-leaving body {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-4px);
+        transition-duration: 120ms;
+    }
+}
+
 html[data-bs-theme="light"] body {
     background:
         radial-gradient(circle at 18% 8%, rgba(165, 121, 46, 0.08), transparent 22rem),
@@ -340,6 +395,17 @@ section,
     border-radius: 8px;
     line-height: 1.15;
     transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .btn:hover,
+    .nav-link:hover,
+    .card:hover,
+    .gpu-card:hover,
+    .resource-card:hover,
+    .metric-box:hover {
+        will-change: transform;
+    }
 }
 
 .btn:not(.ipmi-theme-toggle) {

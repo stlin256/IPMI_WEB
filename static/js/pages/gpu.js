@@ -35,8 +35,8 @@
     function setStatus(text, className) {
         const statusBadge = document.getElementById('agent-status');
         if (!statusBadge) return;
-        statusBadge.textContent = text;
-        statusBadge.className = className;
+        window.IPMI.setText(statusBadge, text);
+        window.IPMI.setClassName(statusBadge, className);
     }
 
     function showGpuNotice(message, title = tx('gpu.configErrorTitle', 'Configuration not saved')) {
@@ -126,7 +126,7 @@
                                 <span class="gpu-value" id="gpu-${index}-util-val">--%</span>
                             </div>
                             <div class="progress">
-                                <div class="progress-bar bg-primary" id="gpu-${index}-util-bar" style="width: 0%"></div>
+                                <div class="progress-bar bg-primary" id="gpu-${index}-util-bar" style="--ipmi-progress: 0"></div>
                             </div>
                         </div>
                         <div class="gpu-meter">
@@ -135,7 +135,7 @@
                                 <span class="gpu-value" id="gpu-${index}-mem-util-val">--%</span>
                             </div>
                             <div class="progress">
-                                <div class="progress-bar bg-info" id="gpu-${index}-mem-util-bar" style="width: 0%"></div>
+                                <div class="progress-bar bg-info" id="gpu-${index}-mem-util-bar" style="--ipmi-progress: 0"></div>
                             </div>
                             <div class="text-end mt-1 text-muted font-monospace fw-bold" style="font-size: 0.95rem;" id="gpu-${index}-mem-text">-- / -- MB</div>
                         </div>
@@ -145,7 +145,7 @@
                                 <span class="gpu-value" id="gpu-${index}-pwr-val">--W</span>
                             </div>
                             <div class="progress">
-                                <div class="progress-bar bg-warning" id="gpu-${index}-pwr-bar" style="width: 0%"></div>
+                                <div class="progress-bar bg-warning" id="gpu-${index}-pwr-bar" style="--ipmi-progress: 0"></div>
                             </div>
                         </div>
                     </div>
@@ -166,20 +166,20 @@
     function updateGpuCard(gpu, index) {
         const tempEl = document.getElementById(`gpu-${index}-temp-badge`);
         if (tempEl) {
-            tempEl.textContent = `${gpu.temp}°C`;
-            tempEl.className = `badge temp-badge ${gpu.temp >= 70 ? 'bg-danger' : (gpu.temp >= 50 ? 'bg-warning' : 'bg-success')}`;
+            window.IPMI.setText(tempEl, `${gpu.temp}°C`);
+            window.IPMI.setClassName(tempEl, `badge temp-badge ${gpu.temp >= 70 ? 'bg-danger' : (gpu.temp >= 50 ? 'bg-warning' : 'bg-success')}`);
         }
 
         window.IPMI.setText(`#gpu-${index}-util-val`, `${gpu.util_gpu}%`);
-        window.IPMI.qs(`#gpu-${index}-util-bar`).style.width = `${percent(gpu.util_gpu)}%`;
+        window.IPMI.setStyle(`#gpu-${index}-util-bar`, '--ipmi-progress', percent(gpu.util_gpu) / 100);
         window.IPMI.setText(`#gpu-${index}-mem-util-val`, `${gpu.util_mem}%`);
-        window.IPMI.qs(`#gpu-${index}-mem-util-bar`).style.width = `${percent(gpu.util_mem)}%`;
+        window.IPMI.setStyle(`#gpu-${index}-mem-util-bar`, '--ipmi-progress', percent(gpu.util_mem) / 100);
         window.IPMI.setText(`#gpu-${index}-mem-text`, `${gpu.memory_used} / ${gpu.memory_total} MB`);
         window.IPMI.setText(`#gpu-${index}-pwr-val`, `${gpu.power_draw}W / ${gpu.power_limit}W`);
 
         const powerLimit = Number(gpu.power_limit) || 0;
         const powerPercent = powerLimit > 0 ? percent(Number(gpu.power_draw) / powerLimit * 100) : 0;
-        window.IPMI.qs(`#gpu-${index}-pwr-bar`).style.width = `${powerPercent.toFixed(1)}%`;
+        window.IPMI.setStyle(`#gpu-${index}-pwr-bar`, '--ipmi-progress', powerPercent.toFixed(3) / 100);
 
         const fanSpeed = gpu.fan_speed !== null ? gpu.fan_speed : 'N/A';
         window.IPMI.setText(`#gpu-${index}-core-clock`, `${gpu.clock_core} MHz`);
@@ -188,8 +188,8 @@
 
         const eccEl = document.getElementById(`gpu-${index}-ecc`);
         if (eccEl) {
-            eccEl.textContent = gpu.ecc_errors;
-            eccEl.className = `info-value ${gpu.ecc_errors > 0 ? 'text-danger' : ''}`;
+            window.IPMI.setText(eccEl, gpu.ecc_errors);
+            window.IPMI.setClassName(eccEl, `info-value ${gpu.ecc_errors > 0 ? 'text-danger' : ''}`);
         }
     }
 
@@ -198,39 +198,54 @@
             const data = await window.IPMI.fetchJson('/api/status_gpu', { timeoutMs: 10000 });
             const container = document.getElementById('gpu-container');
             const offlineMsg = document.getElementById('offline-msg');
-            window.IPMI.setText('#last-update', new Date().toLocaleTimeString());
+            let shouldLoadTrends = false;
 
             if (!data.online) {
-                setStatus(tx('gpu.offline', 'Offline'), 'gpu-status-pill text-danger');
-                container.classList.add('agent-offline');
-                offlineMsg.style.display = 'block';
-                updateSummary([]);
+                await window.IPMI.withFrame(() => {
+                    window.IPMI.setText('#last-update', new Date().toLocaleTimeString());
+                    setStatus(tx('gpu.offline', 'Offline'), 'gpu-status-pill text-danger');
+                    container.classList.add('agent-offline');
+                    window.IPMI.setStyle(offlineMsg, 'display', 'block');
+                    updateSummary([]);
+                });
                 return;
             }
-
-            setStatus(tx('gpu.online', 'Online'), 'gpu-status-pill text-success');
-            container.classList.remove('agent-offline');
-            offlineMsg.style.display = 'none';
 
             if (!data.gpus || data.gpus.length === 0) {
-                destroyCharts();
-                container.innerHTML = `<div class="col-12 text-center text-muted py-5">${tx('gpu.notFound', 'No GPU devices found')}</div>`;
-                lastGpuCount = 0;
-                updateSummary([]);
+                await window.IPMI.withFrame(() => {
+                    window.IPMI.setText('#last-update', new Date().toLocaleTimeString());
+                    setStatus(tx('gpu.online', 'Online'), 'gpu-status-pill text-success');
+                    container.classList.remove('agent-offline');
+                    window.IPMI.setStyle(offlineMsg, 'display', 'none');
+                    destroyCharts();
+                    container.innerHTML = `<div class="col-12 text-center text-muted py-5">${tx('gpu.notFound', 'No GPU devices found')}</div>`;
+                    lastGpuCount = 0;
+                    updateSummary([]);
+                });
                 return;
             }
 
-            updateSummary(data.gpus);
+            await window.IPMI.withFrame(() => {
+                window.IPMI.setText('#last-update', new Date().toLocaleTimeString());
+                setStatus(tx('gpu.online', 'Online'), 'gpu-status-pill text-success');
+                container.classList.remove('agent-offline');
+                window.IPMI.setStyle(offlineMsg, 'display', 'none');
+                updateSummary(data.gpus);
 
-            if (data.gpus.length !== lastGpuCount) {
-                renderGpuCards(data.gpus);
-                lastGpuCount = data.gpus.length;
+                if (data.gpus.length !== lastGpuCount) {
+                    renderGpuCards(data.gpus);
+                    lastGpuCount = data.gpus.length;
+                    shouldLoadTrends = true;
+                }
+
+                data.gpus.forEach(updateGpuCard);
+            });
+
+            if (shouldLoadTrends) {
                 data.gpus.forEach((_gpu, index) => {
                     renderGpuTrend(index).catch((error) => console.debug('GPU trend load failed:', error));
                 });
             }
-
-            data.gpus.forEach(updateGpuCard);
         } catch (error) {
             if (!window.IPMI.isAbort(error)) {
                 console.error('GPU Status Error:', error);
@@ -303,7 +318,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : {
-                    duration: 450,
+                    duration: 220,
                     easing: 'easeOutQuart'
                 },
                 plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },

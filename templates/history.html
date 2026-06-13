@@ -13,6 +13,7 @@
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/app-core.js') }}"></script>
     <style>
         body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
         .navbar { background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
@@ -516,7 +517,7 @@
 
     const baseChartOptions = {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 1000, easing: 'easeOutQuart' },
+        animation: { duration: 260, easing: 'easeOutQuart' },
         interaction: { mode: 'index', intersect: false },
         group_id: 'history_group', // 默认组 ID
         onHover: (event, elements, chart) => {
@@ -849,7 +850,7 @@
         await loadDashboardOptions();
         init();
         checkLogStatus();
-        setInterval(checkLogStatus, 5000);
+        window.IPMI.poll(checkLogStatus, 5000, { visibleOnly: true, immediate: false });
     });
 
     function handleTagChange() {

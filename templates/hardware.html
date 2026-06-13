@@ -13,6 +13,7 @@
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/app-core.js') }}"></script>
     
     <style>
         body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
@@ -760,7 +761,7 @@
 
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 800, easing: 'easeOutQuart' },
+        animation: { duration: 260, easing: 'easeOutQuart' },
         interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
         scales: { 
             x: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted, maxTicksLimit: 8 } },
@@ -793,8 +794,8 @@
         refreshData(); 
         loadHistory(false); 
         
-        setInterval(refreshData, 1000); 
-        setInterval(() => loadHistory(true), 20000);
+        window.IPMI.poll(refreshData, 1000, { visibleOnly: true, immediate: false });
+        window.IPMI.poll(() => loadHistory(true), 20000, { visibleOnly: true, immediate: false });
     }
     
     // --- Fan Override Controls ---
@@ -1267,7 +1268,7 @@
 
     function handleTagChange() {
         savePrefs();
-        updateChart();
+       updateChart(isSilent ? 'none' : undefined);
     }
 
     function savePrefs() {
@@ -1358,7 +1359,7 @@
        });
     }
 
-    function updateChart() {
+    function updateChart(updateMode) {
        if (!historyData.times) return;
        
        const datasets = [];
@@ -1382,7 +1383,7 @@
        mainChart.data.labels = historyData.times;
        mainChart.data.datasets = datasets;
        mainChart.options.scales.y1.display = document.getElementById('chk-fan').checked;
-       mainChart.update();
+       mainChart.update(updateMode);
     }
 
     // Modal 和曲线设置部分
@@ -1674,7 +1675,7 @@
         init();
         setTimeout(checkUpdateNotice, 800);
         checkLogStatus();
-        setInterval(checkLogStatus, 5000);
+        window.IPMI.poll(checkLogStatus, 5000, { visibleOnly: true, immediate: false });
     });
 </script>
 {% include 'partials/footer.html' %}

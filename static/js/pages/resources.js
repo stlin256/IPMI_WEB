@@ -151,8 +151,12 @@
     function updateGauge(chart, value) {
         if (!chart) return;
         const percent = clampPercent(value);
+        const background = window.IPMI.cssVar('--bg-elevated', '#21262d');
+        const previous = chart.data.datasets[0].data[0];
+        const previousBackground = chart.data.datasets[0].backgroundColor[1];
+        if (previous === percent && previousBackground === background) return;
         chart.data.datasets[0].data = [percent, 100 - percent];
-        chart.data.datasets[0].backgroundColor[1] = window.IPMI.cssVar('--bg-elevated', '#21262d');
+        chart.data.datasets[0].backgroundColor[1] = background;
         chart.update('none');
     }
 
@@ -192,51 +196,55 @@
         const data = await window.IPMI.fetchJson(`/api/status_resources?t=${Date.now()}`, { timeoutMs: 8000 });
         if (data.cpu === undefined) return;
 
-        window.IPMI.setText('#val-cpu', data.cpu);
-        window.IPMI.setText('#val-mem', data.mem_percent);
         const diskRead = window.IPMI.formatBytes(data.disk_r);
         const diskWrite = window.IPMI.formatBytes(data.disk_w);
         const netIn = window.IPMI.formatBytes(data.net_in);
         const netOut = window.IPMI.formatBytes(data.net_out);
-        window.IPMI.setText('#str-disk-r', diskRead);
-        window.IPMI.setText('#str-disk-w', diskWrite);
-        window.IPMI.setText('#str-net-in', netIn);
-        window.IPMI.setText('#str-net-out', netOut);
+        await window.IPMI.withFrame(() => {
+            window.IPMI.setText('#val-cpu', data.cpu);
+            window.IPMI.setText('#val-mem', data.mem_percent);
+            window.IPMI.setText('#str-disk-r', diskRead);
+            window.IPMI.setText('#str-disk-w', diskWrite);
+            window.IPMI.setText('#str-net-in', netIn);
+            window.IPMI.setText('#str-net-out', netOut);
 
-        window.IPMI.setText('#res-chip-cpu', `${data.cpu}%`);
-        window.IPMI.setText('#res-chip-cpu-power', data.cpu_power_w !== undefined ? data.cpu_power_w : '--');
-        window.IPMI.setText('#res-chip-mem', `${data.mem_percent}%`);
-        window.IPMI.setText('#res-chip-mem-used', data.mem_used);
-        window.IPMI.setText('#res-chip-mem-total', data.mem_total);
+            window.IPMI.setText('#res-chip-cpu', `${data.cpu}%`);
+            window.IPMI.setText('#res-chip-cpu-power', data.cpu_power_w !== undefined ? data.cpu_power_w : '--');
+            window.IPMI.setText('#res-chip-mem', `${data.mem_percent}%`);
+            window.IPMI.setText('#res-chip-mem-used', data.mem_used);
+            window.IPMI.setText('#res-chip-mem-total', data.mem_total);
 
-        updateGauge(gaugeCpuChart, data.cpu);
-        updateGauge(gaugeMemChart, data.mem_percent);
+            updateGauge(gaugeCpuChart, data.cpu);
+            updateGauge(gaugeMemChart, data.mem_percent);
+        });
     }
 
     const loadHistory = window.IPMI.createAbortableLoader(async (signal) => {
         const data = await window.IPMI.fetchJson('/api/history', { signal, timeoutMs: 20000 });
         const palette = chartPalette();
 
-        cpuMemChart.data.labels = data.times;
-        cpuMemChart.data.datasets = [
-            { label: 'CPU %', data: data.res.cpu, borderColor: palette.cpu, backgroundColor: colorMix(palette.cpu, 0.11), borderWidth: 2, fill: true, tension: 0.3 },
-            { label: 'RAM %', data: data.res.mem, borderColor: palette.memory, backgroundColor: colorMix(palette.memory, 0.08), borderWidth: 2, fill: true, tension: 0.3 }
-        ];
-        cpuMemChart.update('none');
+        await window.IPMI.withFrame(() => {
+            cpuMemChart.data.labels = data.times;
+            cpuMemChart.data.datasets = [
+                { label: 'CPU %', data: data.res.cpu, borderColor: palette.cpu, backgroundColor: colorMix(palette.cpu, 0.11), borderWidth: 2, fill: true, tension: 0.3 },
+                { label: 'RAM %', data: data.res.mem, borderColor: palette.memory, backgroundColor: colorMix(palette.memory, 0.08), borderWidth: 2, fill: true, tension: 0.3 }
+            ];
+            cpuMemChart.update('none');
 
-        netChart.data.labels = data.times;
-        netChart.data.datasets = [
-            { label: 'In', data: data.res.net_in, borderColor: palette.netIn, backgroundColor: colorMix(palette.netIn, 0.08), fill: true, borderWidth: 2, tension: 0.45, pointRadius: 0 },
-            { label: 'Out', data: data.res.net_out, borderColor: palette.netOut, backgroundColor: colorMix(palette.netOut, 0.04), fill: true, borderWidth: 2, borderDash: [4, 4], tension: 0.45, pointRadius: 0 }
-        ];
-        netChart.update('none');
+            netChart.data.labels = data.times;
+            netChart.data.datasets = [
+                { label: 'In', data: data.res.net_in, borderColor: palette.netIn, backgroundColor: colorMix(palette.netIn, 0.08), fill: true, borderWidth: 2, tension: 0.45, pointRadius: 0 },
+                { label: 'Out', data: data.res.net_out, borderColor: palette.netOut, backgroundColor: colorMix(palette.netOut, 0.04), fill: true, borderWidth: 2, borderDash: [4, 4], tension: 0.45, pointRadius: 0 }
+            ];
+            netChart.update('none');
 
-        diskChart.data.labels = data.times;
-        diskChart.data.datasets = [
-            { label: 'Read', data: data.res.disk_r, borderColor: palette.diskRead, backgroundColor: colorMix(palette.diskRead, 0.08), fill: true, borderWidth: 2, tension: 0.45, pointRadius: 0 },
-            { label: 'Write', data: data.res.disk_w, borderColor: palette.diskWrite, backgroundColor: colorMix(palette.diskWrite, 0.04), fill: true, borderWidth: 2, borderDash: [4, 4], tension: 0.45, pointRadius: 0 }
-        ];
-        diskChart.update('none');
+            diskChart.data.labels = data.times;
+            diskChart.data.datasets = [
+                { label: 'Read', data: data.res.disk_r, borderColor: palette.diskRead, backgroundColor: colorMix(palette.diskRead, 0.08), fill: true, borderWidth: 2, tension: 0.45, pointRadius: 0 },
+                { label: 'Write', data: data.res.disk_w, borderColor: palette.diskWrite, backgroundColor: colorMix(palette.diskWrite, 0.04), fill: true, borderWidth: 2, borderDash: [4, 4], tension: 0.45, pointRadius: 0 }
+            ];
+            diskChart.update('none');
+        });
     });
 
     function rethemeCharts() {

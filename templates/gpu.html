@@ -182,7 +182,12 @@
             background-color: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
             overflow: hidden;
         }
-        .progress-bar { transition: width 520ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+        .gpu-card .progress-bar {
+            width: 100% !important;
+            transform: scaleX(var(--ipmi-progress, 0));
+            transform-origin: left center;
+            transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
         .info-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
