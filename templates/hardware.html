@@ -542,14 +542,14 @@
 {% if hw_got_it_label == 'update.gotIt' %}{% set hw_got_it_label = 'Got it' %}{% endif %}
 
 <!-- 模式切换确认 Modal -->
-<div class="modal fade" id="modeConfirmModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modeConfirmModal" tabindex="-1" aria-hidden="true" aria-labelledby="modeConfirmModalTitle">
     <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">
                 <div class="ipmi-modal-symbol mx-auto">
                     <i id="mode-icon-confirm" class="fas fa-robot fs-4 text-primary"></i>
                 </div>
-                <h5 class="modal-title mb-2 fw-bold text-light" data-i18n="hardware.switchModeTitle">{{ hw_switch_mode_title }}</h5>
+                <h5 class="modal-title mb-2 fw-bold text-light" id="modeConfirmModalTitle" data-i18n="hardware.switchModeTitle">{{ hw_switch_mode_title }}</h5>
                 <p id="mode-msg-confirm" class="ipmi-modal-copy small mb-4">{{ hw_switch_mode_confirm }}</p>
                 <div class="ipmi-modal-actions">
                     <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal" data-i18n="app.cancel">{{ hw_cancel_label }}</button>
@@ -561,14 +561,14 @@
 </div>
 
 <!-- 风扇校准确认 Modal -->
-<div class="modal fade" id="calibrationConfirmModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="calibrationConfirmModal" tabindex="-1" aria-hidden="true" aria-labelledby="calibrationConfirmModalTitle">
     <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">
                 <div class="ipmi-modal-symbol warning mx-auto">
                     <i class="fas fa-tachometer-alt fs-4"></i>
                 </div>
-                <h5 class="modal-title mb-2 fw-bold" data-i18n="hardware.calibrationTitle">{{ hw_calibration_title }}</h5>
+                <h5 class="modal-title mb-2 fw-bold" id="calibrationConfirmModalTitle" data-i18n="hardware.calibrationTitle">{{ hw_calibration_title }}</h5>
                 <p class="ipmi-modal-copy small mb-4" data-i18n="hardware.calibrationConfirm">{{ hw_calibration_confirm }}</p>
                 <div class="ipmi-modal-actions">
                     <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal" data-i18n="app.cancel">{{ hw_cancel_label }}</button>
@@ -580,7 +580,7 @@
 </div>
 
 <!-- Hardware notice Modal -->
-<div class="modal fade" id="hardwareNoticeModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="hardwareNoticeModal" tabindex="-1" aria-hidden="true" aria-labelledby="hardware-notice-title">
     <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">
@@ -598,11 +598,11 @@
 </div>
 
 <!-- Modal 保持不变 -->
-<div class="modal fade" id="curveModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="curveModal" tabindex="-1" aria-hidden="true" aria-labelledby="curveModalTitle">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title" data-i18n="hardware.manualFanCurve">Manual Fan Curve (Target RPM %)</h5>
+                <h5 class="modal-title" id="curveModalTitle" data-i18n="hardware.manualFanCurve">Manual Fan Curve (Target RPM %)</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
@@ -626,11 +626,11 @@
     </div>
 </div>
 
-<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true" aria-labelledby="calibModalTitle">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title text-warning"><i class="fas fa-cog fa-spin me-2"></i><span data-i18n="hardware.calibratingFans">Calibrating Fans...</span></h5>
+                <h5 class="modal-title text-warning" id="calibModalTitle"><i class="fas fa-cog fa-spin me-2"></i><span data-i18n="hardware.calibratingFans">Calibrating Fans...</span></h5>
             </div>
             <div class="modal-body text-center pt-2">
                 <div class="my-4">
@@ -649,7 +649,7 @@
 </div>
 
 <!-- 传感器详细历史 Modal -->
-<div class="modal fade" id="sensorDetailModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="sensorDetailModal" tabindex="-1" aria-hidden="true" aria-labelledby="modal-sensor-name">
     <div class="modal-dialog modal-xl modal-xl-custom modal-dialog-centered">
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary py-2">
@@ -674,11 +674,11 @@
 </div>
 
 <!-- Version Update Notice Modal -->
-<div class="modal fade" id="updateNoticeModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="updateNoticeModal" tabindex="-1" aria-hidden="true" aria-labelledby="updateNoticeModalTitle">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary">
-                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sparkles me-2"></i><span data-i18n="update.title">{{ t('update.title') }}</span></h5>
+                <h5 class="modal-title fw-bold text-primary" id="updateNoticeModalTitle"><i class="fas fa-sparkles me-2"></i><span data-i18n="update.title">{{ t('update.title') }}</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body p-4">

@@ -189,11 +189,11 @@
     {% set history_got_it_label = t('update.gotIt') %}
     {% if history_got_it_label == 'update.gotIt' %}{% set history_got_it_label = 'Got it' %}{% endif %}
     <!-- Energy Date Modal -->
-    <div class="modal fade" id="energyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="energyModal" tabindex="-1" aria-hidden="true" aria-labelledby="energyModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title" data-i18n="history.energyStartTitle">{{ history_energy_start_title }}</h5>
+                    <h5 class="modal-title" id="energyModalTitle" data-i18n="history.energyStartTitle">{{ history_energy_start_title }}</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -209,7 +209,7 @@
     </div>
 
     <!-- History notice Modal -->
-    <div class="modal fade" id="historyNoticeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="historyNoticeModal" tabindex="-1" aria-hidden="true" aria-labelledby="history-notice-title">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content shadow-lg">
                 <div class="modal-body p-4 text-center">

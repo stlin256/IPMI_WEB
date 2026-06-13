@@ -336,11 +336,11 @@
 {% if gpu_got_it_label == 'update.gotIt' %}{% set gpu_got_it_label = 'Got it' %}{% endif %}
 
 <!-- GPU 配置模态框 -->
-<div class="modal fade" id="gpuConfigModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="gpuConfigModal" tabindex="-1" aria-hidden="true" aria-labelledby="gpuConfigModalTitle">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ gpu_agent_config_label }}</span></h5>
+                <h5 class="modal-title" id="gpuConfigModalTitle"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ gpu_agent_config_label }}</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
@@ -368,7 +368,7 @@
 </div>
 
 <!-- GPU notice modal -->
-<div class="modal fade" id="gpuNoticeModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="gpuNoticeModal" tabindex="-1" aria-hidden="true" aria-labelledby="gpu-notice-title">
     <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">

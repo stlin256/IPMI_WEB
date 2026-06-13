@@ -1283,7 +1283,7 @@
     </div>
 
     <!-- 确认删除 Modal -->
-    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" aria-labelledby="confirm-title" style="z-index: 2100;">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-danger shadow-lg">
                 <div class="modal-body p-4 text-center">
@@ -1300,12 +1300,12 @@
     </div>
 
     <!-- 放弃修改确认 Modal -->
-    <div class="modal fade" id="discardModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+    <div class="modal fade" id="discardModal" tabindex="-1" aria-hidden="true" aria-labelledby="discardModalTitle" style="z-index: 2100;">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-warning shadow-lg">
                 <div class="modal-body p-4 text-center">
                     <i class="fas fa-exclamation-triangle text-warning fs-1 mb-3"></i>
-                    <h5 class="fw-bold" data-i18n="settings.unsavedTitle">{{ t('settings.unsavedTitle') }}</h5>
+                    <h5 class="fw-bold" id="discardModalTitle" data-i18n="settings.unsavedTitle">{{ t('settings.unsavedTitle') }}</h5>
                     <p class="text-muted small mb-4" data-i18n="settings.unsavedBody">{{ t('settings.unsavedBody') }}</p>
                     <div class="d-grid gap-2">
                         <button class="btn btn-warning fw-bold" id="discard-confirm-btn" data-i18n="settings.discard">{{ t('settings.discard') }}</button>
@@ -1317,11 +1317,11 @@
     </div>
 
     <!-- 更新日志 Modal -->
-    <div class="modal fade" id="releaseNotesModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+    <div class="modal fade" id="releaseNotesModal" tabindex="-1" aria-hidden="true" aria-labelledby="releaseNotesModalTitle" style="z-index: 2100;">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i><span data-i18n="logs.changelogTitle">{{ t('logs.changelogTitle') }}</span></h5>
+                    <h5 class="modal-title fw-bold" id="releaseNotesModalTitle"><i class="fas fa-list-alt me-2 text-primary"></i><span data-i18n="logs.changelogTitle">{{ t('logs.changelogTitle') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -1334,11 +1334,11 @@
     </div>
 
     <!-- 综合设置 Modal -->
-    <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true" aria-labelledby="settingsModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-xl">
             <div class="modal-content border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i><span data-i18n="settings.title">{{ t('settings.title') }}</span></h5>
+                    <h5 class="modal-title fs-6 text-muted-plus fw-bold" id="settingsModalTitle"><i class="fas fa-cog me-2"></i><span data-i18n="settings.title">{{ t('settings.title') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body">
@@ -1769,11 +1769,11 @@
     </div>
 
     <!-- 导入预览 Modal -->
-    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true" aria-labelledby="importModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-file-import me-2"></i><span data-i18n="logs.importTitle">{{ t('logs.importTitle') }}</span></h5>
+                    <h5 class="modal-title fw-bold" id="importModalTitle"><i class="fas fa-file-import me-2"></i><span data-i18n="logs.importTitle">{{ t('logs.importTitle') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -1840,11 +1840,11 @@
     </div>
 
     <!-- 延迟设置 Modal -->
-    <div class="modal fade" id="delayModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="delayModal" tabindex="-1" aria-hidden="true" aria-labelledby="delayModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark border-secondary">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title"><i class="fas fa-palette me-2"></i><span data-i18n="settings.delayThresholds">{{ t('settings.delayThresholds') }}</span></h5>
+                    <h5 class="modal-title" id="delayModalTitle"><i class="fas fa-palette me-2"></i><span data-i18n="settings.delayThresholds">{{ t('settings.delayThresholds') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
