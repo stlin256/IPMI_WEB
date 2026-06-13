@@ -257,6 +257,17 @@
 {% set active_page = 'gpu' %}
 {% include 'partials/main_nav.html' %}
 
+{% set gpu_checking_label = t('gpu.checking') %}
+{% if gpu_checking_label == 'gpu.checking' %}{% set gpu_checking_label = 'Checking...' %}{% endif %}
+{% set gpu_last_update_label = t('gpu.lastUpdate') %}
+{% if gpu_last_update_label == 'gpu.lastUpdate' %}{% set gpu_last_update_label = 'Last updated' %}{% endif %}
+{% set gpu_configure_label = t('gpu.configure') %}
+{% if gpu_configure_label == 'gpu.configure' %}{% set gpu_configure_label = 'Configure' %}{% endif %}
+{% set gpu_agent_offline_label = t('gpu.agentOffline') %}
+{% if gpu_agent_offline_label == 'gpu.agentOffline' %}{% set gpu_agent_offline_label = 'GPU Agent Offline' %}{% endif %}
+{% set gpu_refresh_label = t('logs.refresh') %}
+{% if gpu_refresh_label == 'logs.refresh' %}{% set gpu_refresh_label = 'Refresh' %}{% endif %}
+
 <main class="gpu-shell container-fluid px-3 px-md-4 pb-4">
     <section class="gpu-page-head">
         <div>
@@ -265,22 +276,22 @@
                 <span data-i18n="gpu.title">{{ gpu_page_title }}</span>
             </h1>
             <div class="gpu-subline">
-                <span id="agent-status" class="gpu-status-pill text-secondary" data-i18n="gpu.checking">{{ t('gpu.checking') }}</span>
-                <span><span data-i18n="gpu.lastUpdate">{{ t('gpu.lastUpdate') }}</span>: <span id="last-update" class="font-monospace">--</span></span>
+                <span id="agent-status" class="gpu-status-pill text-secondary" data-i18n="gpu.checking">{{ gpu_checking_label }}</span>
+                <span><span data-i18n="gpu.lastUpdate">{{ gpu_last_update_label }}</span>: <span id="last-update" class="font-monospace">--</span></span>
             </div>
         </div>
         <div class="gpu-actions">
-            <button id="btn-refresh-gpu" class="btn btn-outline-secondary" type="button" data-i18n-title="logs.refresh" title="{{ t('logs.refresh') }}">
+            <button id="btn-refresh-gpu" class="btn btn-outline-secondary" type="button" data-i18n-title="logs.refresh" title="{{ gpu_refresh_label }}">
                 <i class="fas fa-sync-alt"></i>
             </button>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#gpuConfigModal">
-                <i class="fas fa-cog me-1"></i><span data-i18n="gpu.configure">{{ t('gpu.configure') }}</span>
+                <i class="fas fa-cog me-1"></i><span data-i18n="gpu.configure">{{ gpu_configure_label }}</span>
             </button>
         </div>
     </section>
 
     <div id="offline-msg" class="offline-overlay">
-        <i class="fas fa-exclamation-triangle me-2"></i><span data-i18n="gpu.agentOffline">{{ t('gpu.agentOffline') }}</span>
+        <i class="fas fa-exclamation-triangle me-2"></i><span data-i18n="gpu.agentOffline">{{ gpu_agent_offline_label }}</span>
     </div>
 
     <section class="gpu-summary-grid" aria-label="GPU summary">

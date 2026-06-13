@@ -201,20 +201,20 @@
             window.IPMI.setText('#last-update', new Date().toLocaleTimeString());
 
             if (!data.online) {
-                setStatus(t('gpu.offline'), 'gpu-status-pill text-danger');
+                setStatus(tx('gpu.offline', 'Offline'), 'gpu-status-pill text-danger');
                 container.classList.add('agent-offline');
                 offlineMsg.style.display = 'block';
                 updateSummary([]);
                 return;
             }
 
-            setStatus(t('gpu.online'), 'gpu-status-pill text-success');
+            setStatus(tx('gpu.online', 'Online'), 'gpu-status-pill text-success');
             container.classList.remove('agent-offline');
             offlineMsg.style.display = 'none';
 
             if (!data.gpus || data.gpus.length === 0) {
                 destroyCharts();
-                container.innerHTML = `<div class="col-12 text-center text-muted py-5">${t('gpu.notFound')}</div>`;
+                container.innerHTML = `<div class="col-12 text-center text-muted py-5">${tx('gpu.notFound', 'No GPU devices found')}</div>`;
                 lastGpuCount = 0;
                 updateSummary([]);
                 return;
@@ -234,7 +234,7 @@
         } catch (error) {
             if (!window.IPMI.isAbort(error)) {
                 console.error('GPU Status Error:', error);
-                setStatus(t('gpu.error'), 'gpu-status-pill text-warning');
+                setStatus(tx('gpu.error', 'Error'), 'gpu-status-pill text-warning');
             }
         }
     }

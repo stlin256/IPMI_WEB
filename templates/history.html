@@ -1124,7 +1124,7 @@
             const energyDate = rawData.stats.energy_start_date || '--';
             const energyDateEl = document.getElementById('stat-energy-date');
             energyDateEl.dataset.rawDate = energyDate === '--' ? '' : energyDate;
-            energyDateEl.innerText = t('metrics.since', { date: energyDate });
+            energyDateEl.innerText = tx('metrics.since', 'since {date}', { date: energyDate });
         }
 
         ensureCpuPkgToggleControls();

@@ -76,6 +76,8 @@
         .fixed-control-group { transition: opacity 0.3s ease, filter 0.3s ease; }
         .fixed-control-group.disabled-visual { opacity: 0.5; filter: grayscale(0.8); pointer-events: none; }
         .override-panel { border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; background: color-mix(in srgb, var(--bg-body) 42%, transparent); }
+        .fan-override-grid { margin-left: 0; margin-right: 0; }
+        .fan-override-grid > * { padding-left: 0.35rem; padding-right: 0.35rem; }
         
         /* 骨架屏流光扫过特效 */
         .skeleton-sweep {
@@ -460,7 +462,7 @@
                     </div>
 
                     <div class="border-top border-secondary pt-3 mt-1">
-                        <div class="row g-3">
+                        <div class="row g-3 fan-override-grid">
                             <div class="col-12 col-md-6">
                                 <div class="override-panel h-100">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
