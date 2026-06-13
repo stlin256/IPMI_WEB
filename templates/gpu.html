@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="{{ locale }}" data-bs-theme="dark">
+{% set gpu_page_title = t('gpu.title') %}
+{% if gpu_page_title == 'gpu.title' %}{% set gpu_page_title = 'GPU Monitoring' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('gpu.title') }} - {{ server_name }} Ops</title>
+    <title>{{ gpu_page_title }} - {{ server_name }} Ops</title>
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/app-modern.css') }}" rel="stylesheet">
@@ -260,7 +262,7 @@
         <div>
             <h1 class="gpu-title">
                 <span class="gpu-title-icon"><i class="fas fa-microchip"></i></span>
-                <span data-i18n="gpu.title">{{ t('gpu.title') }}</span>
+                <span data-i18n="gpu.title">{{ gpu_page_title }}</span>
             </h1>
             <div class="gpu-subline">
                 <span id="agent-status" class="gpu-status-pill text-secondary" data-i18n="gpu.checking">{{ t('gpu.checking') }}</span>

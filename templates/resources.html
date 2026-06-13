@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="{{ locale }}" data-bs-theme="dark">
+{% set resources_page_title = t('resources.title') %}
+{% if resources_page_title == 'resources.title' %}{% set resources_page_title = 'Resources' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('resources.title') }} - {{ server_name }} Ops</title>
+    <title>{{ resources_page_title }} - {{ server_name }} Ops</title>
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/app-modern.css') }}" rel="stylesheet">
@@ -195,7 +197,7 @@
         <div>
             <h1 class="res-title">
                 <span class="res-title-icon"><i class="fas fa-chart-line"></i></span>
-                <span data-i18n="resources.title">{{ t('resources.title') }}</span>
+                <span data-i18n="resources.title">{{ resources_page_title }}</span>
             </h1>
             <div class="res-subline">{{ server_name }}</div>
         </div>

@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="{{ locale }}" data-bs-theme="dark">
+{% set history_page_title = t('history.title') %}
+{% if history_page_title == 'history.title' %}{% set history_page_title = 'History' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('history.title') }} - {{ server_name }} Ops</title>
+    <title>{{ history_page_title }} - {{ server_name }} Ops</title>
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/app-modern.css') }}" rel="stylesheet">
@@ -75,29 +77,46 @@
         .form-select { background-color: color-mix(in srgb, var(--bg-elevated) 84%, transparent); border-color: var(--border-color); color: var(--text-main); border-radius: 6px; padding: 0.4rem 0.8rem; }
         .form-select:focus { border-color: var(--accent-blue); box-shadow: var(--focus-ring); }
         
-        /* 横向滚动容器 */
-        .scrollable-tabs-container {
+        /* Metric tag cloud */
+        .history-tag-cloud {
             display: flex;
-            overflow-x: auto;
-            white-space: nowrap;
+            flex-wrap: wrap;
+            align-items: center;
+            overflow: visible;
+            white-space: normal;
             -webkit-overflow-scrolling: touch;
-            padding: 10px 0;
-            gap: 10px;
-            scrollbar-width: none; /* Firefox */
+            padding: 10px 0 4px;
+            gap: 8px;
+            min-width: 0;
         }
-        .scrollable-tabs-container::-webkit-scrollbar { display: none; }
-        @media (hover: hover) and (pointer: fine) {
-            .scrollable-tabs-container { cursor: grab; }
-            .scrollable-tabs-container.is-dragging {
-                cursor: grabbing;
-                user-select: none;
-            }
+
+        .history-tag-cloud #cpu-pkg-toggle-container {
+            display: contents;
+        }
+
+        .history-tag-cloud .btn-check-custom + .btn,
+        .history-tag-cloud #cpu-pkg-toggle-container .btn-check-custom + .btn {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: min(12rem, 100%);
+            min-height: 2rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.28rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-tag-cloud .btn i {
+            flex: 0 0 auto;
+            margin-right: 0 !important;
         }
         
         /* 胶囊样式优化 */
-        .btn-check-custom + .btn { 
+        .btn-check-custom + .btn {
             border-color: var(--border-color); color: var(--text-muted); background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
-            border-radius: 8px; padding: 0.5rem 1.25rem; font-size: 0.95rem; font-weight: 600;
+            border-radius: 8px; padding: 0.42rem 0.72rem; font-size: 0.88rem; font-weight: 720;
             white-space: nowrap; transition: all 0.2s;
         }
         .btn-check-custom:hover + .btn { background: color-mix(in srgb, var(--accent-yellow) 10%, transparent); color: var(--text-main); border-color: var(--accent-yellow); }
@@ -140,8 +159,12 @@
         @media (max-width: 576px) {
             .history-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
             .history-page-head { align-items: start; flex-direction: column; padding-top: 1.1rem; }
-            .scrollable-tabs-container { gap: 0.45rem; padding: 0.45rem 0; }
-            .btn-check-custom + .btn { padding: 0.42rem 0.62rem; font-size: 0.82rem; }
+            .history-tag-cloud { gap: 0.42rem; padding: 0.45rem 0 0.2rem; }
+            .history-tag-cloud .btn-check-custom + .btn,
+            .history-tag-cloud #cpu-pkg-toggle-container .btn-check-custom + .btn {
+                max-width: calc(50vw - 1.35rem);
+            }
+            .btn-check-custom + .btn { padding: 0.38rem 0.58rem; font-size: 0.78rem; }
         }
     </style>
 </head>
@@ -175,7 +198,7 @@
         <div>
             <h1 class="history-title">
                 <span class="history-title-icon"><i class="fas fa-chart-line"></i></span>
-                <span data-i18n="history.title">{{ t('history.title') }}</span>
+                <span data-i18n="history.title">{{ history_page_title }}</span>
             </h1>
             <div class="history-subline">{{ server_name }} · editorial telemetry archive</div>
         </div>
@@ -295,7 +318,7 @@
             </div>
 
             <!-- 维度选择器 - 可横向滑动 -->
-            <div class="mb-4 scrollable-tabs-container">
+            <div class="mb-4 history-tag-cloud">
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-temp" checked onchange="handleTagChange()">
                 <label class="btn" for="chk-temp"><i class="fas fa-thermometer-half me-1"></i> Temp</label>
 
