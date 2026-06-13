@@ -2211,39 +2211,21 @@
 
                 // 如果配置版本高于当前软件版本，强制弹出提示
                 if (compareVersions(configVersion, currentSWVersion) > 0) {
-                    // 使用临时创建的 Modal 提示
-                    if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
-                    const modalEl = document.getElementById('discardModal');
-                    const title = modalEl.querySelector('h5');
-                    const msg = modalEl.querySelector('p');
-                    const btn = document.getElementById('discard-confirm-btn');
-                    const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
-                    
-                    const oldTitle = title.innerText;
-                    const oldMsg = msg.innerText;
-                    const oldBtnText = btn.innerText;
-
-                    title.innerText = t('logs.versionCompatibility');
-                    title.className = "fw-bold text-warning";
-                    msg.innerHTML = t('logs.configVersionNewer', { configVersion: `<span class="text-warning fw-bold">${configVersion}</span>`, currentVersion: `<span class="text-success fw-bold">${currentSWVersion}</span>` });
-                    btn.innerText = t('app.confirm');
-                    btn.className = "btn btn-warning fw-bold";
-                    if (cancelBtn) cancelBtn.style.display = 'none'; // 隐藏取消按钮，强制点击确认
-
-                    btn.onclick = async () => {
-                        // 还原 Modal 样式供下次使用
-                        title.innerText = oldTitle;
-                        title.className = "fw-bold";
-                        msg.innerText = oldMsg;
-                        btn.innerText = oldBtnText;
-                        btn.className = "btn btn-warning fw-bold";
-                        if (cancelBtn) cancelBtn.style.display = 'block';
-                        discardModal.hide();
-                        // 修复硬编码：在预检视图中动态显示当前软件版本
-                        document.getElementById('import-sw-val').innerText = currentSWVersion;
-                        await proceedPrecheck(config, currentSWVersion);
-                    };
-                    discardModal.show();
+                    showDiscardModal({
+                        title: t('logs.versionCompatibility'),
+                        titleClass: 'fw-bold text-warning',
+                        messageHtml: t('logs.configVersionNewer', {
+                            configVersion: `<span class="text-warning fw-bold">${configVersion}</span>`,
+                            currentVersion: `<span class="text-success fw-bold">${currentSWVersion}</span>`
+                        }),
+                        confirmText: t('app.confirm'),
+                        confirmClass: 'btn btn-warning fw-bold',
+                        cancelVisible: false,
+                        onConfirm: async () => {
+                            document.getElementById('import-sw-val').innerText = currentSWVersion;
+                            await proceedPrecheck(config, currentSWVersion);
+                        }
+                    });
                     return;
                 }
 
@@ -2964,35 +2946,17 @@
 
     // 显示配置不完整弹窗
     function showConfigIncompleteModal() {
-        if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
-        const modalEl = document.getElementById('discardModal');
-        const title = modalEl.querySelector('h5');
-        const msg = modalEl.querySelector('p');
-        const btn = document.getElementById('discard-confirm-btn');
-        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
-        
-        const oldTitle = title.innerText;
-        const oldMsg = msg.innerText;
-        const oldBtnText = btn.innerText;
-
-        title.innerText = t('logs.emailConfigIncompleteTitle');
-        title.className = "fw-bold text-danger";
-        msg.innerHTML = t('logs.emailConfigIncompleteBody');
-        btn.innerText = t('logs.goConfigure');
-        btn.className = "btn btn-primary fw-bold";
-        
-        btn.onclick = () => {
-            // 切换到邮件 Tab
-            const emailTab = document.querySelector('[data-bs-target="#tab-email"]');
-            if (emailTab) emailTab.click();
-            // 还原 Modal
-            title.innerText = oldTitle;
-            title.className = "fw-bold";
-            msg.innerText = oldMsg;
-            btn.innerText = oldBtnText;
-            discardModal.hide();
-        };
-        discardModal.show();
+        showDiscardModal({
+            title: t('logs.emailConfigIncompleteTitle'),
+            titleClass: 'fw-bold text-danger',
+            messageHtml: t('logs.emailConfigIncompleteBody'),
+            confirmText: t('logs.goConfigure'),
+            confirmClass: 'btn btn-primary fw-bold',
+            onConfirm: () => {
+                const emailTab = document.querySelector('[data-bs-target="#tab-email"]');
+                if (emailTab) emailTab.click();
+            }
+        });
     }
 
     // 处理报告开关变动
@@ -3014,6 +2978,56 @@
     let dbSizeTimer = null;
     let hasPendingChanges = false;
     let initialSettingsSnapshot = null; // 存储打开时的原始快照
+
+    function resetDiscardModalState() {
+        const modalEl = document.getElementById('discardModal');
+        if (!modalEl) return;
+        const title = document.getElementById('discardModalTitle');
+        const msg = document.getElementById('discardModalMessage');
+        const btn = document.getElementById('discard-confirm-btn');
+        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+        if (title) {
+            title.className = 'fw-bold';
+            title.innerText = t('settings.unsavedTitle');
+        }
+        if (msg) msg.innerText = t('settings.unsavedBody');
+        if (btn) {
+            btn.className = 'btn btn-warning fw-bold';
+            btn.innerText = t('settings.discard');
+            btn.onclick = null;
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = '';
+            cancelBtn.innerText = t('settings.keepEditing');
+        }
+    }
+
+    function showDiscardModal(options = {}) {
+        const modalEl = document.getElementById('discardModal');
+        if (!modalEl) return;
+        if (!discardModal) discardModal = new bootstrap.Modal(modalEl);
+        resetDiscardModalState();
+
+        const title = document.getElementById('discardModalTitle');
+        const msg = document.getElementById('discardModalMessage');
+        const btn = document.getElementById('discard-confirm-btn');
+        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+        if (title && options.title) title.innerText = options.title;
+        if (title && options.titleClass) title.className = options.titleClass;
+        if (msg && options.messageHtml !== undefined) msg.innerHTML = options.messageHtml;
+        else if (msg && options.message !== undefined) msg.innerText = options.message;
+        if (btn && options.confirmText) btn.innerText = options.confirmText;
+        if (btn && options.confirmClass) btn.className = options.confirmClass;
+        if (cancelBtn && options.cancelVisible === false) cancelBtn.style.display = 'none';
+        if (btn) {
+            btn.onclick = async () => {
+                if (options.onConfirm) await options.onConfirm();
+                if (options.autoHide !== false) discardModal.hide();
+            };
+        }
+        modalEl.addEventListener('hidden.bs.modal', resetDiscardModalState, { once: true });
+        discardModal.show();
+    }
 
     // 邮件模式切换 UI 交互
     function toggleEmailMode(mode) {
@@ -4096,13 +4110,12 @@
             settingsModalEl.addEventListener('hide.bs.modal', (e) => {
                 if (checkChanges() && !bypassModalCheck) {
                     e.preventDefault(); 
-                    if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
-                    document.getElementById('discard-confirm-btn').onclick = () => {
-                        bypassModalCheck = true;
-                        discardModal.hide();
-                        settingsModal.hide();
-                    };
-                    discardModal.show();
+                    showDiscardModal({
+                        onConfirm: () => {
+                            bypassModalCheck = true;
+                            settingsModal.hide();
+                        }
+                    });
                     return;
                 }
                 bypassModalCheck = false; // 重置标记
