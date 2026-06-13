@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="{{ locale }}" data-bs-theme="dark">
+{% set hardware_page_title = t('hardware.title') %}
+{% if hardware_page_title == 'hardware.title' %}{% set hardware_page_title = 'Hardware' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('hardware.title') }} - {{ server_name }} Ops</title>
+    <title>{{ hardware_page_title }} - {{ server_name }} Ops</title>
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/app-modern.css') }}" rel="stylesheet">
@@ -28,10 +30,11 @@
         .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; padding: 1rem; }
         
-        .metric-box { padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .metric-box { min-width: 0; padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
         .metric-box:hover { border-color: color-mix(in srgb, var(--metric-accent) 55%, var(--border-color)); transform: translateY(-2px); }
-        .metric-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 5px; }
-        .metric-unit { font-size: 1rem; color: var(--text-muted); font-weight: normal; }
+        .metric-value { display: flex; max-width: 100%; align-items: baseline; justify-content: center; gap: 0.35rem; font-family: 'SF Mono', Consolas, monospace; font-size: clamp(2rem, 3.8vw, 2.8rem); font-weight: 700; letter-spacing: 0; margin-bottom: 5px; line-height: 1.05; white-space: nowrap; }
+        .metric-value > span:first-child { min-width: 0; overflow: hidden; text-overflow: clip; }
+        .metric-unit { flex: 0 0 auto; font-size: clamp(0.78rem, 1.2vw, 1rem); color: var(--text-muted); font-weight: normal; }
         .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
         
         .table-custom { font-size: 0.9rem; font-family: monospace; }
@@ -215,6 +218,7 @@
                 var(--bg-card) !important;
             border-color: var(--border-color) !important;
             box-shadow: var(--shadow-soft);
+            min-height: 10.5rem;
         }
         .metric-box[data-accent="thermal"] { --metric-accent: var(--accent-blue); }
         .metric-box[data-accent="power"] { --metric-accent: var(--accent-yellow); }
@@ -245,16 +249,21 @@
         }
         .hw-mode-card #mode-display {
             max-width: 100%;
-            font-size: clamp(1.08rem, 1.45vw, 1.55rem);
+            font-size: clamp(1rem, 1.2vw, 1.32rem);
             line-height: 1.12;
             letter-spacing: 0;
             color: var(--text-main);
             overflow-wrap: anywhere;
+            word-break: break-word;
         }
         .hw-mode-card .btn {
             max-width: 100%;
             white-space: normal;
             overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.15;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
         }
         .hw-chart-body {
             height: clamp(280px, 34vh, 380px);
@@ -277,13 +286,36 @@
             .hw-page-head { grid-template-columns: 1fr; align-items: start; }
             .hw-health-strip { width: 100%; }
         }
+        @media (min-width: 768px) and (max-width: 991.98px) {
+            .metric-box {
+                min-height: 10rem;
+                padding: 1.25rem 0.85rem;
+            }
+            .metric-value {
+                gap: 0.25rem;
+                font-size: clamp(1.65rem, 3.35vw, 2rem);
+            }
+            .metric-unit {
+                font-size: 0.72rem;
+            }
+            .hw-mode-card {
+                padding: 1.2rem 0.85rem !important;
+            }
+            .hw-mode-card #mode-display {
+                font-size: clamp(0.92rem, 1.3vw, 1.08rem);
+            }
+            .hw-mode-card .btn {
+                padding: 0.55rem 0.55rem;
+                font-size: 0.86rem;
+            }
+        }
         @media (max-width: 576px) {
             .hw-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
             .hw-page-head { padding-top: 1.15rem; }
             .hw-health-strip { grid-template-columns: 1fr; }
             .metric-box { padding: 1.1rem 0.75rem; }
             .metric-value {
-                font-size: clamp(2rem, 10vw, 2.45rem);
+                font-size: clamp(1.75rem, 8.8vw, 2.35rem);
                 letter-spacing: 0;
                 white-space: nowrap;
             }
@@ -301,7 +333,7 @@
         <div>
             <h1 class="hw-title">
                 <span class="hw-title-icon"><i class="fas fa-server"></i></span>
-                <span data-i18n="hardware.title">{{ t('hardware.title') }}</span>
+                <span data-i18n="hardware.title">{{ hardware_page_title }}</span>
             </h1>
             <div class="hw-subline"><strong>{{ server_name }}</strong> · silicon telemetry command surface</div>
         </div>
@@ -639,6 +671,11 @@
     let lastSavedTargetTemp = null;
     let updateNoticeModal = null;
     let updateNoticePendingAck = false;
+
+    function tx(key, fallback, params = {}) {
+        const translated = t(key, params);
+        return translated === key ? fallback : translated;
+    }
 
     function cssVar(name, fallback) {
         return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -1056,12 +1093,14 @@
 
             if (d.mode === 'fixed' || d.mode === 'target_temp') {
                 const isFixedMode = d.mode === 'fixed';
-                modeText.innerText = isFixedMode ? t('hardware.modeFixed').toUpperCase() : t('hardware.modeTargetTemp').toUpperCase();
+                const fixedLabel = tx('hardware.modeFixed', 'Fixed Speed');
+                const targetTempLabel = tx('hardware.modeTargetTemp', 'Target Temp');
+                modeText.innerText = (isFixedMode ? fixedLabel : targetTempLabel).toUpperCase();
                 modeText.className = `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`;
                 btn.className = 'btn w-100 py-2 fw-bold btn-secondary disabled';
-                btn.innerHTML = `<i class="fas fa-ban me-2"></i>${t('hardware.modeLocked')}`;
+                btn.innerHTML = `<i class="fas fa-ban me-2"></i>${tx('hardware.modeLocked', 'Mode Locked')}`;
                 warnMsg.classList.remove('d-none');
-                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${t('hardware.disableModeToSwitch', { mode: isFixedMode ? t('metrics.fixedSpeed') : t('metrics.targetTemp') })}`;
+                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${tx('hardware.disableModeToSwitch', 'Disable override mode to switch', { mode: isFixedMode ? tx('metrics.fixedSpeed', 'Fixed Speed') : tx('metrics.targetTemp', 'Target Temp') })}`;
 
                 if (isFixedMode) {
                     if (!fixedSwitch.checked) {
@@ -1084,10 +1123,12 @@
                 }
             } else {
                 const isAuto = d.mode === 'auto';
-                modeText.innerText = isAuto ? t('hardware.modeAutomatic').toUpperCase() : t('hardware.modeManual').toUpperCase();
+                const automaticLabel = tx('hardware.modeAutomatic', 'Automatic');
+                const manualLabel = tx('hardware.modeManual', 'Manual');
+                modeText.innerText = (isAuto ? automaticLabel : manualLabel).toUpperCase();
                 modeText.className = `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`;
                 btn.className = `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
-                btn.innerHTML = isAuto ? `<i class="fas fa-hand-paper me-2"></i>${t('hardware.switchToManual')}` : `<i class="fas fa-robot me-2"></i>${t('hardware.switchToAuto')}`;
+                btn.innerHTML = isAuto ? `<i class="fas fa-hand-paper me-2"></i>${tx('hardware.switchToManual', 'Switch to Manual')}` : `<i class="fas fa-robot me-2"></i>${tx('hardware.switchToAuto', 'Switch to Auto')}`;
                 btn.onclick = toggleMode;
                 warnMsg.classList.add('d-none');
 
