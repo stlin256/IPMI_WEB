@@ -189,7 +189,7 @@
     {% set history_got_it_label = t('update.gotIt') %}
     {% if history_got_it_label == 'update.gotIt' %}{% set history_got_it_label = 'Got it' %}{% endif %}
     <!-- Energy Date Modal -->
-    <div class="modal fade" id="energyModal" tabindex="-1" aria-hidden="true" aria-labelledby="energyModalTitle">
+    <div class="modal fade" id="energyModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="energyModalTitle" aria-describedby="energyModalHelp">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content shadow-lg">
                 <div class="modal-header border-secondary">
@@ -197,7 +197,7 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <p class="ipmi-modal-copy small mb-3 mx-0" data-i18n="history.energyStartHelp">{{ history_energy_start_help }}</p>
+                    <p class="ipmi-modal-copy small mb-3 mx-0" id="energyModalHelp" data-i18n="history.energyStartHelp">{{ history_energy_start_help }}</p>
                     <input type="date" id="energyInput" class="form-control mb-3">
                     <div class="ipmi-modal-actions">
                         <button class="btn btn-primary" onclick="saveEnergyDate()" data-i18n="app.apply">{{ history_apply_label }}</button>
@@ -209,7 +209,7 @@
     </div>
 
     <!-- History notice Modal -->
-    <div class="modal fade" id="historyNoticeModal" tabindex="-1" aria-hidden="true" aria-labelledby="history-notice-title">
+    <div class="modal fade" id="historyNoticeModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="history-notice-title" aria-describedby="history-notice-message">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content shadow-lg">
                 <div class="modal-body p-4 text-center">

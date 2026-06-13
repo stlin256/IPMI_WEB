@@ -336,7 +336,7 @@
 {% if gpu_got_it_label == 'update.gotIt' %}{% set gpu_got_it_label = 'Got it' %}{% endif %}
 
 <!-- GPU 配置模态框 -->
-<div class="modal fade" id="gpuConfigModal" tabindex="-1" aria-hidden="true" aria-labelledby="gpuConfigModalTitle">
+<div class="modal fade" id="gpuConfigModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="gpuConfigModalTitle">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
@@ -368,7 +368,7 @@
 </div>
 
 <!-- GPU notice modal -->
-<div class="modal fade" id="gpuNoticeModal" tabindex="-1" aria-hidden="true" aria-labelledby="gpu-notice-title">
+<div class="modal fade" id="gpuNoticeModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="gpu-notice-title" aria-describedby="gpu-notice-message">
     <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">

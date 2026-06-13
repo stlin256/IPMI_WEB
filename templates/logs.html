@@ -1283,7 +1283,7 @@
     </div>
 
     <!-- 确认删除 Modal -->
-    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" aria-labelledby="confirm-title" style="z-index: 2100;">
+    <div class="modal fade" id="confirmModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg" style="z-index: 2100;">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-danger shadow-lg">
                 <div class="modal-body p-4 text-center">
@@ -1300,13 +1300,13 @@
     </div>
 
     <!-- 放弃修改确认 Modal -->
-    <div class="modal fade" id="discardModal" tabindex="-1" aria-hidden="true" aria-labelledby="discardModalTitle" style="z-index: 2100;">
+    <div class="modal fade" id="discardModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="discardModalTitle" aria-describedby="discardModalMessage" style="z-index: 2100;">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-warning shadow-lg">
                 <div class="modal-body p-4 text-center">
                     <i class="fas fa-exclamation-triangle text-warning fs-1 mb-3"></i>
                     <h5 class="fw-bold" id="discardModalTitle" data-i18n="settings.unsavedTitle">{{ t('settings.unsavedTitle') }}</h5>
-                    <p class="text-muted small mb-4" data-i18n="settings.unsavedBody">{{ t('settings.unsavedBody') }}</p>
+                    <p class="text-muted small mb-4" id="discardModalMessage" data-i18n="settings.unsavedBody">{{ t('settings.unsavedBody') }}</p>
                     <div class="d-grid gap-2">
                         <button class="btn btn-warning fw-bold" id="discard-confirm-btn" data-i18n="settings.discard">{{ t('settings.discard') }}</button>
                         <button class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="settings.keepEditing">{{ t('settings.keepEditing') }}</button>
@@ -1317,7 +1317,7 @@
     </div>
 
     <!-- 更新日志 Modal -->
-    <div class="modal fade" id="releaseNotesModal" tabindex="-1" aria-hidden="true" aria-labelledby="releaseNotesModalTitle" style="z-index: 2100;">
+    <div class="modal fade" id="releaseNotesModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="releaseNotesModalTitle" aria-describedby="release-notes-content" style="z-index: 2100;">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
@@ -1334,7 +1334,7 @@
     </div>
 
     <!-- 综合设置 Modal -->
-    <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true" aria-labelledby="settingsModalTitle">
+    <div class="modal fade" id="settingsModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="settingsModalTitle">
         <div class="modal-dialog modal-dialog-centered modal-xl">
             <div class="modal-content border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
@@ -1769,7 +1769,7 @@
     </div>
 
     <!-- 导入预览 Modal -->
-    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true" aria-labelledby="importModalTitle">
+    <div class="modal fade" id="importModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="importModalTitle" aria-describedby="import-precheck-view">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
@@ -1840,7 +1840,7 @@
     </div>
 
     <!-- 延迟设置 Modal -->
-    <div class="modal fade" id="delayModal" tabindex="-1" aria-hidden="true" aria-labelledby="delayModalTitle">
+    <div class="modal fade" id="delayModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="delayModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark border-secondary">
                 <div class="modal-header border-secondary">
