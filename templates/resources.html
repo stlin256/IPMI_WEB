@@ -352,16 +352,16 @@
             </h1>
             <div class="res-subline">{{ server_name }}</div>
         </div>
-        <div class="res-live-pill">Live</div>
+        <div class="res-live-pill" data-i18n="resources.live">Live</div>
     </section>
 
     <section class="res-signal-grid" aria-label="Resource signals">
         <div class="res-signal signal-cpu">
             <div class="res-signal-main">
                 <div class="res-signal-copy">
-                    <div class="res-signal-label"><i class="fas fa-microchip"></i> CPU Load</div>
+                    <div class="res-signal-label"><i class="fas fa-microchip"></i> <span data-i18n="resources.cpuLoad">CPU Load</span></div>
                     <div class="res-signal-value" id="res-chip-cpu">--%</div>
-                    <div class="res-signal-note"><span id="res-chip-cpu-power">--</span> W package</div>
+                    <div class="res-signal-note"><span id="res-chip-cpu-power">--</span> <span data-i18n="resources.cpuPackage">W package</span></div>
                 </div>
                 <div class="res-signal-visual res-mini-gauge gauge-container">
                     <canvas id="gaugeCpu"></canvas>
@@ -375,7 +375,7 @@
         <div class="res-signal signal-mem">
             <div class="res-signal-main">
                 <div class="res-signal-copy">
-                    <div class="res-signal-label"><i class="fas fa-memory"></i> Memory Field</div>
+                    <div class="res-signal-label"><i class="fas fa-memory"></i> <span data-i18n="resources.memoryField">Memory Field</span></div>
                     <div class="res-signal-value" id="res-chip-mem">--%</div>
                     <div class="res-signal-note"><span id="res-chip-mem-used">--</span> / <span id="res-chip-mem-total">--</span> GB</div>
                 </div>
@@ -391,10 +391,10 @@
         <div class="res-signal signal-net">
             <div class="res-signal-main">
                 <div class="res-signal-copy">
-                    <div class="res-signal-label"><i class="fas fa-wave-square"></i> Network Flow</div>
+                    <div class="res-signal-label"><i class="fas fa-wave-square"></i> <span data-i18n="resources.networkFlow">Network Flow</span></div>
                     <div class="res-signal-stack">
-                        <div class="res-flow-line"><span>IN</span><strong id="str-net-in">--</strong></div>
-                        <div class="res-flow-line"><span>OUT</span><strong id="str-net-out">--</strong></div>
+                        <div class="res-flow-line"><span data-i18n="resources.in">IN</span><strong id="str-net-in">--</strong></div>
+                        <div class="res-flow-line"><span data-i18n="resources.out">OUT</span><strong id="str-net-out">--</strong></div>
                     </div>
                 </div>
                 <div class="res-signal-visual res-sparkline">
@@ -405,10 +405,10 @@
         <div class="res-signal signal-disk">
             <div class="res-signal-main">
                 <div class="res-signal-copy">
-                    <div class="res-signal-label"><i class="fas fa-hdd"></i> Disk Pulse</div>
+                    <div class="res-signal-label"><i class="fas fa-hdd"></i> <span data-i18n="resources.diskPulse">Disk Pulse</span></div>
                     <div class="res-signal-stack">
-                        <div class="res-flow-line"><span>READ</span><strong id="str-disk-r">--</strong></div>
-                        <div class="res-flow-line"><span>WRITE</span><strong id="str-disk-w">--</strong></div>
+                        <div class="res-flow-line"><span data-i18n="resources.read">READ</span><strong id="str-disk-r">--</strong></div>
+                        <div class="res-flow-line"><span data-i18n="resources.write">WRITE</span><strong id="str-disk-w">--</strong></div>
                     </div>
                 </div>
                 <div class="res-signal-visual res-sparkline">

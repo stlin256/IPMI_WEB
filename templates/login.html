@@ -75,22 +75,10 @@
         }
         .login-card {
             width: 100%;
-            padding: 2rem;
+            padding: 1.75rem;
             border-radius: 8px !important;
+            text-align: left;
         }
-        .login-mark {
-            display: inline-grid;
-            place-items: center;
-            width: 3.5rem;
-            height: 3.5rem;
-            margin-bottom: 1.25rem;
-            border-radius: 8px;
-            color: #fff7e8;
-            background: var(--accent-red);
-            border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
-            box-shadow: 0 16px 34px color-mix(in srgb, var(--accent-red) 18%, transparent);
-        }
-        .logo-icon { font-size: 1.55rem; }
         .form-control { padding: 0.78rem 1rem; }
         .btn-primary {
             min-height: 2.85rem;
@@ -113,7 +101,7 @@
         @media (max-width: 480px) {
             .login-shell { width: min(100% - 1.5rem, 420px); }
             .login-wordmark { font-size: 3.1rem; }
-            .login-card { padding: 1.4rem; }
+            .login-card { padding: 1.35rem; }
         }
     </style>
 </head>
@@ -125,10 +113,7 @@
             <h1 class="login-wordmark">IPMI<br>WEB</h1>
             <div class="login-server">Ops Console</div>
         </section>
-        <section class="login-card text-center position-relative">
-            <div class="login-mark"><i class="fas fa-server logo-icon"></i></div>
-            <h2 class="h4 mb-4 fw-bold" data-i18n="app.loginTitle">{{ t('app.loginTitle') }}</h2>
-
+        <section class="login-card position-relative" aria-label="{{ t('app.login') }}">
             {% if error %}
             <div id="login-error" class="alert alert-danger py-2 small border-0 bg-danger bg-opacity-25 text-white">{{ error }}</div>
             {% endif %}

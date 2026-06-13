@@ -232,23 +232,23 @@
                 <span class="history-title-icon"><i class="fas fa-chart-line"></i></span>
                 <span data-i18n="history.title">{{ history_page_title }}</span>
             </h1>
-            <div class="history-subline">{{ server_name }} · editorial telemetry archive</div>
+            <div class="history-subline">{{ server_name }} · <span data-i18n="history.subline">editorial telemetry archive</span></div>
         </div>
-        <div class="history-live-mark"><i class="fas fa-layer-group"></i> multi-signal view</div>
+        <div class="history-live-mark"><i class="fas fa-layer-group"></i> <span data-i18n="history.multiSignalView">multi-signal view</span></div>
     </section>
 
     <div class="card h-100 mt-4">
         <div class="card-header d-flex justify-content-between align-items-center py-3 flex-wrap gap-3">
             <div class="d-flex align-items-center gap-2">
-                <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i>History Explorer</span>
-                <button class="btn btn-sm btn-outline-secondary px-2 border-0" onclick="exportData()" title="Export CSV Data">
+                <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i><span data-i18n="history.explorer">History Explorer</span></span>
+                <button class="btn btn-sm btn-outline-secondary px-2 border-0" onclick="exportData()" data-i18n-title="history.exportCsv" title="Export CSV Data">
                     <i class="fas fa-file-export"></i>
                 </button>
             </div>
             
             <div class="d-flex gap-1 gap-md-3 align-items-center ms-auto flex-wrap justify-content-end">
                 <button class="btn btn-sm btn-outline-info px-2 px-md-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInsights">
-                    <i id="btn-insights-icon" class="fas fa-lightbulb me-1"></i> <span id="btn-insights-text">Insights</span>
+                    <i id="btn-insights-icon" class="fas fa-lightbulb me-1"></i> <span id="btn-insights-text" data-i18n="history.insights">Insights</span>
                 </button>
                 <div class="btn-group btn-group-sm" role="group" id="tr-container">
                     <input type="radio" class="btn-check" name="timeRange" id="tr1" value="1" checked onchange="loadData()">
@@ -265,13 +265,13 @@
             <div class="collapse mb-4" id="collapseInsights">
                 <div id="deep-analysis-section" class="bg-dark bg-opacity-25 rounded-3 p-4 border border-info border-opacity-10">
                     <div class="d-flex align-items-center mb-4">
-                        <div class="h4 mb-0 fw-bold text-info"><i class="fas fa-lightbulb me-2"></i>Insights</div>
+                        <div class="h4 mb-0 fw-bold text-info"><i class="fas fa-lightbulb me-2"></i><span data-i18n="history.insights">Insights</span></div>
                     </div>
                     
                     <div class="row g-4">
                         <div class="col-12 col-xl-4">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">Power Contribution</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.powerContribution">Power Contribution</div>
                                 <div class="insights-chart-container" style="height: 250px">
                                     <canvas id="chartPowerDist"></canvas>
                                 </div>
@@ -280,7 +280,7 @@
                         
                         <div class="col-12 col-xl-8">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">Load Intensity</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.loadIntensity">Load Intensity</div>
                                 <div class="insights-chart-container" style="height: 250px">
                                     <canvas id="chartLoadDist"></canvas>
                                 </div>
@@ -289,7 +289,7 @@
 
                         <div class="col-12 col-xl-6">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">VRAM Efficiency</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.vramEfficiency">VRAM Efficiency</div>
                                 <div class="insights-chart-container" style="height: 300px">
                                     <canvas id="chartVRAMEff"></canvas>
                                 </div>
@@ -298,7 +298,7 @@
 
                         <div class="col-12 col-xl-6">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">Thermal Stability</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.thermalStability">Thermal Stability</div>
                                 <div class="insights-chart-container" style="height: 300px">
                                     <canvas id="chartTempDist"></canvas>
                                 </div>
@@ -312,37 +312,37 @@
             <div class="row g-3 mb-4 row-cols-2 row-cols-md-3 row-cols-xl-6">
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Max Temp</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.maxTemp">Max Temp</div>
                         <div class="h4 mb-0 font-monospace text-primary history-stat-value" id="stat-temp">--°C</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Avg Load</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.avgLoad">Avg Load</div>
                         <div class="h4 mb-0 font-monospace text-success history-stat-value" id="stat-load">--%</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Peak Net</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.peakNet">Peak Net</div>
                         <div class="h4 mb-0 font-monospace text-warning history-stat-value" id="stat-net">-- KB/s</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Peak Disk</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.peakDisk">Peak Disk</div>
                         <div class="h4 mb-0 font-monospace text-info history-stat-value" id="stat-disk">-- MB/s</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Interval</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.interval">Interval</div>
                         <div class="h4 mb-0 font-monospace text-warning history-stat-value" id="stat-energy-interval">-- kWh</div>
                     </div>
                 </div>
                 <div class="col">
-                    <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100" style="cursor: pointer" onclick="changeEnergyStartDate()" title="Click to change start date">
-                        <div class="text-uppercase small text-muted fw-bold mb-1" id="energy-total-title">Energy</div>
+                    <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100" style="cursor: pointer" onclick="changeEnergyStartDate()" data-i18n-title="history.clickEnergyDate" title="Click to change start date">
+                        <div class="text-uppercase small text-muted fw-bold mb-1" id="energy-total-title" data-i18n="metrics.energy">Energy</div>
                         <div class="h4 mb-0 font-monospace text-danger history-stat-value" id="stat-energy-total">-- kWh</div>
                         <div class="small text-muted mt-1" id="stat-energy-date" style="font-size: 0.65rem; white-space: nowrap">since --</div>
                     </div>
@@ -352,46 +352,46 @@
             <!-- 维度选择器 - 可横向滑动 -->
             <div class="mb-4 history-tag-cloud">
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-temp" checked onchange="handleTagChange()">
-                <label class="btn" for="chk-temp"><i class="fas fa-thermometer-half me-1"></i> Temp</label>
+                <label class="btn" for="chk-temp"><i class="fas fa-thermometer-half me-1"></i> <span data-i18n="metrics.temp">Temp</span></label>
 
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-fan" onchange="handleTagChange()">
-                <label class="btn" for="chk-fan"><i class="fas fa-fan me-1"></i> Fan</label>
+                <label class="btn" for="chk-fan"><i class="fas fa-fan me-1"></i> <span data-i18n="metrics.fan">Fan</span></label>
 
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-pwr" onchange="handleTagChange()">
-                <label class="btn" for="chk-pwr"><i class="fas fa-bolt me-1"></i> Power</label>
+                <label class="btn" for="chk-pwr"><i class="fas fa-bolt me-1"></i> <span data-i18n="metrics.power">Power</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu-pwr" checked onchange="handleTagChange()">
-               <label class="btn" for="chk-cpu-pwr"><i class="fas fa-microchip me-1"></i> CPU Power</label>
+               <label class="btn" for="chk-cpu-pwr"><i class="fas fa-microchip me-1"></i> <span data-i18n="history.cpuPower">CPU Power</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu" checked onchange="handleTagChange()">
-               <label class="btn" for="chk-cpu"><i class="fas fa-microchip me-1"></i> CPU</label>
+               <label class="btn" for="chk-cpu"><i class="fas fa-microchip me-1"></i> <span data-i18n="history.cpuUtil">CPU</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-ram" onchange="handleTagChange()">
-               <label class="btn" for="chk-ram"><i class="fas fa-memory me-1"></i> RAM</label>
+               <label class="btn" for="chk-ram"><i class="fas fa-memory me-1"></i> <span data-i18n="history.ramUtil">RAM</span></label>
                
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-net-in" onchange="handleTagChange()">
-               <label class="btn" for="chk-net-in"><i class="fas fa-download me-1"></i> Net In</label>
+               <label class="btn" for="chk-net-in"><i class="fas fa-download me-1"></i> <span data-i18n="history.netIn">Net In</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-net-out" onchange="handleTagChange()">
-               <label class="btn" for="chk-net-out"><i class="fas fa-upload me-1"></i> Net Out</label>
+               <label class="btn" for="chk-net-out"><i class="fas fa-upload me-1"></i> <span data-i18n="history.netOut">Net Out</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-disk-r" onchange="handleTagChange()">
-               <label class="btn" for="chk-disk-r"><i class="fas fa-hdd me-1"></i> Disk R</label>
+               <label class="btn" for="chk-disk-r"><i class="fas fa-hdd me-1"></i> <span data-i18n="history.diskRead">Disk R</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-disk-w" onchange="handleTagChange()">
-               <label class="btn" for="chk-disk-w"><i class="fas fa-save me-1"></i> Disk W</label>
+               <label class="btn" for="chk-disk-w"><i class="fas fa-save me-1"></i> <span data-i18n="history.diskWrite">Disk W</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-temp" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-temp"><i class="fas fa-microchip me-1"></i> GPU Temp</label>
+               <label class="btn" for="chk-gpu-temp"><i class="fas fa-microchip me-1"></i> <span data-i18n="history.gpuTemp">GPU Temp</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-util" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-util"><i class="fas fa-percentage me-1"></i> GPU Util</label>
+               <label class="btn" for="chk-gpu-util"><i class="fas fa-percentage me-1"></i> <span data-i18n="history.gpuUtil">GPU Util</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-pwr" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-pwr"><i class="fas fa-bolt me-1"></i> GPU Power</label>
+               <label class="btn" for="chk-gpu-pwr"><i class="fas fa-bolt me-1"></i> <span data-i18n="history.gpuPower">GPU Power</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-gpu-mem" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-mem"><i class="fas fa-memory me-1"></i> GPU Memory</label>
+               <label class="btn" for="chk-gpu-mem"><i class="fas fa-memory me-1"></i> <span data-i18n="history.gpuMemory">GPU Memory</span></label>
 
                <span id="cpu-pkg-toggle-container"></span>
             </div>
@@ -405,28 +405,28 @@
             <div class="d-flex flex-column gap-5 mt-2" id="charts-wrapper">
                 <!-- 原始历史图表 -->
                 <div class="pt-3">
-                    <div class="h4 mb-3 fw-bold text-muted"><i class="fas fa-chart-line me-2"></i>History</div>
+                    <div class="h4 mb-3 fw-bold text-muted"><i class="fas fa-chart-line me-2"></i><span data-i18n="metrics.history">History</span></div>
                     <div class="d-flex flex-column gap-5">
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-thermometer-half me-1"></i> Thermal Status</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-thermometer-half me-1"></i> <span data-i18n="metrics.thermalStatus">Thermal Status</span></div>
                             <canvas id="chartTemp"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-bolt me-1"></i> Power Board</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-bolt me-1"></i> <span data-i18n="metrics.powerBoard">Power Board</span></div>
                             <canvas id="chartPower"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-microchip me-1"></i> Compute Loads</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-microchip me-1"></i> <span data-i18n="metrics.computeLoads">Compute Loads</span></div>
                             <canvas id="chartLoad"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-exchange-alt me-1"></i> I/O Performance</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-exchange-alt me-1"></i> <span data-i18n="metrics.ioPerformance">I/O Performance</span></div>
                             <canvas id="chartIO"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
-            <div id="loading" class="text-center text-muted mt-3" style="display:none"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>
+            <div id="loading" class="text-center text-muted mt-3" style="display:none"><i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="app.loading">Loading...</span></div>
         </div>
     </div>
 </main>

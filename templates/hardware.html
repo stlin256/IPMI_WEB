@@ -337,19 +337,19 @@
                 <span class="hw-title-icon"><i class="fas fa-server"></i></span>
                 <span data-i18n="hardware.title">{{ hardware_page_title }}</span>
             </h1>
-            <div class="hw-subline"><strong>{{ server_name }}</strong> · silicon telemetry command surface</div>
+            <div class="hw-subline"><strong>{{ server_name }}</strong> · <span data-i18n="hardware.subline">silicon telemetry command surface</span></div>
         </div>
         <div class="hw-health-strip" aria-label="Hardware live summary">
             <div class="hw-health-item">
-                <div class="hw-health-label">Thermal</div>
+                <div class="hw-health-label" data-i18n="metrics.temp">Thermal</div>
                 <div class="hw-health-value"><span id="hw-strip-temp">--</span>°C</div>
             </div>
             <div class="hw-health-item">
-                <div class="hw-health-label">Power</div>
+                <div class="hw-health-label" data-i18n="metrics.power">Power</div>
                 <div class="hw-health-value"><span id="hw-strip-power">--</span>W</div>
             </div>
             <div class="hw-health-item">
-                <div class="hw-health-label">Airflow</div>
+                <div class="hw-health-label" data-i18n="metrics.fan">Airflow</div>
                 <div class="hw-health-value"><span id="hw-strip-fan">--</span></div>
             </div>
         </div>
@@ -360,7 +360,7 @@
         <div class="d-flex align-items-center">
             <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
             <div>
-                <h5 class="alert-heading mb-1 fw-bold">Environment Dependencies Missing</h5>
+                <h5 class="alert-heading mb-1 fw-bold" data-i18n="hardware.envMissingTitle">Environment Dependencies Missing</h5>
                 <p class="mb-0 small" id="env-warning-msg"></p>
             </div>
         </div>
@@ -371,30 +371,30 @@
         <div class="col-6 col-md-3">
             <div class="card metric-box" data-accent="thermal">
                 <i class="fas fa-thermometer-half metric-icon text-primary"></i>
-                <div class="text-uppercase small text-muted fw-bold mb-1">CPU Max Temp</div>
+                <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.cpuMaxTemp">CPU Max Temp</div>
                 <div class="metric-value text-primary"><span id="val-temp">--</span> <span class="metric-unit">°C</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="card metric-box" data-accent="power">
                 <i class="fas fa-bolt metric-icon text-warning"></i>
-                <div class="text-uppercase small text-muted fw-bold mb-1">Power Draw</div>
+                <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.powerDraw">Power Draw</div>
                 <div class="metric-value text-warning"><span id="val-power">--</span> <span class="metric-unit">W</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="card metric-box" data-accent="airflow">
                 <i class="fas fa-fan metric-icon text-success"></i>
-                <div class="text-uppercase small text-muted fw-bold mb-1">Fan Speed</div>
+                <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.fanSpeed">Fan Speed</div>
                 <div class="metric-value text-success"><span id="val-fan">--</span> <span class="metric-unit">RPM</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="card hw-mode-card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
-                <div class="text-uppercase small text-muted fw-bold mb-2">Fan Control Mode</div>
+                <div class="text-uppercase small text-muted fw-bold mb-2" data-i18n="metrics.fanControlMode">Fan Control Mode</div>
                 <div id="mode-display" class="h3 fw-bold mb-3">--</div>
-                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch Mode</button>
-                <div id="fixed-mode-warning" class="text-warning small mt-2 d-none"><i class="fas fa-exclamation-triangle"></i> Disable override mode to switch</div>
+                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()" data-i18n="hardware.switchMode">Switch Mode</button>
+                <div id="fixed-mode-warning" class="text-warning small mt-2 d-none"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="hardware.disableOverrideMode">Disable override mode to switch</span></div>
             </div>
         </div>
     </div>
@@ -403,7 +403,7 @@
     <div class="card hw-section-card mb-4">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div class="d-flex align-items-center">
-                <span class="fw-bold me-3"><i class="fas fa-history me-2"></i>Trends</span>
+                <span class="fw-bold me-3"><i class="fas fa-history me-2"></i><span data-i18n="metrics.trends">Trends</span></span>
                 <div class="btn-group btn-group-sm" id="tr-container">
                     <input type="radio" class="btn-check" name="histRange" id="hr1" value="1" onchange="saveHistRangePrefs(); loadHistory()">
                     <label class="btn btn-outline-secondary px-3" for="hr1">1H</label>
@@ -414,11 +414,11 @@
             
             <div class="d-flex gap-2">
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-pwr" checked onchange="handleTagChange()">
-                <label class="btn" for="chk-pwr">Power</label>
+                <label class="btn" for="chk-pwr" data-i18n="metrics.power">Power</label>
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-temp" checked onchange="handleTagChange()">
-                <label class="btn" for="chk-temp">Temp</label>
+                <label class="btn" for="chk-temp" data-i18n="metrics.temp">Temp</label>
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-fan" onchange="handleTagChange()">
-                <label class="btn" for="chk-fan">Fan</label>
+                <label class="btn" for="chk-fan" data-i18n="metrics.fan">Fan</label>
             </div>
         </div>
         <div class="card-body p-3 position-relative hw-chart-body">
@@ -432,12 +432,12 @@
         <div class="col-lg-8">
             <div class="card hw-section-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-list-ul me-2"></i>Sensors List</span>
+                    <span><i class="fas fa-list-ul me-2"></i><span data-i18n="metrics.sensorsList">Sensors List</span></span>
                     <span class="badge bg-secondary" id="sensor-count">0</span>
                 </div>
                 <div class="card-body p-0 scroll-container">
                     <table class="table table-dark table-striped table-hover table-custom mb-0">
-                        <thead class="sticky-top bg-dark"><tr><th>SOURCE</th><th>NAME</th><th class="text-end">VALUE</th><th class="text-center hide-mobile">STATUS</th></tr></thead>
+                        <thead class="sticky-top bg-dark"><tr><th data-i18n="metrics.source">SOURCE</th><th data-i18n="metrics.name">NAME</th><th class="text-end" data-i18n="metrics.value">VALUE</th><th class="text-center hide-mobile" data-i18n="metrics.status">STATUS</th></tr></thead>
                         <tbody id="sensor-list"></tbody>
                     </table>
                 </div>
@@ -447,7 +447,7 @@
         <!-- 风扇控制区域 (修改部分) -->
         <div class="col-lg-4">
             <div class="card hw-section-card h-100">
-                <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Fan Configuration</div>
+                <div class="card-header"><i class="fas fa-sliders-h me-2"></i><span data-i18n="metrics.fanConfiguration">Fan Configuration</span></div>
                 <div class="card-body d-flex flex-column py-3 px-4">
                     
                     <!-- 原有的曲线设置入口 -->
@@ -455,10 +455,10 @@
                         <canvas id="miniCurveChart"></canvas>
                     </div>
                     <button class="btn btn-primary w-100 mb-2 py-2" onclick="openCurveModal()">
-                        <i class="fas fa-edit me-1"></i> Edit Fan Curve
+                        <i class="fas fa-edit me-1"></i> <span data-i18n="metrics.editFanCurve">Edit Fan Curve</span>
                     </button>
                     <div class="text-muted small text-center mb-3" id="calibration-info">
-                        Calibrated Range: <span id="rpm-range-display" class="text-info font-monospace fw-bold">--</span>
+                        <span data-i18n="hardware.calibratedRange">Calibrated Range</span>: <span id="rpm-range-display" class="text-info font-monospace fw-bold">--</span>
                     </div>
 
                     <div class="border-top border-secondary pt-3 mt-1">
@@ -467,7 +467,7 @@
                                 <div class="override-panel h-100">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <label for="fixedFanSwitch" class="form-check-label fw-bold text-light small">
-                                            <i class="fas fa-thumbtack me-2 text-warning"></i> Fixed Speed
+                                            <i class="fas fa-thumbtack me-2 text-warning"></i> <span data-i18n="metrics.fixedSpeed">Fixed Speed</span>
                                         </label>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" role="switch" id="fixedFanSwitch" 
@@ -481,11 +481,11 @@
                                         <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
                                             <div class="w-50 border-end border-secondary">
                                                 <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-6">--%</div>
-                                                <div class="text-muted small" style="font-size: 0.72rem;">TARGET</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="metrics.target">TARGET</div>
                                             </div>
                                             <div class="w-50">
                                                 <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-6">--</div>
-                                                <div class="text-muted small" style="font-size: 0.72rem;">EST. RPM</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="metrics.estimatedRpm">EST. RPM</div>
                                             </div>
                                         </div>
                                     </div>
@@ -495,7 +495,7 @@
                                 <div class="override-panel h-100">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <label for="targetTempSwitch" class="form-check-label fw-bold text-light small">
-                                            <i class="fas fa-bullseye me-2 text-info"></i> Target Temp
+                                            <i class="fas fa-bullseye me-2 text-info"></i> <span data-i18n="metrics.targetTemp">Target Temp</span>
                                         </label>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" role="switch" id="targetTempSwitch" 
@@ -509,7 +509,7 @@
                                         <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
                                             <div class="w-100">
                                                 <div id="targetTempValue" class="font-monospace text-info fw-bold fs-6">--°C</div>
-                                                <div class="text-muted small" style="font-size: 0.72rem;">CPU TARGET</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="hardware.cpuTarget">CPU TARGET</div>
                                             </div>
                                         </div>
                                     </div>
@@ -602,13 +602,13 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title">Manual Fan Curve (Target RPM %)</h5>
+                <h5 class="modal-title" data-i18n="hardware.manualFanCurve">Manual Fan Curve (Target RPM %)</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex justify-content-end mb-3">
                     <button class="btn btn-sm btn-outline-warning" onclick="startCalibration()">
-                        <i class="fas fa-tachometer-alt me-1"></i> Run Calibration
+                        <i class="fas fa-tachometer-alt me-1"></i> <span data-i18n="hardware.runCalibration">Run Calibration</span>
                     </button>
                 </div>
                 <div class="row">
@@ -619,8 +619,8 @@
                 </div>
             </div>
             <div class="modal-footer border-top border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-success" onclick="saveCurve()">Save & Apply</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.close">Close</button>
+                <button type="button" class="btn btn-success" onclick="saveCurve()" data-i18n="app.applyAndSave">Save & Apply</button>
             </div>
         </div>
     </div>
@@ -630,11 +630,11 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title text-warning"><i class="fas fa-cog fa-spin me-2"></i>Calibrating Fans...</h5>
+                <h5 class="modal-title text-warning"><i class="fas fa-cog fa-spin me-2"></i><span data-i18n="hardware.calibratingFans">Calibrating Fans...</span></h5>
             </div>
             <div class="modal-body text-center pt-2">
                 <div class="my-4">
-                    <div class="text-uppercase small text-muted mb-1">Current Speed</div>
+                    <div class="text-uppercase small text-muted mb-1" data-i18n="hardware.currentSpeed">Current Speed</div>
                     <div style="font-family: 'SF Mono', Consolas, monospace; font-size: 3.5rem; font-weight: 700; color: #fff;">
                         <span id="calib-realtime-rpm">---</span> <span style="font-size: 1rem; color: #8b949e">RPM</span>
                     </div>
@@ -642,7 +642,7 @@
                 <div class="progress mb-3" style="height: 6px; background: #30363d;">
                     <div id="calib-progress" class="progress-bar bg-warning" style="width: 0%"></div>
                 </div>
-                <div id="calib-log" class="font-monospace small text-white-50">Initializing...</div>
+                <div id="calib-log" class="font-monospace small text-white-50" data-i18n="app.loading">Initializing...</div>
             </div>
         </div>
     </div>
@@ -654,7 +654,7 @@
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary py-2">
                 <h5 class="modal-title fs-6 fw-bold text-primary">
-                    <i class="fas fa-chart-line me-2"></i><span id="modal-sensor-name">Sensor Trend</span>
+                    <i class="fas fa-chart-line me-2"></i><span id="modal-sensor-name" data-i18n="hardware.sensorTrend">Sensor Trend</span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
