@@ -522,19 +522,73 @@
     </div>
 </main>
 
+{% set hw_switch_mode_title = t('hardware.switchModeTitle') %}
+{% if hw_switch_mode_title == 'hardware.switchModeTitle' %}{% set hw_switch_mode_title = 'Switch Mode?' %}{% endif %}
+{% set hw_switch_mode_confirm = t('hardware.confirmSwitchMode') %}
+{% if hw_switch_mode_confirm == 'hardware.confirmSwitchMode' %}{% set hw_switch_mode_confirm = 'Confirm switch mode?' %}{% endif %}
+{% set hw_calibration_title = t('hardware.calibrationTitle') %}
+{% if hw_calibration_title == 'hardware.calibrationTitle' %}{% set hw_calibration_title = 'Fan Calibration' %}{% endif %}
+{% set hw_calibration_confirm = t('hardware.calibrationConfirm') %}
+{% if hw_calibration_confirm == 'hardware.calibrationConfirm' %}{% set hw_calibration_confirm = 'Calibration takes a few minutes. Fans will slow down, then speed up. Continue?' %}{% endif %}
+{% set hw_notice_title = t('hardware.noticeTitle') %}
+{% if hw_notice_title == 'hardware.noticeTitle' %}{% set hw_notice_title = 'Hardware Notice' %}{% endif %}
+{% set hw_cancel_label = t('app.cancel') %}
+{% if hw_cancel_label == 'app.cancel' %}{% set hw_cancel_label = 'Cancel' %}{% endif %}
+{% set hw_confirm_label = t('app.confirm') %}
+{% if hw_confirm_label == 'app.confirm' %}{% set hw_confirm_label = 'Confirm' %}{% endif %}
+{% set hw_got_it_label = t('update.gotIt') %}
+{% if hw_got_it_label == 'update.gotIt' %}{% set hw_got_it_label = 'Got it' %}{% endif %}
+
 <!-- 模式切换确认 Modal -->
 <div class="modal fade" id="modeConfirmModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content bg-dark border-secondary shadow-lg">
+        <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">
-                <div class="mb-3">
-                    <i id="mode-icon-confirm" class="fas fa-robot fs-1 text-primary"></i>
+                <div class="ipmi-modal-symbol mx-auto">
+                    <i id="mode-icon-confirm" class="fas fa-robot fs-4 text-primary"></i>
                 </div>
-                <h5 class="modal-title mb-2 fw-bold text-light">Switch Mode?</h5>
-                <p id="mode-msg-confirm" class="text-muted small mb-4">Confirm switch to AUTOMATIC mode?</p>
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-secondary flex-grow-1 fw-bold" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" id="btn-confirm-mode" class="btn btn-primary flex-grow-1 fw-bold">Confirm</button>
+                <h5 class="modal-title mb-2 fw-bold text-light" data-i18n="hardware.switchModeTitle">{{ hw_switch_mode_title }}</h5>
+                <p id="mode-msg-confirm" class="ipmi-modal-copy small mb-4">{{ hw_switch_mode_confirm }}</p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal" data-i18n="app.cancel">{{ hw_cancel_label }}</button>
+                    <button type="button" id="btn-confirm-mode" class="btn btn-primary fw-bold" data-i18n="app.confirm">{{ hw_confirm_label }}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 风扇校准确认 Modal -->
+<div class="modal fade" id="calibrationConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="ipmi-modal-symbol warning mx-auto">
+                    <i class="fas fa-tachometer-alt fs-4"></i>
+                </div>
+                <h5 class="modal-title mb-2 fw-bold" data-i18n="hardware.calibrationTitle">{{ hw_calibration_title }}</h5>
+                <p class="ipmi-modal-copy small mb-4" data-i18n="hardware.calibrationConfirm">{{ hw_calibration_confirm }}</p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal" data-i18n="app.cancel">{{ hw_cancel_label }}</button>
+                    <button type="button" id="btn-confirm-calibration" class="btn btn-primary fw-bold" data-i18n="app.confirm">{{ hw_confirm_label }}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hardware notice Modal -->
+<div class="modal fade" id="hardwareNoticeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div id="hardware-notice-symbol" class="ipmi-modal-symbol mx-auto">
+                    <i id="hardware-notice-icon" class="fas fa-check fs-4"></i>
+                </div>
+                <h5 id="hardware-notice-title" class="modal-title mb-2 fw-bold" data-i18n="hardware.noticeTitle">{{ hw_notice_title }}</h5>
+                <p id="hardware-notice-message" class="ipmi-modal-copy small mb-4"></p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-primary fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ hw_got_it_label }}</button>
                 </div>
             </div>
         </div>
@@ -544,7 +598,7 @@
 <!-- Modal 保持不变 -->
 <div class="modal fade" id="curveModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
+        <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
                 <h5 class="modal-title">Manual Fan Curve (Target RPM %)</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -572,7 +626,7 @@
 
 <div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content bg-dark border-warning">
+        <div class="modal-content shadow-lg">
             <div class="modal-header border-0 pb-0">
                 <h5 class="modal-title text-warning"><i class="fas fa-cog fa-spin me-2"></i>Calibrating Fans...</h5>
             </div>
@@ -671,6 +725,9 @@
     let lastSavedTargetTemp = null;
     let updateNoticeModal = null;
     let updateNoticePendingAck = false;
+    let hardwareNoticeModal = null;
+    let calibrationConfirmModal = null;
+    let calibrationModal = null;
 
     function tx(key, fallback, params = {}) {
         const translated = t(key, params);
@@ -958,6 +1015,23 @@
         toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
         const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
         toast.show();
+    }
+
+    function showHardwareNotice(message, isError = false, title = tx('hardware.noticeTitle', 'Hardware Notice')) {
+        const modalEl = document.getElementById('hardwareNoticeModal');
+        if (!modalEl) {
+            showToast(message, isError);
+            return;
+        }
+        const symbol = document.getElementById('hardware-notice-symbol');
+        const icon = document.getElementById('hardware-notice-icon');
+        document.getElementById('hardware-notice-title').innerText = title;
+        document.getElementById('hardware-notice-message').innerText = message;
+        symbol.classList.toggle('danger', isError);
+        symbol.classList.remove('warning');
+        icon.className = `fas ${isError ? 'fa-triangle-exclamation' : 'fa-check'} fs-4`;
+        if (!hardwareNoticeModal) hardwareNoticeModal = new bootstrap.Modal(modalEl);
+        hardwareNoticeModal.show();
     }
 
     function escapeHtml(value) {
@@ -1395,9 +1469,9 @@
         
         // 更新 Modal 内容
         const isAuto = pendingMode === 'auto';
-        document.getElementById('mode-icon-confirm').className = `fas ${isAuto ? 'fa-robot text-success' : 'fa-hand-paper text-primary'} fs-1`;
-        document.getElementById('mode-msg-confirm').innerText = t('hardware.confirmSwitchMode', { mode: pendingMode === 'auto' ? t('hardware.modeAutomatic') : t('hardware.modeManual') });
-        document.getElementById('btn-confirm-mode').className = `btn ${isAuto ? 'btn-success' : 'btn-primary'} flex-grow-1 fw-bold`;
+        document.getElementById('mode-icon-confirm').className = `fas ${isAuto ? 'fa-robot text-success' : 'fa-hand-paper text-primary'} fs-4`;
+        document.getElementById('mode-msg-confirm').innerText = tx('hardware.confirmSwitchMode', 'Confirm switch to {mode} mode?', { mode: pendingMode === 'auto' ? t('hardware.modeAutomatic') : t('hardware.modeManual') });
+        document.getElementById('btn-confirm-mode').className = `btn ${isAuto ? 'btn-success' : 'btn-primary'} fw-bold`;
         
         modeModal.show();
     }
@@ -1419,16 +1493,34 @@
 
     let calibInterval;
     function startCalibration() {
-        if(!confirm(t('hardware.calibrationConfirm'))) return;
-        bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
-        const calibModal = new bootstrap.Modal(document.getElementById('calibModal'));
-        calibModal.show();
+        if (!calibrationConfirmModal) {
+            calibrationConfirmModal = new bootstrap.Modal(document.getElementById('calibrationConfirmModal'));
+        }
+        calibrationConfirmModal.show();
+    }
+
+    function beginCalibration() {
+        if (calibrationConfirmModal) calibrationConfirmModal.hide();
+        const curveModal = bootstrap.Modal.getInstance(document.getElementById('curveModal'));
+        if (curveModal) curveModal.hide();
+        if (!calibrationModal) {
+            calibrationModal = new bootstrap.Modal(document.getElementById('calibModal'));
+        }
+        document.getElementById('calib-progress').style.width = '0%';
+        document.getElementById('calib-log').innerText = 'Initializing...';
+        document.getElementById('calib-realtime-rpm').innerText = '---';
+        calibrationModal.show();
         fetch('/api/calibration/start', {method: 'POST'}).then(r=>r.json()).then(d=>{
             if(d.status === 'started') {
                 calibInterval = setInterval(checkCalibStatus, 1000);
             }
+        }).catch((error) => {
+            if (calibrationModal) calibrationModal.hide();
+            showHardwareNotice(error.message || tx('hardware.calibrationStartFailed', 'Failed to start calibration.'), true);
         });
     }
+
+    document.getElementById('btn-confirm-calibration').onclick = beginCalibration;
 
     function checkCalibStatus() {
         fetch('/api/calibration/status').then(r=>r.json()).then(d => {
@@ -1438,8 +1530,8 @@
             if(!d.active && d.progress >= 100) {
                 clearInterval(calibInterval);
                 setTimeout(() => {
-                    bootstrap.Modal.getInstance(document.getElementById('calibModal')).hide();
-                    alert(t('hardware.calibrationComplete'));
+                    if (calibrationModal) calibrationModal.hide();
+                    showHardwareNotice(tx('hardware.calibrationComplete', 'Calibration complete.'), false, tx('hardware.calibrationTitle', 'Fan Calibration'));
                     refreshData();
                 }, 1000);
             }

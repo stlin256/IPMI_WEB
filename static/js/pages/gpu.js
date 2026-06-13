@@ -1,6 +1,7 @@
 (function () {
     const gpuCharts = {};
     let lastGpuCount = -1;
+    let gpuNoticeModal = null;
 
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -26,11 +27,25 @@
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
+    function tx(key, fallback, params = {}) {
+        const translated = t(key, params);
+        return translated === key ? fallback : translated;
+    }
+
     function setStatus(text, className) {
         const statusBadge = document.getElementById('agent-status');
         if (!statusBadge) return;
         statusBadge.textContent = text;
         statusBadge.className = className;
+    }
+
+    function showGpuNotice(message, title = tx('gpu.configErrorTitle', 'Configuration not saved')) {
+        const modalEl = document.getElementById('gpuNoticeModal');
+        if (!modalEl) return;
+        window.IPMI.setText('#gpu-notice-title', title);
+        window.IPMI.setText('#gpu-notice-message', message);
+        if (!gpuNoticeModal) gpuNoticeModal = new bootstrap.Modal(modalEl);
+        gpuNoticeModal.show();
     }
 
     function updateSummary(gpus) {
@@ -80,9 +95,9 @@
                 await refreshGpuData();
                 return;
             }
-            alert(t('gpu.saveFailed', { message: data.message || t('logs.unknown') }));
+            showGpuNotice(tx('gpu.saveFailed', 'Save failed: {message}', { message: data.message || t('logs.unknown') }));
         } catch (error) {
-            alert(t('gpu.saveFailed', { message: error.message || t('logs.unknown') }));
+            showGpuNotice(tx('gpu.saveFailed', 'Save failed: {message}', { message: error.message || t('logs.unknown') }));
         }
     }
 

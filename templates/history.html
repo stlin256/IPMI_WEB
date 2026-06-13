@@ -174,20 +174,52 @@
 {% include 'partials/main_nav.html' %}
 
 <main class="history-shell container-fluid px-3 px-md-4 pb-4">
+    {% set history_energy_start_title = t('history.energyStartTitle') %}
+    {% if history_energy_start_title == 'history.energyStartTitle' %}{% set history_energy_start_title = t('history.setEnergyStartDate') %}{% endif %}
+    {% if history_energy_start_title == 'history.setEnergyStartDate' %}{% set history_energy_start_title = 'Set Energy Start Date' %}{% endif %}
+    {% set history_energy_start_help = t('history.energyStartHelp') %}
+    {% if history_energy_start_help == 'history.energyStartHelp' %}{% set history_energy_start_help = t('history.energyDateHelp') %}{% endif %}
+    {% if history_energy_start_help == 'history.energyDateHelp' %}{% set history_energy_start_help = 'Calculate cumulative energy consumption from this date:' %}{% endif %}
+    {% set history_apply_label = t('app.apply') %}
+    {% if history_apply_label == 'app.apply' %}{% set history_apply_label = 'Apply' %}{% endif %}
+    {% set history_reset_label = t('app.reset') %}
+    {% if history_reset_label == 'app.reset' %}{% set history_reset_label = 'Reset' %}{% endif %}
+    {% set history_export_error_title = t('history.exportErrorTitle') %}
+    {% if history_export_error_title == 'history.exportErrorTitle' %}{% set history_export_error_title = 'Export failed' %}{% endif %}
+    {% set history_got_it_label = t('update.gotIt') %}
+    {% if history_got_it_label == 'update.gotIt' %}{% set history_got_it_label = 'Got it' %}{% endif %}
     <!-- Energy Date Modal -->
     <div class="modal fade" id="energyModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-secondary shadow-lg bg-dark text-light">
+            <div class="modal-content shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title">Set Energy Start Date</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title" data-i18n="history.energyStartTitle">{{ history_energy_start_title }}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <p class="text-muted small mb-3">Calculate cumulative energy consumption from this date:</p>
-                    <input type="date" id="energyInput" class="form-control bg-dark text-light border-secondary mb-3">
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-primary flex-grow-1" onclick="saveEnergyDate()">Apply</button>
-                        <button class="btn btn-outline-secondary" onclick="resetEnergyDate()">Reset</button>
+                    <p class="ipmi-modal-copy small mb-3 mx-0" data-i18n="history.energyStartHelp">{{ history_energy_start_help }}</p>
+                    <input type="date" id="energyInput" class="form-control mb-3">
+                    <div class="ipmi-modal-actions">
+                        <button class="btn btn-primary" onclick="saveEnergyDate()" data-i18n="app.apply">{{ history_apply_label }}</button>
+                        <button class="btn btn-outline-secondary" onclick="resetEnergyDate()" data-i18n="app.reset">{{ history_reset_label }}</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History notice Modal -->
+    <div class="modal fade" id="historyNoticeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content shadow-lg">
+                <div class="modal-body p-4 text-center">
+                    <div class="ipmi-modal-symbol danger mx-auto">
+                        <i class="fas fa-triangle-exclamation fs-4"></i>
+                    </div>
+                    <h5 id="history-notice-title" class="modal-title mb-2 fw-bold" data-i18n="history.exportErrorTitle">{{ history_export_error_title }}</h5>
+                    <p id="history-notice-message" class="ipmi-modal-copy small mb-4"></p>
+                    <div class="ipmi-modal-actions">
+                        <button type="button" class="btn btn-primary fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ history_got_it_label }}</button>
                     </div>
                 </div>
             </div>
@@ -1013,6 +1045,22 @@
     }
 
     let energyModal = null;
+    let historyNoticeModal = null;
+
+    function tx(key, fallback, params = {}) {
+        const translated = t(key, params);
+        return translated === key ? fallback : translated;
+    }
+
+    function showHistoryNotice(message, title = tx('history.exportErrorTitle', 'Export failed')) {
+        const modalEl = document.getElementById('historyNoticeModal');
+        if (!modalEl) return;
+        document.getElementById('history-notice-title').innerText = title;
+        document.getElementById('history-notice-message').innerText = message;
+        if (!historyNoticeModal) historyNoticeModal = new bootstrap.Modal(modalEl);
+        historyNoticeModal.show();
+    }
+
     function changeEnergyStartDate() {
         const current = document.getElementById('stat-energy-date').dataset.rawDate || '';
         const input = document.getElementById('energyInput');
@@ -1232,7 +1280,7 @@
             document.body.removeChild(a);
         } catch (e) {
             console.error(e);
-            alert(t('history.exportFailed', { message: e.message }));
+            showHistoryNotice(t('history.exportFailed', { message: e.message }));
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalHtml;

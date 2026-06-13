@@ -307,33 +307,68 @@
     </section>
 </main>
 
+{% set gpu_config_error_title = t('gpu.configErrorTitle') %}
+{% if gpu_config_error_title == 'gpu.configErrorTitle' %}{% set gpu_config_error_title = 'Configuration not saved' %}{% endif %}
+{% set gpu_agent_config_label = t('gpu.agentConfig') %}
+{% if gpu_agent_config_label == 'gpu.agentConfig' %}{% set gpu_agent_config_label = 'GPU Agent Configuration' %}{% endif %}
+{% set gpu_host_label = t('gpu.host') %}
+{% if gpu_host_label == 'gpu.host' %}{% set gpu_host_label = 'Agent host' %}{% endif %}
+{% set gpu_port_label = t('gpu.port') %}
+{% if gpu_port_label == 'gpu.port' %}{% set gpu_port_label = 'Agent port' %}{% endif %}
+{% set gpu_enabled_label = t('gpu.enabled') %}
+{% if gpu_enabled_label == 'gpu.enabled' %}{% set gpu_enabled_label = 'Enable GPU monitoring' %}{% endif %}
+{% set gpu_cancel_label = t('app.cancel') %}
+{% if gpu_cancel_label == 'app.cancel' %}{% set gpu_cancel_label = 'Cancel' %}{% endif %}
+{% set gpu_save_label = t('app.save') %}
+{% if gpu_save_label == 'app.save' %}{% set gpu_save_label = 'Save' %}{% endif %}
+{% set gpu_got_it_label = t('update.gotIt') %}
+{% if gpu_got_it_label == 'update.gotIt' %}{% set gpu_got_it_label = 'Got it' %}{% endif %}
+
 <!-- GPU 配置模态框 -->
 <div class="modal fade" id="gpuConfigModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
+        <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ t('gpu.agentConfig') }}</span></h5>
+                <h5 class="modal-title"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ gpu_agent_config_label }}</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
                 <form id="gpuConfigForm">
                     <div class="mb-3">
-                        <label class="form-label text-muted" data-i18n="gpu.host">{{ t('gpu.host') }}</label>
-                        <input type="text" class="form-control bg-dark text-white border-secondary" id="config-host" placeholder="127.0.0.1">
+                        <label class="form-label text-muted" data-i18n="gpu.host">{{ gpu_host_label }}</label>
+                        <input type="text" class="form-control" id="config-host" placeholder="127.0.0.1">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted" data-i18n="gpu.port">{{ t('gpu.port') }}</label>
-                        <input type="number" class="form-control bg-dark text-white border-secondary" id="config-port" placeholder="9999">
+                        <label class="form-label text-muted" data-i18n="gpu.port">{{ gpu_port_label }}</label>
+                        <input type="number" class="form-control" id="config-port" placeholder="9999">
                     </div>
                     <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="config-enabled">
-                        <label class="form-check-label" for="config-enabled" data-i18n="gpu.enabled">{{ t('gpu.enabled') }}</label>
+                        <label class="form-check-label" for="config-enabled" data-i18n="gpu.enabled">{{ gpu_enabled_label }}</label>
                     </div>
                 </form>
             </div>
             <div class="modal-footer border-top border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.cancel">{{ t('app.cancel') }}</button>
-                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()" data-i18n="app.save">{{ t('app.save') }}</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.cancel">{{ gpu_cancel_label }}</button>
+                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()" data-i18n="app.save">{{ gpu_save_label }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GPU notice modal -->
+<div class="modal fade" id="gpuNoticeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="ipmi-modal-symbol danger mx-auto">
+                    <i class="fas fa-triangle-exclamation fs-4"></i>
+                </div>
+                <h5 id="gpu-notice-title" class="modal-title mb-2 fw-bold" data-i18n="gpu.configErrorTitle">{{ gpu_config_error_title }}</h5>
+                <p id="gpu-notice-message" class="ipmi-modal-copy small mb-4"></p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-primary fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ gpu_got_it_label }}</button>
+                </div>
             </div>
         </div>
     </div>
