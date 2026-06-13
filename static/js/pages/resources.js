@@ -82,6 +82,40 @@
         };
     }
 
+    function sparklineOptions() {
+        const theme = chartColors();
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            elements: {
+                point: { radius: 0, hitRadius: 8, hoverRadius: 3 },
+                line: { borderWidth: 2, tension: 0.45 }
+            },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: theme.panel,
+                    titleColor: theme.text,
+                    bodyColor: theme.text,
+                    borderColor: theme.grid,
+                    borderWidth: 1,
+                    displayColors: false,
+                    bodyFont: { family: "'SF Mono', monospace" }
+                }
+            },
+            scales: {
+                x: { display: false },
+                y: {
+                    display: false,
+                    beginAtZero: true,
+                    grid: { display: false, drawBorder: false }
+                }
+            }
+        };
+    }
+
     function clampPercent(value) {
         const numeric = Number(value) || 0;
         return Math.max(0, Math.min(100, numeric));
@@ -144,21 +178,13 @@
         netChart = new Chart(document.getElementById('netChart'), {
             type: 'line',
             data: { labels: [], datasets: [] },
-            options: {
-                ...options,
-                plugins: { ...options.plugins, legend: { display: false } },
-                scales: { x: { display: false }, y: { ...options.scales.y, ticks: { ...options.scales.y.ticks, maxTicksLimit: 4 } } }
-            }
+            options: sparklineOptions()
         });
 
         diskChart = new Chart(document.getElementById('diskChart'), {
-            type: 'bar',
+            type: 'line',
             data: { labels: [], datasets: [] },
-            options: {
-                ...options,
-                plugins: { ...options.plugins, legend: { display: false } },
-                scales: { x: { display: false }, y: { ...options.scales.y, ticks: { ...options.scales.y.ticks, maxTicksLimit: 4 } } }
-            }
+            options: sparklineOptions()
         });
     }
 
@@ -168,9 +194,6 @@
 
         window.IPMI.setText('#val-cpu', data.cpu);
         window.IPMI.setText('#val-mem', data.mem_percent);
-        window.IPMI.setText('#val-cpu-power', data.cpu_power_w !== undefined ? data.cpu_power_w : '--');
-        window.IPMI.setText('#val-mem-used', data.mem_used);
-        window.IPMI.setText('#val-mem-total', data.mem_total);
         const diskRead = window.IPMI.formatBytes(data.disk_r);
         const diskWrite = window.IPMI.formatBytes(data.disk_w);
         const netIn = window.IPMI.formatBytes(data.net_in);
@@ -185,10 +208,6 @@
         window.IPMI.setText('#res-chip-mem', `${data.mem_percent}%`);
         window.IPMI.setText('#res-chip-mem-used', data.mem_used);
         window.IPMI.setText('#res-chip-mem-total', data.mem_total);
-        window.IPMI.setText('#res-chip-net', netIn);
-        window.IPMI.setText('#res-chip-net-out', netOut);
-        window.IPMI.setText('#res-chip-disk', diskRead);
-        window.IPMI.setText('#res-chip-disk-w', diskWrite);
 
         updateGauge(gaugeCpuChart, data.cpu);
         updateGauge(gaugeMemChart, data.mem_percent);
@@ -207,15 +226,15 @@
 
         netChart.data.labels = data.times;
         netChart.data.datasets = [
-            { label: 'In', data: data.res.net_in, borderColor: palette.netIn, borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
-            { label: 'Out', data: data.res.net_out, borderColor: palette.netOut, borderWidth: 1.5, borderDash: [3, 3], tension: 0.3, pointRadius: 0 }
+            { label: 'In', data: data.res.net_in, borderColor: palette.netIn, backgroundColor: colorMix(palette.netIn, 0.08), fill: true, borderWidth: 2, tension: 0.45, pointRadius: 0 },
+            { label: 'Out', data: data.res.net_out, borderColor: palette.netOut, backgroundColor: colorMix(palette.netOut, 0.04), fill: true, borderWidth: 2, borderDash: [4, 4], tension: 0.45, pointRadius: 0 }
         ];
         netChart.update('none');
 
         diskChart.data.labels = data.times;
         diskChart.data.datasets = [
-            { label: 'Read', data: data.res.disk_r, backgroundColor: palette.diskRead, barPercentage: 0.7 },
-            { label: 'Write', data: data.res.disk_w, backgroundColor: palette.diskWrite, barPercentage: 0.7 }
+            { label: 'Read', data: data.res.disk_r, borderColor: palette.diskRead, backgroundColor: colorMix(palette.diskRead, 0.08), fill: true, borderWidth: 2, tension: 0.45, pointRadius: 0 },
+            { label: 'Write', data: data.res.disk_w, borderColor: palette.diskWrite, backgroundColor: colorMix(palette.diskWrite, 0.04), fill: true, borderWidth: 2, borderDash: [4, 4], tension: 0.45, pointRadius: 0 }
         ];
         diskChart.update('none');
     });

@@ -2,6 +2,8 @@
 <html lang="{{ locale }}" data-bs-theme="dark">
 {% set resources_page_title = t('resources.title') %}
 {% if resources_page_title == 'resources.title' %}{% set resources_page_title = 'Resources' %}{% endif %}
+{% set resources_system_history = t('resources.systemHistory') %}
+{% if resources_system_history == 'resources.systemHistory' %}{% set resources_system_history = 'System History' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -79,7 +81,7 @@
         }
         .res-signal-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 1px;
             margin: 1.25rem 0;
             border: 1px solid var(--border-color);
@@ -90,8 +92,8 @@
         }
         .res-signal {
             position: relative;
-            min-height: 7rem;
-            padding: 1rem;
+            min-height: 13rem;
+            padding: 1.1rem 1.2rem;
             overflow: hidden;
             background:
                 var(--surface-sheen),
@@ -108,28 +110,97 @@
             background: currentColor;
             opacity: 0.36;
         }
+        .res-signal-main {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(8.25rem, 38%);
+            gap: 0.9rem;
+            align-items: center;
+            min-height: 10.8rem;
+        }
+        .res-signal-copy {
+            min-width: 0;
+        }
         .res-signal-label {
             display: flex;
             align-items: center;
             gap: 0.45rem;
             color: var(--text-muted);
-            font-size: 0.72rem;
+            font-size: 0.82rem;
             font-weight: 900;
             text-transform: uppercase;
         }
         .res-signal-value {
-            margin-top: 0.85rem;
+            margin-top: 1rem;
             font-family: 'SF Mono', Consolas, monospace;
-            font-size: clamp(1.15rem, 2.1vw, 1.75rem);
+            font-size: clamp(2rem, 3.4vw, 3.2rem);
             font-weight: 950;
             color: var(--text-main);
             overflow-wrap: anywhere;
+            line-height: 1;
+        }
+        .res-signal-stack {
+            display: grid;
+            gap: 0.55rem;
+            margin-top: 1rem;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-weight: 900;
+        }
+        .res-flow-line {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 0.85rem;
+            min-width: 0;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+        .res-flow-line strong {
+            min-width: 0;
+            color: var(--text-main);
+            font-size: clamp(1.45rem, 2.55vw, 2.2rem);
+            overflow-wrap: anywhere;
         }
         .res-signal-note {
-            margin-top: 0.2rem;
+            margin-top: 0.45rem;
             color: var(--text-muted);
-            font-size: 0.76rem;
-            font-weight: 700;
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+        .res-signal-visual {
+            min-width: 0;
+            width: min(9rem, 100%);
+            height: 10rem;
+            position: relative;
+            align-self: stretch;
+            justify-self: center;
+            display: grid;
+            place-items: center;
+        }
+        .res-mini-gauge {
+            width: min(8.85rem, 100%);
+            max-width: 8.85rem;
+            aspect-ratio: 1;
+            height: min(8.85rem, 100%);
+            margin: 0 auto;
+        }
+        .res-mini-gauge .gauge-overlay {
+            width: 78%;
+        }
+        .res-mini-gauge .gauge-value {
+            font-size: clamp(1.55rem, 2.6vw, 2.15rem);
+        }
+        .res-mini-gauge .gauge-label {
+            font-size: 0.78rem;
+        }
+        .res-sparkline {
+            height: 8.85rem;
+        }
+        .res-sparkline canvas,
+        .res-mini-gauge canvas {
+            width: 100% !important;
+            height: 100% !important;
         }
         .signal-cpu { color: var(--accent-cpu); }
         .signal-mem { color: var(--accent-mem); }
@@ -165,6 +236,10 @@
             background: color-mix(in srgb, var(--bg-card) 94%, transparent);
         }
         .gauge-container { width: 100%; max-width: 140px; height: 140px; position: relative; margin: 0 auto; }
+        .res-signal .res-mini-gauge {
+            max-width: 8.85rem;
+            height: 8.85rem;
+        }
         .gauge-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
         .gauge-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.2rem; font-weight: 900; color: var(--text-main); line-height: 1; }
         .gauge-label { font-size: 0.82rem; color: var(--text-muted); font-weight: 850; }
@@ -174,15 +249,91 @@
         .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0; color: var(--text-muted); margin-bottom: 4px; font-weight: 850; }
         .io-badge { font-size: 0.68rem; padding: 0.2rem 0.45rem; border-radius: 999px; font-weight: 850; vertical-align: middle; }
         .chart-card-body { height: 360px; padding: 1rem; position: relative; }
-        .mini-chart-body { min-height: 180px; padding: 0.75rem; position: relative; }
         @media (max-width: 768px) {
-            .res-page-head { align-items: start; flex-direction: column; padding-top: 1.15rem; }
-            .res-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .res-page-head {
+                align-items: flex-start;
+                flex-direction: row;
+                padding-top: 1.05rem;
+                gap: 0.75rem;
+            }
+            .res-title {
+                font-size: clamp(1.45rem, 7vw, 2rem);
+                gap: 0.6rem;
+            }
+            .res-title-icon {
+                width: 2.25rem;
+                height: 2.25rem;
+                flex: 0 0 auto;
+            }
+            .res-subline {
+                margin-top: 0.35rem;
+                font-size: 0.92rem;
+            }
+            .res-live-pill {
+                flex: 0 0 auto;
+                padding: 0.34rem 0.62rem;
+                font-size: 0.88rem;
+                margin-top: 0.22rem;
+            }
+            .res-signal { min-height: 11.25rem; padding: 1rem; }
+            .res-signal-main { grid-template-columns: minmax(0, 1fr) minmax(6.6rem, 7.35rem); min-height: 9.2rem; }
+            .res-signal-visual { width: min(7.25rem, 100%); height: 7.5rem; }
+            .res-signal .res-mini-gauge { max-width: 7.25rem; height: 7.25rem; }
+            .res-signal-value { font-size: clamp(1.55rem, 5vw, 2.25rem); }
+            .res-flow-line strong { font-size: clamp(1.12rem, 4vw, 1.55rem); }
             .gauge-container { max-width: 112px; height: 112px; }
             .gauge-value { font-size: 1.45rem; }
             .io-section { min-height: 10rem; }
         }
         @media (max-width: 480px) {
+            .res-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .res-signal { min-height: 12.4rem; padding: 0.85rem; }
+            .res-signal-main {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 0.55rem;
+                min-height: 10.5rem;
+                align-content: space-between;
+            }
+            .res-signal-label {
+                font-size: 0.68rem;
+            }
+            .res-signal-value {
+                margin-top: 0.55rem;
+                font-size: clamp(1.6rem, 8vw, 2.05rem);
+            }
+            .res-signal-note {
+                font-size: 0.72rem;
+            }
+            .res-flow-line {
+                gap: 0.45rem;
+                font-size: 0.68rem;
+            }
+            .res-flow-line strong {
+                font-size: clamp(1rem, 5.4vw, 1.3rem);
+            }
+            .res-signal-visual {
+                width: 100%;
+                height: 4.9rem;
+            }
+            .res-signal .res-mini-gauge {
+                max-width: 4.9rem;
+                height: 4.9rem;
+            }
+        }
+        @media (max-width: 380px) {
+            .res-title {
+                font-size: 1.32rem;
+            }
+            .res-title-icon {
+                width: 2rem;
+                height: 2rem;
+            }
+            .res-live-pill {
+                padding: 0.3rem 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+        @media (max-width: 340px) {
             .res-signal-grid { grid-template-columns: 1fr; }
         }
     </style>
@@ -206,130 +357,75 @@
 
     <section class="res-signal-grid" aria-label="Resource signals">
         <div class="res-signal signal-cpu">
-            <div class="res-signal-label"><i class="fas fa-microchip"></i> CPU Load</div>
-            <div class="res-signal-value" id="res-chip-cpu">--%</div>
-            <div class="res-signal-note"><span id="res-chip-cpu-power">--</span> W package</div>
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-microchip"></i> CPU Load</div>
+                    <div class="res-signal-value" id="res-chip-cpu">--%</div>
+                    <div class="res-signal-note"><span id="res-chip-cpu-power">--</span> W package</div>
+                </div>
+                <div class="res-signal-visual res-mini-gauge gauge-container">
+                    <canvas id="gaugeCpu"></canvas>
+                    <div class="gauge-overlay">
+                        <div class="gauge-value" id="val-cpu">--</div>
+                        <div class="gauge-label">%</div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="res-signal signal-mem">
-            <div class="res-signal-label"><i class="fas fa-memory"></i> Memory Field</div>
-            <div class="res-signal-value" id="res-chip-mem">--%</div>
-            <div class="res-signal-note"><span id="res-chip-mem-used">--</span> / <span id="res-chip-mem-total">--</span> GB</div>
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-memory"></i> Memory Field</div>
+                    <div class="res-signal-value" id="res-chip-mem">--%</div>
+                    <div class="res-signal-note"><span id="res-chip-mem-used">--</span> / <span id="res-chip-mem-total">--</span> GB</div>
+                </div>
+                <div class="res-signal-visual res-mini-gauge gauge-container">
+                    <canvas id="gaugeMem"></canvas>
+                    <div class="gauge-overlay">
+                        <div class="gauge-value" id="val-mem">--</div>
+                        <div class="gauge-label">%</div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="res-signal signal-net">
-            <div class="res-signal-label"><i class="fas fa-wave-square"></i> Network Flow</div>
-            <div class="res-signal-value" id="res-chip-net">--</div>
-            <div class="res-signal-note">out <span id="res-chip-net-out">--</span></div>
-        </div>
-        <div class="res-signal signal-disk">
-            <div class="res-signal-label"><i class="fas fa-hdd"></i> Disk Pulse</div>
-            <div class="res-signal-value" id="res-chip-disk">--</div>
-            <div class="res-signal-note">write <span id="res-chip-disk-w">--</span></div>
-        </div>
-    </section>
-
-    <div class="row g-3 mb-4">
-        
-        <!-- 卡片1：计算资源 (CPU + Memory) -->
-        <div class="col-12 col-lg-6">
-            <div class="card resource-card h-100">
-                <div class="row g-0 h-100">
-                    <div class="col-6 border-end split-panel">
-                        <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
-                            <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-microchip me-1 text-primary"></i> CPU</div>
-                            <div class="gauge-container">
-                                <canvas id="gaugeCpu"></canvas>
-                                <div class="gauge-overlay">
-                                    <div class="gauge-value" id="val-cpu">--</div>
-                                    <div class="gauge-label">%</div>
-                                </div>
-                            </div>
-                            <div class="res-sub-text">
-                                <span id="val-cpu-power">--</span> W
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
-                            <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-memory me-1" style="color: var(--accent-mem)"></i> RAM</div>
-                            <div class="gauge-container">
-                                <canvas id="gaugeMem"></canvas>
-                                <div class="gauge-overlay">
-                                    <div class="gauge-value" id="val-mem">--</div>
-                                    <div class="gauge-label">%</div>
-                                </div>
-                            </div>
-                            <div class="res-sub-text">
-                                <span id="val-mem-used">--</span> / <span id="val-mem-total">--</span> GB
-                            </div>
-                        </div>
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-wave-square"></i> Network Flow</div>
+                    <div class="res-signal-stack">
+                        <div class="res-flow-line"><span>IN</span><strong id="str-net-in">--</strong></div>
+                        <div class="res-flow-line"><span>OUT</span><strong id="str-net-out">--</strong></div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- 卡片2：I/O 资源 (Network + Disk) -->
-        <div class="col-12 col-lg-6">
-            <div class="card resource-card h-100">
-                <div class="row g-0 h-100">
-                    <div class="col-6 border-end split-panel">
-                        <div class="io-section">
-                            <div class="io-label"><i class="fas fa-network-wired me-1" style="color: var(--color-net-in)"></i> Network</div>
-                            <div class="mb-3">
-                                <!-- IN: Green -->
-                                <span class="badge bg-success bg-opacity-25 text-success io-badge">IN</span>
-                                <div class="io-value" id="str-net-in" style="color: var(--color-net-in)">--</div>
-                            </div>
-                            <div>
-                                <!-- OUT: Blue (Modified from Gray) -->
-                                <span class="badge bg-primary bg-opacity-25 text-primary io-badge">OUT</span>
-                                <div class="io-value" id="str-net-out" style="color: var(--color-net-out)">--</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="io-section">
-                            <div class="io-label"><i class="fas fa-hdd me-1" style="color: var(--color-disk-r)"></i> Disk I/O</div>
-                            <div class="mb-3">
-                                <!-- READ: Yellow -->
-                                <span class="badge bg-warning bg-opacity-25 text-warning io-badge">READ</span>
-                                <div class="io-value" id="str-disk-r" style="color: var(--color-disk-r)">--</div>
-                            </div>
-                            <div>
-                                <!-- WRITE: Red (Modified from Gray) -->
-                                <span class="badge bg-danger bg-opacity-25 text-danger io-badge">WRITE</span>
-                                <div class="io-value" id="str-disk-w" style="color: var(--color-disk-w)">--</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-4">
-        <div class="col-xl-8 col-lg-7">
-            <div class="card resource-card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-chart-area me-2"></i><span data-i18n="resources.systemHistory">{{ t('resources.systemHistory') }}</span></span>
-                </div>
-                <div class="chart-card-body">
-                    <canvas id="cpuMemChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-4 col-lg-5 d-flex flex-column gap-4">
-            <div class="card resource-card flex-grow-1">
-                <div class="card-header py-2 fs-6"><i class="fas fa-exchange-alt me-2"></i><span data-i18n="resources.networkTraffic">{{ t('resources.networkTraffic') }}</span></div>
-                <div class="mini-chart-body flex-grow-1">
+                <div class="res-signal-visual res-sparkline">
                     <canvas id="netChart"></canvas>
                 </div>
             </div>
-            
-            <div class="card resource-card flex-grow-1">
-                <div class="card-header py-2 fs-6"><i class="fas fa-server me-2"></i><span data-i18n="resources.diskOperations">{{ t('resources.diskOperations') }}</span></div>
-                <div class="mini-chart-body flex-grow-1">
+        </div>
+        <div class="res-signal signal-disk">
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-hdd"></i> Disk Pulse</div>
+                    <div class="res-signal-stack">
+                        <div class="res-flow-line"><span>READ</span><strong id="str-disk-r">--</strong></div>
+                        <div class="res-flow-line"><span>WRITE</span><strong id="str-disk-w">--</strong></div>
+                    </div>
+                </div>
+                <div class="res-signal-visual res-sparkline">
                     <canvas id="diskChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="card resource-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-chart-area me-2"></i><span data-i18n="resources.systemHistory">{{ resources_system_history }}</span></span>
+                </div>
+                <div class="chart-card-body">
+                    <canvas id="cpuMemChart"></canvas>
                 </div>
             </div>
         </div>
