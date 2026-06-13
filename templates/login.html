@@ -9,60 +9,142 @@
    <link href="{{ url_for('static', filename='css/app-modern.css') }}" rel="stylesheet">
    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <style>
-        body { 
-            background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
-            display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
             overflow: hidden;
         }
-        /* 动态背景装饰 */
-        .bg-glow {
-            position: absolute; width: 600px; height: 600px; background: radial-gradient(circle, rgba(31,111,235,0.1) 0%, rgba(0,0,0,0) 70%);
-            top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: -1;
+        .login-stage {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background:
+                linear-gradient(115deg, transparent 0 44%, color-mix(in srgb, var(--accent-cyan) 16%, transparent) 44% 45%, transparent 45%),
+                linear-gradient(65deg, transparent 0 55%, color-mix(in srgb, var(--accent-magenta) 14%, transparent) 55% 56%, transparent 56%),
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 4%, transparent) 0 1px, transparent 1px 72px),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 72px);
         }
-        .login-card { 
-            width: 100%; max-width: 360px; 
-            background: rgba(22, 27, 34, 0.7); 
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255,255,255,0.1); 
-            border-radius: 16px; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-            padding: 2.5rem;
+        .login-stage::before {
+            content: "";
+            position: absolute;
+            inset: 9vh 8vw;
+            border: 1px solid color-mix(in srgb, var(--accent-yellow) 28%, transparent);
+            clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%);
+            opacity: 0.55;
         }
-        .form-control { 
-            background: rgba(13, 17, 23, 0.8) !important; 
-            border-color: #30363d !important; color: #fff !important; 
-            padding: 0.75rem 1rem;
+        .login-shell {
+            width: min(100% - 2rem, 980px);
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 390px;
+            align-items: center;
+            gap: clamp(1.5rem, 5vw, 4.5rem);
         }
-        .form-control:focus { border-color: #1f6feb !important; box-shadow: 0 0 0 3px rgba(31,111,235,0.3); }
-        .btn-primary { 
-            background: #238636; border: none; padding: 0.75rem; font-weight: 600; letter-spacing: 0.5px;
-            transition: all 0.2s;
+        .login-identity {
+            min-width: 0;
         }
-        .btn-primary:hover { background: #2ea043; transform: translateY(-1px); }
-        .logo-icon { font-size: 3rem; color: #1f6feb; margin-bottom: 1rem; }
+        .login-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            color: var(--accent-yellow);
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 0.82rem;
+            font-weight: 850;
+            text-transform: uppercase;
+        }
+        .login-kicker::before {
+            content: "";
+            width: 2.25rem;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-yellow));
+        }
+        .login-wordmark {
+            margin: 1rem 0 0;
+            color: var(--text-main);
+            font-size: clamp(2.8rem, 8vw, 6.4rem);
+            font-weight: 950;
+            line-height: 0.9;
+            letter-spacing: 0;
+        }
+        .login-server {
+            margin-top: 1rem;
+            color: var(--text-muted);
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            font-weight: 750;
+        }
+        .login-card {
+            width: 100%;
+            padding: 2rem;
+            border-radius: 8px !important;
+        }
+        .login-mark {
+            display: inline-grid;
+            place-items: center;
+            width: 3.5rem;
+            height: 3.5rem;
+            margin-bottom: 1.25rem;
+            border-radius: 8px;
+            color: #07100d;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta));
+            box-shadow: 0 16px 34px color-mix(in srgb, var(--accent-cyan) 24%, transparent);
+        }
+        .logo-icon { font-size: 1.55rem; }
+        .form-control { padding: 0.78rem 1rem; }
+        .btn-primary {
+            min-height: 2.85rem;
+            font-weight: 850;
+        }
+        @media (max-width: 820px) {
+            body { overflow-y: auto; }
+            .login-shell {
+                grid-template-columns: 1fr;
+                padding: 5rem 0 2rem;
+            }
+            .login-identity {
+                text-align: left;
+            }
+            .login-card {
+                max-width: 420px;
+                margin: 0 auto;
+            }
+        }
+        @media (max-width: 480px) {
+            .login-shell { width: min(100% - 1.5rem, 420px); }
+            .login-wordmark { font-size: 3.1rem; }
+            .login-card { padding: 1.4rem; }
+        }
     </style>
 </head>
 <body>
-    <div class="bg-glow"></div>
-    <div class="login-card text-center position-relative">
-        <i class="fas fa-server logo-icon"></i>
-        <h4 class="text-white mb-4 fw-bold" data-i18n="app.loginTitle">{{ t('app.loginTitle') }}</h4>
-        
-        {% if error %}
-        <div id="login-error" class="alert alert-danger py-2 small border-0 bg-danger bg-opacity-25 text-white">{{ error }}</div>
-        {% endif %}
-        
-        <form id="login-form" method="POST">
-            <div class="mb-4 text-start">
-                <label class="form-label text-muted small text-uppercase fw-bold" data-i18n="app.password">{{ t('app.password') }}</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-key"></i></span>
-                    <input type="password" name="password" class="form-control" placeholder="••••••••" autofocus>
+    <div class="login-stage"></div>
+    <main class="login-shell">
+        <section class="login-identity">
+            <div class="login-kicker">{{ server_name }}</div>
+            <h1 class="login-wordmark">IPMI<br>WEB</h1>
+            <div class="login-server">Ops Console</div>
+        </section>
+        <section class="login-card text-center position-relative">
+            <div class="login-mark"><i class="fas fa-server logo-icon"></i></div>
+            <h2 class="h4 mb-4 fw-bold" data-i18n="app.loginTitle">{{ t('app.loginTitle') }}</h2>
+
+            {% if error %}
+            <div id="login-error" class="alert alert-danger py-2 small border-0 bg-danger bg-opacity-25 text-white">{{ error }}</div>
+            {% endif %}
+
+            <form id="login-form" method="POST">
+                <div class="mb-4 text-start">
+                    <label class="form-label text-muted small text-uppercase fw-bold" data-i18n="app.password">{{ t('app.password') }}</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-key"></i></span>
+                        <input type="password" name="password" class="form-control" placeholder="••••••••" autofocus>
+                    </div>
                 </div>
-            </div>
-            <button id="login-btn" type="submit" class="btn btn-primary w-100 rounded-pill" data-i18n="app.login">{{ t('app.login') }}</button>
-        </form>
-    </div>
+                <button id="login-btn" type="submit" class="btn btn-primary w-100" data-i18n="app.login">{{ t('app.login') }}</button>
+            </form>
+        </section>
+    </main>
 
     <script>
         window.I18N_MESSAGES = {{ i18n_messages | tojson }};
