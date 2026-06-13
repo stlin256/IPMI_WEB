@@ -1,0 +1,173 @@
+html {
+    color-scheme: dark;
+    --bg-body: #0b1020;
+    --bg-card: #141b2d;
+    --bg-elevated: #1b2438;
+    --border-color: #2b3650;
+    --text-main: #edf2f7;
+    --text-muted: #9aa7bb;
+    --accent-blue: #4f8cff;
+    --accent-cyan: #2dd4bf;
+    --accent-green: #22c55e;
+    --accent-yellow: #f59e0b;
+    --accent-red: #ef4444;
+    --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.28);
+    --focus-ring: 0 0 0 3px rgba(79, 140, 255, 0.28);
+}
+
+html[data-bs-theme="light"] {
+    color-scheme: light;
+    --bg-body: #f5f7fb;
+    --bg-card: #ffffff;
+    --bg-elevated: #eef3f8;
+    --border-color: #d8e0ea;
+    --text-main: #1f2937;
+    --text-muted: #64748b;
+    --accent-blue: #2563eb;
+    --accent-cyan: #0f766e;
+    --accent-green: #15803d;
+    --accent-yellow: #b45309;
+    --accent-red: #dc2626;
+    --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.09);
+    --bs-body-bg: var(--bg-body);
+    --bs-body-color: var(--text-main);
+    --bs-border-color: var(--border-color);
+}
+
+body {
+    background:
+        linear-gradient(180deg, rgba(79, 140, 255, 0.08), transparent 260px),
+        var(--bg-body) !important;
+    color: var(--text-main) !important;
+    text-rendering: optimizeLegibility;
+}
+
+.navbar {
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.navbar-brand,
+.nav-link.active,
+.nav-link:hover {
+    color: var(--text-main) !important;
+}
+
+.nav-link {
+    color: var(--text-muted) !important;
+    transition: color 160ms ease, transform 160ms ease;
+}
+
+.nav-link:hover {
+    transform: translateY(-1px);
+}
+
+.card,
+.modal-content,
+.dropdown-menu,
+.terminal-body,
+.login-card {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+    border-radius: 8px !important;
+    box-shadow: var(--shadow-soft);
+}
+
+.card-header,
+.modal-header,
+.modal-footer {
+    border-color: var(--border-color) !important;
+}
+
+.text-muted,
+.form-label,
+.gpu-label,
+.info-label {
+    color: var(--text-muted) !important;
+}
+
+.form-control,
+.form-select,
+.input-group-text {
+    background-color: var(--bg-elevated) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-main) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+.btn:focus-visible {
+    border-color: var(--accent-blue) !important;
+    box-shadow: var(--focus-ring) !important;
+}
+
+.table,
+.table-dark {
+    --bs-table-bg: var(--bg-card);
+    --bs-table-color: var(--text-main);
+    --bs-table-border-color: var(--border-color);
+    --bs-table-striped-bg: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+    --bs-table-hover-bg: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+}
+
+html[data-bs-theme="light"] .btn-outline-secondary,
+html[data-bs-theme="light"] .btn-outline-danger,
+html[data-bs-theme="light"] .btn-outline-primary,
+html[data-bs-theme="light"] .btn-outline-info {
+    background-color: rgba(255, 255, 255, 0.7);
+}
+
+html[data-bs-theme="light"] .bg-dark,
+html[data-bs-theme="light"] .bg-black {
+    background-color: var(--bg-elevated) !important;
+}
+
+html[data-bs-theme="light"] .text-white,
+html[data-bs-theme="light"] .text-light {
+    color: var(--text-main) !important;
+}
+
+html[data-bs-theme="light"] .btn-close-white {
+    filter: none;
+}
+
+.ipmi-theme-toggle {
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.ipmi-floating-theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1080;
+}
+
+@media (max-width: 576px) {
+    .ipmi-theme-toggle {
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+    }
+
+    body {
+        background: var(--bg-body) !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+    }
+}
