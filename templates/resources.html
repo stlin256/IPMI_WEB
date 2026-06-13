@@ -14,53 +14,105 @@
     
     <style>
         :root {
-            --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d;
-            --text-main: #e6edf3; --text-muted: #8b949e;
-            --accent-cpu: #1f6feb; --accent-mem: #a371f7; 
-            /* 定义更鲜明的颜色变量 */
-            --color-net-in: #2ea043;   /* 绿色 */
-            --color-net-out: #388bfd;  /* 蓝色 */
-            --color-disk-r: #d29922;   /* 黄色 */
-            --color-disk-w: #f85149;   /* 红色 */
+            --accent-cpu: #2563eb;
+            --accent-mem: #8b5cf6;
+            --color-net-in: #16a34a;
+            --color-net-out: #0ea5e9;
+            --color-disk-r: #d97706;
+            --color-disk-w: #dc2626;
         }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
-        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
-
-        @media (max-width: 576px) {
-            .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
-            .navbar-nav.me-auto { margin-left: 0.5rem !important; }
-            .nav-link { font-size: 0.9rem !important; margin-right: 0.5rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
-            .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
+        body { min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
+        .res-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .res-page-head {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 1.25rem;
+            padding: 1.75rem 0 1.25rem;
+            border-bottom: 1px solid var(--border-color);
         }
-        
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden; }
-        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; padding: 1rem 1.25rem; }
-        
-        /* 仪表盘区域优化 */
+        .res-title {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin: 0;
+            font-size: clamp(1.65rem, 2.8vw, 2.8rem);
+            font-weight: 850;
+            letter-spacing: 0;
+        }
+        .res-title-icon {
+            display: inline-grid;
+            place-items: center;
+            width: 2.6rem;
+            height: 2.6rem;
+            border-radius: 8px;
+            color: #fff;
+            background: linear-gradient(135deg, #2563eb, #16a34a);
+            box-shadow: 0 10px 28px rgba(37, 99, 235, 0.24);
+        }
+        .res-subline {
+            margin-top: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+        .res-live-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            border: 1px solid color-mix(in srgb, var(--accent-green) 36%, var(--border-color));
+            border-radius: 999px;
+            padding: 0.4rem 0.8rem;
+            color: var(--accent-green);
+            font-weight: 850;
+            background: color-mix(in srgb, var(--accent-green) 10%, transparent);
+        }
+        .res-live-pill::before {
+            content: "";
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
+        }
+        .resource-card {
+            border-radius: 8px !important;
+            overflow: hidden;
+            transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        }
+        .resource-card:hover {
+            transform: translateY(-2px);
+            border-color: color-mix(in srgb, var(--accent-blue) 48%, var(--border-color)) !important;
+        }
+        .card-header {
+            background-color: color-mix(in srgb, var(--bg-elevated) 34%, transparent);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 850;
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0;
+            padding: 0.95rem 1.1rem;
+        }
+        .split-panel {
+            border-color: var(--border-color) !important;
+            background: color-mix(in srgb, var(--bg-card) 94%, transparent);
+        }
         .gauge-container { width: 100%; max-width: 140px; height: 140px; position: relative; margin: 0 auto; }
         .gauge-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
-        .gauge-value { font-family: 'SF Mono', monospace; font-size: 2.2rem; font-weight: 800; color: #fff; line-height: 1; }
-        .gauge-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 700; }
-        .res-sub-text { font-size: 0.95rem; font-family: 'SF Mono', monospace; color: var(--text-muted); margin-top: 10px; text-align: center; font-weight: 600; }
-
-        /* IO 区域优化 */
-        .io-section { padding: 1.5rem 1rem; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-        .io-value { font-family: 'SF Mono', monospace; font-size: 1.7rem; font-weight: 800; color: #fff; margin-top: 6px; word-break: break-all; }
-        .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 4px; }
-        .io-badge { font-size: 0.7rem; padding: 3px 6px; border-radius: 4px; font-weight: 700; vertical-align: middle; }
-        
-        /* 分割线 */
-        .divider-vertical { border-right: 1px solid var(--border-color); }
-        /* 移动端调整 */
+        .gauge-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.2rem; font-weight: 900; color: var(--text-main); line-height: 1; }
+        .gauge-label { font-size: 0.82rem; color: var(--text-muted); font-weight: 850; }
+        .res-sub-text { font-size: 0.92rem; font-family: 'SF Mono', Consolas, monospace; color: var(--text-muted); margin-top: 10px; text-align: center; font-weight: 750; }
+        .io-section { min-height: 12.5rem; padding: 1.35rem 1rem; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .io-value { font-family: 'SF Mono', Consolas, monospace; font-size: clamp(1.15rem, 2.1vw, 1.65rem); font-weight: 900; color: var(--text-main); margin-top: 6px; word-break: break-word; }
+        .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0; color: var(--text-muted); margin-bottom: 4px; font-weight: 850; }
+        .io-badge { font-size: 0.68rem; padding: 0.2rem 0.45rem; border-radius: 999px; font-weight: 850; vertical-align: middle; }
+        .chart-card-body { height: 360px; padding: 1rem; position: relative; }
+        .mini-chart-body { min-height: 180px; padding: 0.75rem; position: relative; }
         @media (max-width: 768px) {
-            .gauge-container { max-width: 110px; height: 110px; }
-            .gauge-value { font-size: 1.4rem; }
-            .io-value { font-size: 1.1rem; }
+            .res-page-head { align-items: start; flex-direction: column; padding-top: 1.15rem; }
+            .gauge-container { max-width: 112px; height: 112px; }
+            .gauge-value { font-size: 1.45rem; }
+            .io-section { min-height: 10rem; }
         }
-
-        .chart-card-body { height: 350px; padding: 1rem; position: relative; }
     </style>
 </head>
 <body>
@@ -68,16 +120,25 @@
 {% set active_page = 'resources' %}
 {% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
-    <!-- 顶部概览：合并为2个大卡片 -->
+<main class="res-shell container-fluid px-3 px-md-4 pb-4">
+    <section class="res-page-head">
+        <div>
+            <h1 class="res-title">
+                <span class="res-title-icon"><i class="fas fa-chart-line"></i></span>
+                <span data-i18n="resources.title">{{ t('resources.title') }}</span>
+            </h1>
+            <div class="res-subline">{{ server_name }}</div>
+        </div>
+        <div class="res-live-pill">Live</div>
+    </section>
+
     <div class="row g-3 mb-4">
         
         <!-- 卡片1：计算资源 (CPU + Memory) -->
         <div class="col-12 col-lg-6">
-            <div class="card h-100">
+            <div class="card resource-card h-100">
                 <div class="row g-0 h-100">
-                    <!-- CPU -->
-                    <div class="col-6 border-end border-secondary" style="border-color: #30363d !important;">
+                    <div class="col-6 border-end split-panel">
                         <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
                             <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-microchip me-1 text-primary"></i> CPU</div>
                             <div class="gauge-container">
@@ -92,7 +153,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Memory -->
                     <div class="col-6">
                         <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
                             <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-memory me-1" style="color: var(--accent-mem)"></i> RAM</div>
@@ -114,10 +174,9 @@
 
         <!-- 卡片2：I/O 资源 (Network + Disk) -->
         <div class="col-12 col-lg-6">
-            <div class="card h-100">
+            <div class="card resource-card h-100">
                 <div class="row g-0 h-100">
-                    <!-- Network -->
-                    <div class="col-6 border-end border-secondary" style="border-color: #30363d !important;">
+                    <div class="col-6 border-end split-panel">
                         <div class="io-section">
                             <div class="io-label"><i class="fas fa-network-wired me-1" style="color: var(--color-net-in)"></i> Network</div>
                             <div class="mb-3">
@@ -132,7 +191,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Disk -->
                     <div class="col-6">
                         <div class="io-section">
                             <div class="io-label"><i class="fas fa-hdd me-1" style="color: var(--color-disk-r)"></i> Disk I/O</div>
@@ -153,11 +211,9 @@
         </div>
     </div>
 
-    <!-- 图表区域 -->
     <div class="row g-4">
-        <!-- 左侧：System Load -->
         <div class="col-xl-8 col-lg-7">
-            <div class="card h-100">
+            <div class="card resource-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="fas fa-chart-area me-2"></i><span data-i18n="resources.systemHistory">{{ t('resources.systemHistory') }}</span></span>
                 </div>
@@ -167,26 +223,23 @@
             </div>
         </div>
 
-        <!-- 右侧：IO Charts (Stacked) -->
         <div class="col-xl-4 col-lg-5 d-flex flex-column gap-4">
-            <!-- Network -->
-            <div class="card flex-grow-1">
+            <div class="card resource-card flex-grow-1">
                 <div class="card-header py-2 fs-6"><i class="fas fa-exchange-alt me-2"></i><span data-i18n="resources.networkTraffic">{{ t('resources.networkTraffic') }}</span></div>
-                <div class="p-2 flex-grow-1" style="min-height: 160px; position: relative;">
+                <div class="mini-chart-body flex-grow-1">
                     <canvas id="netChart"></canvas>
                 </div>
             </div>
             
-            <!-- Disk -->
-            <div class="card flex-grow-1">
+            <div class="card resource-card flex-grow-1">
                 <div class="card-header py-2 fs-6"><i class="fas fa-server me-2"></i><span data-i18n="resources.diskOperations">{{ t('resources.diskOperations') }}</span></div>
-                <div class="p-2 flex-grow-1" style="min-height: 160px; position: relative;">
+                <div class="mini-chart-body flex-grow-1">
                     <canvas id="diskChart"></canvas>
                 </div>
             </div>
         </div>
     </div>
-</div>
+</main>
 
 <script>
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};

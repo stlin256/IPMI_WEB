@@ -1,34 +1,40 @@
 html {
     color-scheme: dark;
-    --bg-body: #0b1020;
-    --bg-card: #141b2d;
-    --bg-elevated: #1b2438;
-    --border-color: #2b3650;
-    --text-main: #edf2f7;
-    --text-muted: #9aa7bb;
-    --accent-blue: #4f8cff;
+    --bg-body: #080907;
+    --bg-card: rgba(18, 22, 24, 0.9);
+    --bg-elevated: rgba(31, 36, 38, 0.88);
+    --border-color: rgba(174, 186, 170, 0.16);
+    --text-main: #f4f1e8;
+    --text-muted: #a8afa4;
+    --accent-blue: #4cc9f0;
     --accent-cyan: #2dd4bf;
-    --accent-green: #22c55e;
-    --accent-yellow: #f59e0b;
-    --accent-red: #ef4444;
-    --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.28);
-    --focus-ring: 0 0 0 3px rgba(79, 140, 255, 0.28);
+    --accent-green: #78d64b;
+    --accent-yellow: #f4b740;
+    --accent-red: #ff5d5d;
+    --accent-magenta: #ff4fa3;
+    --accent-ember: #ff7a3d;
+    --shadow-soft: 0 18px 46px rgba(0, 0, 0, 0.34);
+    --focus-ring: 0 0 0 3px rgba(45, 212, 191, 0.26);
+    --surface-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 42%, rgba(244, 183, 64, 0.05));
 }
 
 html[data-bs-theme="light"] {
     color-scheme: light;
-    --bg-body: #f5f7fb;
-    --bg-card: #ffffff;
-    --bg-elevated: #eef3f8;
-    --border-color: #d8e0ea;
-    --text-main: #1f2937;
-    --text-muted: #64748b;
-    --accent-blue: #2563eb;
-    --accent-cyan: #0f766e;
-    --accent-green: #15803d;
-    --accent-yellow: #b45309;
-    --accent-red: #dc2626;
-    --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.09);
+    --bg-body: #f6f2e8;
+    --bg-card: rgba(255, 253, 247, 0.92);
+    --bg-elevated: rgba(238, 231, 216, 0.88);
+    --border-color: rgba(82, 77, 63, 0.18);
+    --text-main: #26241f;
+    --text-muted: #706d61;
+    --accent-blue: #0077b6;
+    --accent-cyan: #008f8c;
+    --accent-green: #3f8f29;
+    --accent-yellow: #ba7200;
+    --accent-red: #cb3a35;
+    --accent-magenta: #c62b7a;
+    --accent-ember: #d95f18;
+    --shadow-soft: 0 14px 32px rgba(66, 57, 38, 0.12);
+    --surface-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.34) 46%, rgba(0, 143, 140, 0.06));
     --bs-body-bg: var(--bg-body);
     --bs-body-color: var(--text-main);
     --bs-border-color: var(--border-color);
@@ -36,16 +42,46 @@ html[data-bs-theme="light"] {
 
 body {
     background:
-        linear-gradient(180deg, rgba(79, 140, 255, 0.08), transparent 260px),
+        linear-gradient(120deg, rgba(76, 201, 240, 0.12), transparent 28rem),
+        linear-gradient(235deg, rgba(255, 79, 163, 0.1), transparent 24rem),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 88px),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 88px),
         var(--bg-body) !important;
     color: var(--text-main) !important;
     text-rendering: optimizeLegibility;
 }
 
+html[data-bs-theme="light"] body {
+    background:
+        linear-gradient(120deg, rgba(0, 143, 140, 0.1), transparent 28rem),
+        linear-gradient(235deg, rgba(198, 43, 122, 0.08), transparent 24rem),
+        repeating-linear-gradient(90deg, rgba(38, 36, 31, 0.035) 0 1px, transparent 1px 88px),
+        repeating-linear-gradient(0deg, rgba(38, 36, 31, 0.025) 0 1px, transparent 1px 88px),
+        var(--bg-body) !important;
+}
+
+::selection {
+    color: #07100d;
+    background: color-mix(in srgb, var(--accent-cyan) 68%, var(--accent-yellow));
+}
+
 .navbar {
-    background: color-mix(in srgb, var(--bg-card) 88%, transparent) !important;
+    position: relative;
+    background: color-mix(in srgb, var(--bg-card) 84%, transparent) !important;
     border-bottom: 1px solid var(--border-color) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 32px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(18px) saturate(1.25);
+}
+
+.navbar::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta), transparent);
+    opacity: 0.55;
 }
 
 .navbar-brand,
@@ -56,10 +92,12 @@ body {
 
 .nav-link {
     color: var(--text-muted) !important;
-    transition: color 160ms ease, transform 160ms ease;
+    border-radius: 8px;
+    transition: color 160ms ease, transform 160ms ease, background-color 160ms ease;
 }
 
 .nav-link:hover {
+    background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
     transform: translateY(-1px);
 }
 
@@ -68,11 +106,12 @@ body {
 .dropdown-menu,
 .terminal-body,
 .login-card {
-    background-color: var(--bg-card) !important;
+    background: var(--surface-sheen), var(--bg-card) !important;
     border-color: var(--border-color) !important;
     color: var(--text-main) !important;
     border-radius: 8px !important;
     box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(18px) saturate(1.18);
 }
 
 .card-header,
@@ -91,9 +130,24 @@ body {
 .form-control,
 .form-select,
 .input-group-text {
-    background-color: var(--bg-elevated) !important;
+    background: color-mix(in srgb, var(--bg-elevated) 88%, transparent) !important;
     border-color: var(--border-color) !important;
     color: var(--text-main) !important;
+}
+
+.btn {
+    border-radius: 8px;
+    transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)) !important;
+    border-color: color-mix(in srgb, var(--accent-cyan) 58%, var(--accent-blue)) !important;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-cyan) 24%, transparent);
 }
 
 .form-control:focus,
@@ -196,7 +250,9 @@ html[data-bs-theme="light"] .btn-close-white {
     }
 
     body {
-        background: var(--bg-body) !important;
+        background:
+            linear-gradient(145deg, rgba(76, 201, 240, 0.08), transparent 20rem),
+            var(--bg-body) !important;
     }
 }
 
