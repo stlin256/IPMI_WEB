@@ -150,6 +150,45 @@ html[data-bs-theme="light"] .btn-close-white {
 }
 
 @media (max-width: 576px) {
+    .navbar .container-fluid {
+        gap: 0.45rem;
+        flex-wrap: nowrap;
+        overflow: hidden;
+    }
+
+    .navbar-brand {
+        min-width: 0;
+        max-width: 38vw;
+        margin-right: 0 !important;
+    }
+
+    .navbar-brand .fw-bold {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .navbar .navbar-nav.me-auto {
+        min-width: 0;
+        flex: 1 1 auto;
+        margin-left: 0.25rem !important;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .navbar .navbar-nav.me-auto::-webkit-scrollbar {
+        display: none;
+    }
+
+    .navbar .nav-link {
+        flex: 0 0 auto;
+        margin-right: 0.6rem !important;
+    }
+
+    .navbar .btn {
+        flex: 0 0 auto;
+    }
+
     .ipmi-theme-toggle {
         width: 2rem;
         height: 2rem;
