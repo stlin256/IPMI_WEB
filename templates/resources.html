@@ -74,10 +74,77 @@
             background: currentColor;
             box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
         }
+        .res-signal-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 1px;
+            margin: 1.25rem 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background:
+                linear-gradient(90deg, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta)),
+                var(--border-color);
+            box-shadow: var(--shadow-soft);
+        }
+        .res-signal {
+            position: relative;
+            min-height: 7rem;
+            padding: 1rem;
+            overflow: hidden;
+            background:
+                linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 96%, transparent), color-mix(in srgb, var(--bg-elevated) 72%, transparent)),
+                var(--bg-card);
+        }
+        .res-signal::after {
+            content: "";
+            position: absolute;
+            left: 1rem;
+            right: 1rem;
+            bottom: 0.75rem;
+            height: 0.28rem;
+            border-radius: 999px;
+            background: linear-gradient(90deg, currentColor, transparent);
+            opacity: 0.42;
+        }
+        .res-signal-label {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .res-signal-value {
+            margin-top: 0.85rem;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: clamp(1.15rem, 2.1vw, 1.75rem);
+            font-weight: 950;
+            color: var(--text-main);
+            overflow-wrap: anywhere;
+        }
+        .res-signal-note {
+            margin-top: 0.2rem;
+            color: var(--text-muted);
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+        .signal-cpu { color: var(--accent-cpu); }
+        .signal-mem { color: var(--accent-mem); }
+        .signal-net { color: var(--color-net-in); }
+        .signal-disk { color: var(--color-disk-r); }
         .resource-card {
             border-radius: 8px !important;
             overflow: hidden;
             transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        }
+        .resource-card::before {
+            content: "";
+            display: block;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-yellow), var(--accent-magenta));
+            opacity: 0.82;
         }
         .resource-card:hover {
             transform: translateY(-2px);
@@ -109,9 +176,13 @@
         .mini-chart-body { min-height: 180px; padding: 0.75rem; position: relative; }
         @media (max-width: 768px) {
             .res-page-head { align-items: start; flex-direction: column; padding-top: 1.15rem; }
+            .res-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .gauge-container { max-width: 112px; height: 112px; }
             .gauge-value { font-size: 1.45rem; }
             .io-section { min-height: 10rem; }
+        }
+        @media (max-width: 480px) {
+            .res-signal-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -130,6 +201,29 @@
             <div class="res-subline">{{ server_name }}</div>
         </div>
         <div class="res-live-pill">Live</div>
+    </section>
+
+    <section class="res-signal-grid" aria-label="Resource signals">
+        <div class="res-signal signal-cpu">
+            <div class="res-signal-label"><i class="fas fa-microchip"></i> CPU Load</div>
+            <div class="res-signal-value" id="res-chip-cpu">--%</div>
+            <div class="res-signal-note"><span id="res-chip-cpu-power">--</span> W package</div>
+        </div>
+        <div class="res-signal signal-mem">
+            <div class="res-signal-label"><i class="fas fa-memory"></i> Memory Field</div>
+            <div class="res-signal-value" id="res-chip-mem">--%</div>
+            <div class="res-signal-note"><span id="res-chip-mem-used">--</span> / <span id="res-chip-mem-total">--</span> GB</div>
+        </div>
+        <div class="res-signal signal-net">
+            <div class="res-signal-label"><i class="fas fa-wave-square"></i> Network Flow</div>
+            <div class="res-signal-value" id="res-chip-net">--</div>
+            <div class="res-signal-note">out <span id="res-chip-net-out">--</span></div>
+        </div>
+        <div class="res-signal signal-disk">
+            <div class="res-signal-label"><i class="fas fa-hdd"></i> Disk Pulse</div>
+            <div class="res-signal-value" id="res-chip-disk">--</div>
+            <div class="res-signal-note">write <span id="res-chip-disk-w">--</span></div>
+        </div>
     </section>
 
     <div class="row g-3 mb-4">

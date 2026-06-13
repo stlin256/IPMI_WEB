@@ -159,10 +159,24 @@
         window.IPMI.setText('#val-cpu-power', data.cpu_power_w !== undefined ? data.cpu_power_w : '--');
         window.IPMI.setText('#val-mem-used', data.mem_used);
         window.IPMI.setText('#val-mem-total', data.mem_total);
-        window.IPMI.setText('#str-disk-r', window.IPMI.formatBytes(data.disk_r));
-        window.IPMI.setText('#str-disk-w', window.IPMI.formatBytes(data.disk_w));
-        window.IPMI.setText('#str-net-in', window.IPMI.formatBytes(data.net_in));
-        window.IPMI.setText('#str-net-out', window.IPMI.formatBytes(data.net_out));
+        const diskRead = window.IPMI.formatBytes(data.disk_r);
+        const diskWrite = window.IPMI.formatBytes(data.disk_w);
+        const netIn = window.IPMI.formatBytes(data.net_in);
+        const netOut = window.IPMI.formatBytes(data.net_out);
+        window.IPMI.setText('#str-disk-r', diskRead);
+        window.IPMI.setText('#str-disk-w', diskWrite);
+        window.IPMI.setText('#str-net-in', netIn);
+        window.IPMI.setText('#str-net-out', netOut);
+
+        window.IPMI.setText('#res-chip-cpu', `${data.cpu}%`);
+        window.IPMI.setText('#res-chip-cpu-power', data.cpu_power_w !== undefined ? data.cpu_power_w : '--');
+        window.IPMI.setText('#res-chip-mem', `${data.mem_percent}%`);
+        window.IPMI.setText('#res-chip-mem-used', data.mem_used);
+        window.IPMI.setText('#res-chip-mem-total', data.mem_total);
+        window.IPMI.setText('#res-chip-net', netIn);
+        window.IPMI.setText('#res-chip-net-out', netOut);
+        window.IPMI.setText('#res-chip-disk', diskRead);
+        window.IPMI.setText('#res-chip-disk-w', diskWrite);
 
         updateGauge(gaugeCpuChart, data.cpu);
         updateGauge(gaugeMemChart, data.mem_percent);
