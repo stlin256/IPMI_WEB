@@ -136,6 +136,7 @@
         .hw-title-icon {
             display: inline-grid;
             place-items: center;
+            flex: 0 0 auto;
             width: 2.6rem;
             height: 2.6rem;
             border-radius: 8px;
@@ -143,6 +144,12 @@
             background: var(--accent-red);
             border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
             box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-red) 18%, transparent);
+            line-height: 1;
+            overflow: hidden;
+        }
+        .hw-title-icon i {
+            font-size: 1.35rem;
+            line-height: 1;
         }
         .hw-subline {
             margin-top: 0.75rem;
@@ -316,7 +323,30 @@
         @media (max-width: 576px) {
             .hw-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
             .hw-page-head { padding-top: 1.15rem; }
-            .hw-health-strip { grid-template-columns: 1fr; }
+            .hw-title-icon { width: 2.25rem; height: 2.25rem; }
+            .hw-title-icon i { font-size: 1.2rem; }
+            .hw-health-strip {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                min-width: 0;
+                width: 100%;
+            }
+            .hw-health-item {
+                min-width: 0;
+                padding: 0.7rem 0.65rem;
+            }
+            .hw-health-label {
+                font-size: 0.64rem;
+                white-space: nowrap;
+            }
+            .hw-health-value {
+                display: flex;
+                align-items: baseline;
+                gap: 0.25rem;
+                margin-top: 0.3rem;
+                font-size: clamp(1rem, 5.3vw, 1.35rem);
+                line-height: 1;
+                white-space: nowrap;
+            }
             .metric-box { padding: 1.1rem 0.75rem; }
             .metric-value {
                 font-size: clamp(1.75rem, 8.8vw, 2.35rem);
@@ -339,7 +369,7 @@
                 <span class="hw-title-icon"><i class="fas fa-server"></i></span>
                 <span data-i18n="hardware.title">{{ hardware_page_title }}</span>
             </h1>
-            <div class="hw-subline"><strong>{{ server_name }}</strong> · <span data-i18n="hardware.subline">silicon telemetry command surface</span></div>
+            <div class="hw-subline"><strong>{{ server_name }}</strong> · <span data-i18n="hardware.subline">hardware status overview</span></div>
         </div>
         <div class="hw-health-strip" aria-label="Hardware live summary">
             <div class="hw-health-item">

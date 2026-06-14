@@ -49,17 +49,19 @@
         .history-title-icon {
             display: inline-grid;
             place-items: center;
+            flex: 0 0 auto;
             width: 2.45rem;
             height: 2.45rem;
             border-radius: 8px;
             color: #fff7e8;
             background: var(--accent-yellow);
             border: 1px solid color-mix(in srgb, var(--accent-yellow) 72%, var(--border-color));
+            line-height: 1;
+            overflow: hidden;
         }
-        .history-subline {
-            margin-top: 0.6rem;
-            color: var(--text-muted);
-            font-weight: 750;
+        .history-title-icon i {
+            font-size: 1.3rem;
+            line-height: 1;
         }
         .history-live-mark {
             display: inline-flex;
@@ -234,7 +236,6 @@
                 <span class="history-title-icon"><i class="fas fa-chart-line"></i></span>
                 <span data-i18n="history.title">{{ history_page_title }}</span>
             </h1>
-            <div class="history-subline">{{ server_name }} · <span data-i18n="history.subline">editorial telemetry archive</span></div>
         </div>
         <div class="history-live-mark"><i class="fas fa-layer-group"></i> <span data-i18n="history.multiSignalView">multi-signal view</span></div>
     </section>

@@ -88,7 +88,7 @@ html[data-bs-theme="dark"] {
 
     html.ipmi-motion-enabled.ipmi-page-ready body > :not(.navbar):not(.modal):not(.modal-backdrop):not(.toast-container) {
         opacity: 1;
-        transform: translateY(0);
+        transform: none;
         transition: opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
             transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
     }
@@ -169,7 +169,19 @@ html[data-bs-theme="dark"] body {
     white-space: nowrap;
 }
 
+.navbar-brand-label {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+}
+
 #log-dot {
+    position: absolute;
+    top: 0.1rem;
+    right: -0.34rem;
+    transform: translate(50%, -50%);
     display: block !important;
     width: 0.58rem;
     height: 0.58rem;
@@ -418,6 +430,10 @@ section,
     overflow-wrap: anywhere;
 }
 
+.navbar-brand > i {
+    flex: 0 0 auto;
+}
+
 .text-muted,
 .form-label,
 .gpu-label,
@@ -593,12 +609,16 @@ html[data-bs-theme="light"] .btn-close-white {
     }
 
     .navbar-brand {
-        min-width: 0;
+        min-width: min(7ch, 42vw);
         max-width: 38vw;
+        flex: 0 1 auto;
         margin-right: 0 !important;
     }
 
     .navbar-brand .fw-bold {
+        display: inline-block;
+        min-width: min(7ch, 30vw);
+        max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;

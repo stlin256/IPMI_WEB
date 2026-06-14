@@ -1,10 +1,13 @@
 {% set active_page = active_page|default('') %}
 <nav class="navbar navbar-expand navbar-light sticky-top">
     <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
+        <a class="navbar-brand d-flex align-items-center" href="/logs">
+            <i class="fas fa-server me-2 text-primary"></i>
+            <span class="navbar-brand-label">
+                <span class="fw-bold fs-4">{{ server_name }}</span>
+                <span id="log-dot" class="bg-danger border border-light rounded-circle d-none">
+                    <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
+                </span>
             </span>
         </a>
         <div class="navbar-nav flex-row me-auto ms-4">
