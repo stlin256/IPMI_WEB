@@ -214,14 +214,14 @@
         @keyframes login-theme-shell-sheen {
             0% {
                 opacity: 0;
-                transform: translateX(-38%) skewX(-12deg);
+                transform: translateX(38%) skewX(-12deg);
             }
             46% {
                 opacity: 0.56;
             }
             100% {
                 opacity: 0;
-                transform: translateX(38%) skewX(-12deg);
+                transform: translateX(-38%) skewX(-12deg);
             }
         }
         .login-shell {
@@ -240,7 +240,7 @@
             pointer-events: none;
             opacity: 0;
             background: linear-gradient(105deg, transparent 18%, color-mix(in srgb, var(--accent-yellow) 30%, transparent) 48%, transparent 76%);
-            transform: translateX(-36%) skewX(-12deg);
+            transform: translateX(36%) skewX(-12deg);
             filter: blur(8px);
             mix-blend-mode: screen;
         }
@@ -446,9 +446,6 @@
         const loginBtn = document.getElementById('login-btn');
         const errorMsg = document.getElementById('login-error');
         const loginForm = document.getElementById('login-form');
-        let loginThemeTimer = null;
-        let loginThemeSwitchTimer = null;
-        let loginThemeClickSwitch = false;
 
         if (waitSeconds > 0) {
             startCooldown(waitSeconds);
@@ -487,57 +484,6 @@
             loginBtn.disabled = true;
             loginBtn.innerText = t('app.verifying');
         };
-
-        function themeTogglePoint() {
-            const toggle = document.querySelector('.ipmi-theme-toggle');
-            if (!toggle) return;
-            const rect = toggle.getBoundingClientRect();
-            document.body.style.setProperty('--login-theme-x', `${rect.left + rect.width / 2}px`);
-            document.body.style.setProperty('--login-theme-y', `${rect.top + rect.height / 2}px`);
-        }
-
-        function runLoginThemeAnimation() {
-            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            const root = document.documentElement;
-            themeTogglePoint();
-            root.classList.remove('login-theme-shifting');
-            void root.offsetWidth;
-            root.classList.add('login-theme-shifting');
-            clearTimeout(loginThemeTimer);
-            loginThemeTimer = setTimeout(() => {
-                root.classList.remove('login-theme-shifting');
-            }, 432);
-        }
-
-        document.addEventListener('click', (event) => {
-            const target = event.target instanceof Element ? event.target : null;
-            const toggle = target ? target.closest('.ipmi-theme-toggle') : null;
-            if (!toggle || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            event.preventDefault();
-            event.stopImmediatePropagation();
-
-            const root = document.documentElement;
-            if (root.classList.contains('login-theme-shifting')) return;
-
-            const currentTheme = window.IPMITheme ? window.IPMITheme.get() : (root.getAttribute('data-bs-theme') || 'light');
-            const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            runLoginThemeAnimation();
-            clearTimeout(loginThemeSwitchTimer);
-            loginThemeSwitchTimer = setTimeout(() => {
-                loginThemeClickSwitch = true;
-                if (window.IPMITheme && typeof window.IPMITheme.set === 'function') {
-                    window.IPMITheme.set(nextTheme);
-                } else {
-                    root.setAttribute('data-bs-theme', nextTheme);
-                }
-                loginThemeClickSwitch = false;
-            }, 84);
-        }, true);
-
-        window.addEventListener('ipmi:theme-change', () => {
-            if (loginThemeClickSwitch) return;
-            runLoginThemeAnimation();
-        });
     </script>
 </body>
 </html>
