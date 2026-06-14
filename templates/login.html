@@ -13,9 +13,9 @@
     <style>
         body {
             min-height: 100vh;
-            min-height: 100dvh;
-            min-height: var(--ipmi-visual-height, 100dvh);
+            min-height: 100svh;
             margin: 0;
+            position: relative;
             display: grid;
             place-items: center;
             overflow: hidden;
@@ -282,6 +282,12 @@
             font-size: clamp(1.12rem, 2.25vw, 1.45rem);
             font-weight: 850;
         }
+        .ipmi-floating-theme-toggle {
+            position: absolute;
+            top: calc(1rem + env(safe-area-inset-top));
+            right: calc(1rem + env(safe-area-inset-right));
+            z-index: 21;
+        }
         @keyframes login-credit-reveal {
             0% {
                 opacity: 0;
@@ -308,11 +314,11 @@
             }
         }
         .login-github-credit {
-            position: fixed;
+            position: absolute;
             right: clamp(12px, 2vw, 24px);
-            right: calc(clamp(12px, 2vw, 24px) + var(--ipmi-visual-right-offset, 0px) + env(safe-area-inset-right));
+            right: calc(clamp(12px, 2vw, 24px) + env(safe-area-inset-right));
             bottom: clamp(10px, 1.8vw, 20px);
-            bottom: calc(clamp(10px, 1.8vw, 20px) + var(--ipmi-visual-bottom-offset, 0px) + env(safe-area-inset-bottom));
+            bottom: calc(clamp(10px, 1.8vw, 20px) + env(safe-area-inset-bottom));
             z-index: 5;
             display: inline-flex;
             align-items: center;
@@ -493,8 +499,6 @@
         @media (max-width: 820px) {
             body {
                 min-height: 100svh;
-                min-height: 100dvh;
-                min-height: var(--ipmi-visual-height, 100dvh);
                 overflow-x: clip;
                 overflow-y: auto;
             }
@@ -516,11 +520,14 @@
             .login-identity { padding-left: 0.75rem; }
             .login-wordmark { font-size: 3.1rem; }
             .login-card { padding: 1.35rem; }
+            .ipmi-floating-theme-toggle {
+                top: calc(0.75rem + env(safe-area-inset-top));
+                right: calc(0.75rem + env(safe-area-inset-right));
+            }
             .login-github-credit {
                 right: 0.75rem;
-                right: calc(0.75rem + var(--ipmi-visual-right-offset, 0px) + env(safe-area-inset-right));
+                right: calc(0.75rem + env(safe-area-inset-right));
                 bottom: calc(0.75rem + env(safe-area-inset-bottom));
-                bottom: calc(0.75rem + var(--ipmi-visual-bottom-offset, 0px) + env(safe-area-inset-bottom));
             }
         }
     </style>

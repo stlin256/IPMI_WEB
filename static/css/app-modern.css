@@ -1,9 +1,6 @@
 html {
     color-scheme: only light;
     --ipmi-visual-right-offset: 0px;
-    --ipmi-visual-bottom-offset: 0px;
-    --ipmi-visual-width: 100vw;
-    --ipmi-visual-height: 100vh;
     --bg-body: #f3ead7;
     --bg-card: rgba(255, 250, 238, 0.94);
     --bg-elevated: rgba(235, 224, 204, 0.9);

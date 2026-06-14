@@ -39,15 +39,12 @@
     function updateVisualViewportMetrics() {
         const viewport = window.visualViewport;
         const visualWidth = viewport ? viewport.width : window.innerWidth;
-        const visualHeight = viewport ? viewport.height : window.innerHeight;
         const offsetLeft = viewport ? viewport.offsetLeft : 0;
-        const offsetTop = viewport ? viewport.offsetTop : 0;
         const rightOffset = Math.max(0, window.innerWidth - visualWidth - offsetLeft);
-        const bottomOffset = Math.max(0, window.innerHeight - visualHeight - offsetTop);
-        root.style.setProperty('--ipmi-visual-width', `${visualWidth}px`);
-        root.style.setProperty('--ipmi-visual-height', `${visualHeight}px`);
-        root.style.setProperty('--ipmi-visual-right-offset', `${rightOffset}px`);
-        root.style.setProperty('--ipmi-visual-bottom-offset', `${bottomOffset}px`);
+        const nextRightOffset = `${rightOffset.toFixed(2)}px`;
+        if (root.style.getPropertyValue('--ipmi-visual-right-offset') !== nextRightOffset) {
+            root.style.setProperty('--ipmi-visual-right-offset', nextRightOffset);
+        }
     }
 
     function installThemeMotionStyles() {
@@ -302,7 +299,6 @@ html[data-bs-theme="light"] body::after {
     window.addEventListener('resize', updateVisualViewportMetrics, { passive: true });
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', updateVisualViewportMetrics, { passive: true });
-        window.visualViewport.addEventListener('scroll', updateVisualViewportMetrics, { passive: true });
     }
     window.addEventListener('ipmi:theme-change', () => {
         document.querySelectorAll('.ipmi-theme-toggle').forEach(syncButton);
