@@ -309,11 +309,11 @@
         .input-group-text,
         .btn-primary {
             transition:
-                background-color 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                border-color 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                box-shadow 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                color 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                filter 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+                background-color 252ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                border-color 252ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                box-shadow 252ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                color 252ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                filter 252ms cubic-bezier(0.22, 0.61, 0.36, 1);
         }
         .form-control { padding: 0.78rem 1rem; }
         .btn-primary {
@@ -323,28 +323,28 @@
         @media (prefers-reduced-motion: no-preference) {
             .login-stage::after {
                 animation:
-                    login-grid-reveal 150ms cubic-bezier(0.18, 0.84, 0.26, 1) both 40ms,
-                    login-stage-drift 15s ease-in-out infinite alternate 150ms;
+                    login-grid-reveal 120ms cubic-bezier(0.18, 0.84, 0.26, 1) both 32ms,
+                    login-stage-drift 15s ease-in-out infinite alternate 120ms;
             }
             .login-stage::before {
-                animation: login-frame-reveal 1.7s cubic-bezier(0.18, 0.84, 0.26, 1) both 980ms;
+                animation: login-frame-reveal 1.36s cubic-bezier(0.18, 0.84, 0.26, 1) both 784ms;
             }
             .login-identity {
-                animation: login-identity-reveal 1.45s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.35s;
+                animation: login-identity-reveal 1.16s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.08s;
             }
             .login-kicker::before {
                 transform-origin: left center;
-                animation: login-kicker-line 1.05s cubic-bezier(0.16, 1, 0.3, 1) both 1.72s;
+                animation: login-kicker-line 840ms cubic-bezier(0.16, 1, 0.3, 1) both 1.376s;
             }
             .login-wordmark {
                 transform-origin: left bottom;
-                animation: login-wordmark-reveal 1.55s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.85s;
+                animation: login-wordmark-reveal 1.24s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.48s;
             }
             .login-server {
-                animation: login-identity-reveal 1.3s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.18s;
+                animation: login-identity-reveal 1.04s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.744s;
             }
             .login-card {
-                animation: login-card-reveal 1.55s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.35s;
+                animation: login-card-reveal 1.24s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.88s;
             }
             html.ipmi-motion-enabled .login-shell .login-card.ipmi-motion-target {
                 opacity: 0;
@@ -352,19 +352,19 @@
                 filter: blur(12px);
             }
             html.ipmi-motion-enabled.ipmi-page-ready .login-shell .login-card.ipmi-motion-target {
-                animation: login-card-reveal 1.55s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.35s;
+                animation: login-card-reveal 1.24s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.88s;
             }
             .login-card::before {
-                animation: login-card-glow 2.7s cubic-bezier(0.16, 1, 0.3, 1) both 2.85s;
+                animation: login-card-glow 2.16s cubic-bezier(0.16, 1, 0.3, 1) both 2.28s;
             }
             html.login-theme-shifting body::before {
-                animation: login-theme-wash 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+                animation: login-theme-wash 384ms cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             html.login-theme-shifting .login-stage {
-                animation: login-theme-stage-shift 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+                animation: login-theme-stage-shift 384ms cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             html.login-theme-shifting .login-shell::before {
-                animation: login-theme-shell-sheen 680ms cubic-bezier(0.16, 1, 0.3, 1) both 35ms;
+                animation: login-theme-shell-sheen 408ms cubic-bezier(0.16, 1, 0.3, 1) both 21ms;
             }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -506,7 +506,7 @@
             clearTimeout(loginThemeTimer);
             loginThemeTimer = setTimeout(() => {
                 root.classList.remove('login-theme-shifting');
-            }, 720);
+            }, 432);
         }
 
         document.addEventListener('click', (event) => {
@@ -531,7 +531,7 @@
                     root.setAttribute('data-bs-theme', nextTheme);
                 }
                 loginThemeClickSwitch = false;
-            }, 140);
+            }, 84);
         }, true);
 
         window.addEventListener('ipmi:theme-change', () => {
