@@ -524,6 +524,21 @@
     0% { opacity: 0; transform: translateY(8px) scaleY(0.94); filter: saturate(0.75); }
     100% { opacity: 1; transform: translateY(0) scaleY(1); filter: saturate(1); }
 }
+@keyframes ipmi-motion-metric-icon {
+    0% { opacity: 0; transform: rotate(-15deg) scale(0.86); }
+    64% { opacity: 0.2; transform: rotate(-12deg) scale(1.04); }
+    100% { opacity: 0.16; transform: rotate(-15deg) scale(1); }
+}
+@keyframes ipmi-motion-history-head {
+    0% { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.985); filter: blur(8px); }
+    58% { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.004); filter: blur(0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@keyframes ipmi-motion-filter {
+    0% { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.94); filter: blur(5px); }
+    70% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1.018); filter: blur(0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
 @media (prefers-reduced-motion: no-preference) {
     html.ipmi-motion-enabled .ipmi-motion-target {
         opacity: 0;
@@ -548,6 +563,14 @@
         animation-duration: 640ms;
         transform-origin: 50% 100%;
     }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-history-head {
+        animation-name: ipmi-motion-history-head;
+        animation-duration: 720ms;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-filter {
+        animation-name: ipmi-motion-filter;
+        animation-duration: 520ms;
+    }
     html.ipmi-motion-enabled .ipmi-motion-icon {
         opacity: 0;
         transform: rotate(-8deg) scale(0.84);
@@ -555,6 +578,21 @@
     }
     html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-icon {
         animation: ipmi-motion-icon 520ms cubic-bezier(0.2, 1.25, 0.32, 1) both;
+        animation-delay: var(--ipmi-motion-delay, 90ms);
+    }
+    html.ipmi-motion-enabled .metric-box > .metric-icon.ipmi-motion-icon {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        width: auto;
+        height: auto;
+        opacity: 0;
+        transform: rotate(-15deg) scale(0.86);
+        pointer-events: none;
+        z-index: 0;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .metric-box > .metric-icon.ipmi-motion-icon {
+        animation: ipmi-motion-metric-icon 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
         animation-delay: var(--ipmi-motion-delay, 90ms);
     }
     html.ipmi-motion-enabled .ipmi-motion-sheen {
@@ -575,7 +613,7 @@
         animation: ipmi-motion-sheen 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
         animation-delay: calc(var(--ipmi-motion-delay, 0ms) + 100ms);
     }
-    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-sheen > * {
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-sheen > :not(.metric-icon) {
         position: relative;
         z-index: 1;
     }
@@ -587,9 +625,6 @@
         transform-origin: left center;
         transition: transform 720ms cubic-bezier(0.16, 1, 0.3, 1), width 720ms cubic-bezier(0.16, 1, 0.3, 1);
         transition-delay: 160ms;
-    }
-    html.ipmi-motion-enabled.ipmi-page-ready .navbar {
-        animation: ipmi-motion-slide 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
     }
 }
 `;
@@ -603,7 +638,6 @@
             '.gpu-page-head',
             '.history-page-head',
             '.cli-header',
-            '.cli-container',
             '.login-card',
             '.hw-health-item',
             '.metric-box',
@@ -612,6 +646,10 @@
             '.gpu-stat',
             '.gpu-card',
             '.history-stat-card',
+            '.history-live-mark',
+            '.history-tag-cloud .btn',
+            '.history-shell .row-cols-xl-6 > .col',
+            '#charts-wrapper canvas',
             '.insight-card',
             '.card',
             '.info-item',
@@ -643,11 +681,15 @@
             node.classList.add('ipmi-motion-target');
             node.style.setProperty('--ipmi-motion-delay', `${Math.min(index * 34, 520)}ms`);
 
-            if (node.matches('.metric-box, .hw-health-item, .res-signal, .gpu-stat, .info-item, .io-section')) {
+            if (node.matches('.history-page-head')) {
+                node.classList.add('ipmi-motion-history-head');
+            } else if (node.matches('.history-live-mark, .history-tag-cloud .btn, .history-shell .row-cols-xl-6 > .col')) {
+                node.classList.add('ipmi-motion-filter');
+            } else if (node.matches('.metric-box, .hw-health-item, .res-signal, .gpu-stat, .info-item, .io-section')) {
                 node.classList.add('ipmi-motion-pop', 'ipmi-motion-sheen');
             } else if (node.matches('.terminal-line, .log-entry, .cli-line, tbody tr, .cli-header')) {
                 node.classList.add('ipmi-motion-slide');
-            } else if (node.matches('.chart-card-body, .gpu-chart-panel, .interval-chart-container')) {
+            } else if (node.matches('.chart-card-body, .gpu-chart-panel, .interval-chart-container, #charts-wrapper canvas')) {
                 node.classList.add('ipmi-motion-chart');
             }
         });

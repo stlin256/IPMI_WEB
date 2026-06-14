@@ -81,16 +81,21 @@ html[data-bs-theme="dark"] {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-    html.ipmi-motion-enabled:not(.ipmi-page-ready) body {
+    html.ipmi-motion-enabled:not(.ipmi-page-ready) body > :not(.navbar):not(.modal):not(.modal-backdrop):not(.toast-container) {
         opacity: 0;
         transform: translateY(8px);
     }
 
-    html.ipmi-motion-enabled.ipmi-page-ready body {
+    html.ipmi-motion-enabled.ipmi-page-ready body > :not(.navbar):not(.modal):not(.modal-backdrop):not(.toast-container) {
         opacity: 1;
         transform: translateY(0);
         transition: opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
             transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+
+    html.ipmi-motion-enabled .navbar {
+        opacity: 1;
+        transform: none;
     }
 
 }
