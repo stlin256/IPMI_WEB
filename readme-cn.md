@@ -12,13 +12,14 @@ IPMI_WEB 是一个轻量自托管服务器运维面板，用于把 IPMI 硬件�
 
 当前应用版本：`1.4.6`。
 
-当前仓库已经进行过前端现代化重构。现在的界面风格是 **浅色优先、低饱和工业运维控制台**：信息密度较高、面板半径统一到 8px、色彩以中性系统底色为主，搭配蓝、青、绿、琥珀、红等语义强调色；导航保持紧凑粘性布局，Bootstrap、Font Awesome、Chart.js 均为本地静态资源，浅色/深色主题由 `static/js/theme.js` 持久化保存。项目仍保持 Flask/Jinja 服务端渲染，暂时不引入前端打包器。
+当前仓库已经进行过前端现代化重构。现在的界面风格是 **浅色优先、低饱和工业运维控制台**：信息密度较高、面板半径统一到 8px、色彩以中性系统底色为主，搭配蓝、青、绿、琥珀、红等语义强调色；导航保持紧凑粘性布局，Bootstrap、Font Awesome、Chart.js 均为本地静态资源，浅色/深色主题由 `static/js/theme.js` 持久化保存，并通过 `static/js/pjax.js` 实现带预取的同文档页面切换。项目仍保持 Flask/Jinja 服务端渲染，暂时不引入前端打包器。
 
 前端重构目前包括：
 
 - `static/css/app-modern.css` 提供共享设计变量、浅色优先主题和响应式约束。
 - `static/js/app-core.js` 提供统一的 `fetchJson`、轮询、DOM 设置、帧批处理等页面工具。
 - `static/js/charts.js` 提供随主题变化的 Chart.js 默认值。
+- 带预取的 PJAX 页面切换，并在离开页面时清理定时器、事件监听、Bootstrap 实例和 Chart.js 实例。
 - 默认浅色主题，同时保留用户手动选择深色模式。
 - 导航和页脚已抽为局部模板。
 - Resources 与 GPU 页面已经拆出独立页面脚本；Hardware、History、Logs/Settings 仍包含较多页内脚本，是后续继续迁移的重点。
@@ -93,7 +94,9 @@ flowchart TD
     LocalAssets --> Theme["theme.js<br/>持久化浅色/深色模式"]
     LocalAssets --> Core["app-core.js<br/>fetchJson, 轮询, DOM 设置, 帧批处理"]
     LocalAssets --> ChartDefaults["charts.js<br/>随主题变化的 Chart.js 默认值"]
+    LocalAssets --> PJAX["pjax.js<br/>预取 + 同文档页面切换"]
 
+    PJAX --> Core
     Core --> HardwarePage["Hardware 页面<br/>页内逻辑"]
     Core --> HistoryPage["History 页面<br/>页内逻辑 + Insights"]
     Core --> LogsPage["Logs 和 Settings 页面<br/>复杂设置弹窗逻辑"]

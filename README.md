@@ -12,13 +12,14 @@ IPMI_WEB is a lightweight self-hosted operations panel for IPMI-capable servers.
 
 Current application version: `1.4.6`.
 
-The repository has already gone through a front-end modernization pass. The current UI style is a **light-first, low-saturation industrial operations console**: dense operational screens, 8px-radius panels, neutral system surfaces, restrained blue/teal/green/amber/red accents, sticky compact navigation, local Bootstrap/Font Awesome/Chart.js assets, and persistent light/dark switching through `static/js/theme.js`. The app is still Flask/Jinja server-rendered and intentionally does not use a JavaScript bundler yet.
+The repository has already gone through a front-end modernization pass. The current UI style is a **light-first, low-saturation industrial operations console**: dense operational screens, 8px-radius panels, neutral system surfaces, restrained blue/teal/green/amber/red accents, sticky compact navigation, local Bootstrap/Font Awesome/Chart.js assets, persistent light/dark switching through `static/js/theme.js`, and prefetched PJAX navigation through `static/js/pjax.js`. The app is still Flask/Jinja server-rendered and intentionally does not use a JavaScript bundler yet.
 
 The front-end refactor currently includes:
 
 - Shared visual tokens and responsive rules in `static/css/app-modern.css`.
 - Shared page helpers in `static/js/app-core.js`.
 - Shared Chart.js theme defaults in `static/js/charts.js`.
+- Prefetched PJAX page switching with page cleanup for timers, listeners, Bootstrap instances, and Chart.js instances.
 - Persistent light/dark mode, now light by default.
 - Extracted navigation and footer partials.
 - Page-level scripts already split for Resources and GPU, while larger Hardware, History, and Logs/Settings pages still contain more inline code and remain migration targets.
@@ -93,7 +94,9 @@ flowchart TD
     LocalAssets --> Theme["theme.js<br/>persistent light/dark mode"]
     LocalAssets --> Core["app-core.js<br/>fetchJson, polling, DOM setters, frame batching"]
     LocalAssets --> ChartDefaults["charts.js<br/>theme-aware Chart.js defaults"]
+    LocalAssets --> PJAX["pjax.js<br/>prefetch, same-document page switches"]
 
+    PJAX --> Core
     Core --> HardwarePage["Hardware page<br/>inline page logic"]
     Core --> HistoryPage["History page<br/>inline page logic + Insights"]
     Core --> LogsPage["Logs and Settings page<br/>modal-heavy inline logic"]
