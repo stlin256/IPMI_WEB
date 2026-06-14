@@ -2,6 +2,7 @@
     const routes = new Set(['/hardware', '/resources', '/gpu', '/history', '/logs']);
     const prefetchCache = new Map();
     const scriptCache = new Set(Array.from(document.scripts).map((script) => script.src).filter(Boolean));
+    const managedHeadSelector = 'style[data-ipmi-pjax-head]';
     let activeController = null;
     let currentPath = window.location.pathname;
 
@@ -35,8 +36,16 @@
             bodyHtml: body.innerHTML,
             bodyClass: doc.body ? doc.body.className : '',
             htmlLang: doc.documentElement.lang || document.documentElement.lang,
-            scripts: Array.from(doc.querySelectorAll('script[src]')).map((script) => script.src),
-            inlineScripts: Array.from(doc.querySelectorAll('body script:not([src])')).map((script) => script.textContent || '')
+            headStyles: Array.from(doc.head.querySelectorAll('style')).map((style) => {
+                const clone = style.cloneNode(true);
+                clone.dataset.ipmiPjaxHead = 'page';
+                return clone.outerHTML;
+            }),
+            scripts: Array.from(doc.querySelectorAll('script')).map((script) => {
+                const src = script.getAttribute('src');
+                if (src) return { src: new URL(src, window.location.origin).href };
+                return { code: script.textContent || '' };
+            })
         };
     }
 
@@ -77,6 +86,19 @@
     function copyBodyState(page) {
         document.body.className = page.bodyClass;
         if (page.htmlLang) document.documentElement.lang = page.htmlLang;
+    }
+
+    function markInitialHeadStyles() {
+        document.head.querySelectorAll('style:not([data-ipmi-pjax-head])').forEach((style) => {
+            style.dataset.ipmiPjaxHead = 'initial';
+        });
+    }
+
+    function syncHeadStyles(page) {
+        document.head.querySelectorAll(managedHeadSelector).forEach((style) => style.remove());
+        page.headStyles.forEach((styleHtml) => {
+            document.head.insertAdjacentHTML('beforeend', styleHtml);
+        });
     }
 
     function isPageScript(src) {
@@ -126,14 +148,13 @@
     }
 
     async function runPageScripts(page) {
-        for (const src of page.scripts) {
-            await loadScript(src);
+        for (const script of page.scripts) {
+            if (script.src) {
+                await loadScript(script.src);
+            } else if (script.code && script.code.trim()) {
+                executeInlineScript(script.code);
+            }
         }
-
-        page.inlineScripts.forEach((code) => {
-            if (!code.trim()) return;
-            executeInlineScript(code);
-        });
 
         if (window.applyI18n) window.applyI18n(document);
         if (window.IPMITheme && typeof window.IPMITheme.mountToggle === 'function') {
@@ -161,6 +182,7 @@
             }
 
             copyBodyState(page);
+            syncHeadStyles(page);
             document.body.innerHTML = page.bodyHtml;
             document.title = page.title || document.title;
             updateNavigation(path);
@@ -245,6 +267,7 @@
         clearCache: () => prefetchCache.clear()
     };
 
+    markInitialHeadStyles();
     window.history.replaceState({ pjax: true, path: currentPath }, '', window.location.href);
     if (routes.has(currentPath)) prefetchNeighbors(currentPath);
 })();
