@@ -28,10 +28,11 @@ function percentile(values, p) {
 }
 
 function summarize(samples) {
-    const metrics = ['wallMs', 'domContentLoadedMs', 'loadMs', 'transferKb', 'resourceCount'];
+    const metrics = ['wallMs', 'domContentLoadedMs', 'loadMs', 'transferKb', 'resourceCount', 'sameDocument'];
     const summary = {};
     for (const metric of metrics) {
         const values = samples.map((sample) => sample[metric]).filter((value) => Number.isFinite(value));
+        if (!values.length) continue;
         summary[metric] = {
             min: Math.round(Math.min(...values)),
             median: Math.round(percentile(values, 50)),
@@ -49,6 +50,7 @@ function parseArgs(argv) {
         runs: Number(process.env.IPMI_PERF_RUNS || 5),
         chromePath: process.env.IPMI_PERF_CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
         output: process.env.IPMI_PERF_OUTPUT || '',
+        mode: process.env.IPMI_PERF_MODE || 'document',
         routes: ['/hardware', '/resources', '/gpu', '/history', '/logs']
     };
 
@@ -70,6 +72,9 @@ function parseArgs(argv) {
         } else if (key === '--output') {
             args.output = value;
             i += 1;
+        } else if (key === '--mode') {
+            args.mode = value;
+            i += 1;
         } else if (key === '--routes') {
             args.routes = value.split(',').map((route) => route.trim()).filter(Boolean);
             i += 1;
@@ -78,6 +83,7 @@ function parseArgs(argv) {
 
     if (!args.password) throw new Error('Missing password. Set IPMI_PERF_PASSWORD or pass --password.');
     if (!Number.isFinite(args.runs) || args.runs < 1) throw new Error('Runs must be a positive number.');
+    if (!['document', 'click'].includes(args.mode)) throw new Error('Mode must be document or click.');
     return args;
 }
 
@@ -94,6 +100,101 @@ async function navigationTiming(page) {
             resourceCount: resources.length
         };
     });
+}
+
+async function clickTiming(page, route) {
+    await page.evaluate(() => {
+        window.__ipmiPerfMarker = Math.random().toString(36);
+        performance.clearResourceTimings();
+    });
+    const marker = await page.evaluate(() => window.__ipmiPerfMarker);
+    const start = performance.now();
+
+    const link = await routeClickLocator(page, route);
+    await link.click();
+    await page.waitForURL(`**${route}`, { timeout: 45000 });
+    await waitForRouteReady(page, route);
+    await page.waitForTimeout(250);
+    await assertRouteLayout(page, route);
+
+    const timing = await page.evaluate((expectedMarker) => {
+        const resources = performance.getEntriesByType('resource');
+        const transferBytes = resources.reduce((total, entry) => total + (entry.transferSize || 0), 0);
+        return {
+            sameDocument: window.__ipmiPerfMarker === expectedMarker ? 1 : 0,
+            transferKb: transferBytes / 1024,
+            resourceCount: resources.length
+        };
+    }, marker);
+
+    return {
+        wallMs: Math.round(performance.now() - start),
+        sameDocument: timing.sameDocument,
+        transferKb: Math.round(timing.transferKb),
+        resourceCount: timing.resourceCount
+    };
+}
+
+async function routeClickLocator(page, route) {
+    const selectors = {
+        '/hardware': [
+            'a.nav-link[href="/hardware"]',
+            'a.navbar-brand[href="/hardware"]',
+            'a.btn[href="/hardware"]'
+        ],
+        '/resources': ['a.nav-link[href="/resources"]'],
+        '/gpu': ['a.nav-link[href="/gpu"]'],
+        '/history': ['a.nav-link[href="/history"]'],
+        '/logs': ['a.navbar-brand[href="/logs"]']
+    };
+
+    for (const selector of selectors[route] || [`a[href="${route}"]`]) {
+        const locator = page.locator(selector);
+        const count = await locator.count();
+        if (count === 1) return locator;
+        if (count > 1) throw new Error(`Ambiguous click target for ${route}: ${selector} matched ${count}`);
+    }
+    throw new Error(`No click target found for ${route}`);
+}
+
+async function waitForRouteReady(page, route) {
+    const selectors = {
+        '/hardware': '.hw-shell',
+        '/resources': '.res-shell',
+        '/gpu': '.gpu-shell',
+        '/history': '.history-shell',
+        '/logs': '.cli-container'
+    };
+    const selector = selectors[route];
+    if (selector) await page.waitForSelector(selector, { timeout: 30000 });
+}
+
+async function assertRouteLayout(page, route) {
+    const result = await page.evaluate((currentRoute) => {
+        const issues = [];
+        const managedStyles = document.head.querySelectorAll('style[data-ipmi-pjax-head]').length;
+        if (managedStyles < 1) issues.push('missing managed page style');
+
+        if (currentRoute === '/resources') {
+            const grid = document.querySelector('.res-signal-grid');
+            const gauge = document.querySelector('#gaugeCpu');
+            const gridDisplay = grid ? getComputedStyle(grid).display : '';
+            const gaugeBox = gauge ? gauge.getBoundingClientRect() : null;
+            if (gridDisplay !== 'grid') issues.push(`resource grid display=${gridDisplay || 'missing'}`);
+            if (!gaugeBox || gaugeBox.height < 40 || gaugeBox.height > 400) {
+                issues.push(`resource gauge height=${gaugeBox ? Math.round(gaugeBox.height) : 'missing'}`);
+            }
+            if (document.documentElement.scrollHeight > 5000) {
+                issues.push(`resource page height=${document.documentElement.scrollHeight}`);
+            }
+        }
+
+        return { issues };
+    }, route);
+
+    if (result.issues.length) {
+        throw new Error(`Layout check failed for ${route}: ${result.issues.join(', ')}`);
+    }
 }
 
 async function main() {
@@ -119,30 +220,70 @@ async function main() {
     const results = {
         baseUrl,
         startedAt,
+        mode: args.mode,
         runs: args.runs,
         routes: {}
     };
 
-    for (const route of args.routes) {
+    if (args.mode === 'document') {
+        for (const route of args.routes) {
+            const samples = [];
+            for (let run = 1; run <= args.runs; run += 1) {
+                const url = `${baseUrl}${route}`;
+                const start = performance.now();
+                await page.goto(url, { waitUntil: 'load', timeout: 45000 });
+                await page.waitForTimeout(250);
+                const timing = await navigationTiming(page);
+                samples.push({
+                    run,
+                    wallMs: Math.round(performance.now() - start),
+                    responseStartMs: Math.round(timing.responseStartMs),
+                    domContentLoadedMs: Math.round(timing.domContentLoadedMs),
+                    loadMs: Math.round(timing.loadMs),
+                    transferKb: Math.round(timing.transferKb),
+                    resourceCount: timing.resourceCount
+                });
+                process.stderr.write(`${route} run ${run}/${args.runs}: ${samples[samples.length - 1].wallMs} ms\n`);
+            }
+            results.routes[route] = {
+                samples,
+                summary: summarize(samples)
+            };
+        }
+    } else {
+        await page.goto(`${baseUrl}/hardware`, { waitUntil: 'load', timeout: 45000 });
+        await page.waitForTimeout(500);
+
+        for (const route of args.routes.filter((item) => item !== '/hardware')) {
+            const samples = [];
+            for (let run = 1; run <= args.runs; run += 1) {
+                if (page.url().endsWith(route)) {
+                    await page.goto(`${baseUrl}/hardware`, { waitUntil: 'load', timeout: 45000 });
+                    await page.waitForTimeout(500);
+                }
+                const sample = await clickTiming(page, route);
+                sample.run = run;
+                samples.push(sample);
+                process.stderr.write(`${route} click ${run}/${args.runs}: ${sample.wallMs} ms, sameDocument=${sample.sameDocument}\n`);
+            }
+            results.routes[route] = {
+                samples,
+                summary: summarize(samples)
+            };
+        }
+
         const samples = [];
         for (let run = 1; run <= args.runs; run += 1) {
-            const url = `${baseUrl}${route}`;
-            const start = performance.now();
-            await page.goto(url, { waitUntil: 'load', timeout: 45000 });
-            await page.waitForTimeout(250);
-            const timing = await navigationTiming(page);
-            samples.push({
-                run,
-                wallMs: Math.round(performance.now() - start),
-                responseStartMs: Math.round(timing.responseStartMs),
-                domContentLoadedMs: Math.round(timing.domContentLoadedMs),
-                loadMs: Math.round(timing.loadMs),
-                transferKb: Math.round(timing.transferKb),
-                resourceCount: timing.resourceCount
-            });
-            process.stderr.write(`${route} run ${run}/${args.runs}: ${samples[samples.length - 1].wallMs} ms\n`);
+            if (!page.url().endsWith('/logs')) {
+                await page.goto(`${baseUrl}/logs`, { waitUntil: 'load', timeout: 45000 });
+                await page.waitForTimeout(500);
+            }
+            const sample = await clickTiming(page, '/hardware');
+            sample.run = run;
+            samples.push(sample);
+            process.stderr.write(`/hardware click ${run}/${args.runs}: ${sample.wallMs} ms, sameDocument=${sample.sameDocument}\n`);
         }
-        results.routes[route] = {
+        results.routes['/hardware'] = {
             samples,
             summary: summarize(samples)
         };
