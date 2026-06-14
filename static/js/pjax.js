@@ -259,15 +259,24 @@
             if (window.IPMI && typeof window.IPMI.destroyPage === 'function') {
                 window.IPMI.destroyPage();
             }
+            if (window.IPMI && typeof window.IPMI.preparePageMotion === 'function') {
+                window.IPMI.preparePageMotion();
+            }
 
             copyBodyState(page);
             syncHeadStyles(page);
             document.body.innerHTML = page.bodyHtml;
             document.title = page.title || document.title;
             updateNavigation(path);
+            if (window.IPMI && typeof window.IPMI.primePageMotion === 'function') {
+                window.IPMI.primePageMotion(document);
+            }
 
             await runPageScripts(page);
             await settleHydratedPage();
+            if (window.IPMI && typeof window.IPMI.finishPageMotion === 'function') {
+                window.IPMI.finishPageMotion(document);
+            }
 
             currentPath = path;
 

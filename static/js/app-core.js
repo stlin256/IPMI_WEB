@@ -491,6 +491,234 @@
         return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
+    function installMotionStyles() {
+        if (document.getElementById('ipmi-motion-style')) return;
+        const style = document.createElement('style');
+        style.id = 'ipmi-motion-style';
+        style.textContent = `
+@keyframes ipmi-motion-rise {
+    0% { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.982); filter: blur(7px); }
+    56% { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.004); filter: blur(0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@keyframes ipmi-motion-slide {
+    0% { opacity: 0; transform: translate3d(-10px, 0, 0); filter: blur(5px); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+}
+@keyframes ipmi-motion-pop {
+    0% { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.94); filter: blur(5px); }
+    62% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1.012); filter: blur(0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@keyframes ipmi-motion-icon {
+    0% { opacity: 0; transform: rotate(-8deg) scale(0.84); }
+    60% { opacity: 1; transform: rotate(2deg) scale(1.08); }
+    100% { opacity: 1; transform: rotate(0) scale(1); }
+}
+@keyframes ipmi-motion-sheen {
+    0% { transform: translateX(-115%); opacity: 0; }
+    24% { opacity: 0.42; }
+    100% { transform: translateX(115%); opacity: 0; }
+}
+@keyframes ipmi-motion-chart {
+    0% { opacity: 0; transform: translateY(8px) scaleY(0.94); filter: saturate(0.75); }
+    100% { opacity: 1; transform: translateY(0) scaleY(1); filter: saturate(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+    html.ipmi-motion-enabled .ipmi-motion-target {
+        opacity: 0;
+        transform: translate3d(0, 18px, 0) scale(0.982);
+        filter: blur(7px);
+        will-change: opacity, transform, filter;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-target {
+        animation: ipmi-motion-rise 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: var(--ipmi-motion-delay, 0ms);
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-slide {
+        animation-name: ipmi-motion-slide;
+        animation-duration: 500ms;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-pop {
+        animation-name: ipmi-motion-pop;
+        animation-duration: 560ms;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-chart {
+        animation-name: ipmi-motion-chart;
+        animation-duration: 640ms;
+        transform-origin: 50% 100%;
+    }
+    html.ipmi-motion-enabled .ipmi-motion-icon {
+        opacity: 0;
+        transform: rotate(-8deg) scale(0.84);
+        will-change: opacity, transform;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-icon {
+        animation: ipmi-motion-icon 520ms cubic-bezier(0.2, 1.25, 0.32, 1) both;
+        animation-delay: var(--ipmi-motion-delay, 90ms);
+    }
+    html.ipmi-motion-enabled .ipmi-motion-sheen {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+    }
+    html.ipmi-motion-enabled .ipmi-motion-sheen::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background: linear-gradient(100deg, transparent 8%, color-mix(in srgb, var(--accent-yellow) 22%, transparent) 45%, transparent 78%);
+        transform: translateX(-115%);
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-sheen::after {
+        animation: ipmi-motion-sheen 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation-delay: calc(var(--ipmi-motion-delay, 0ms) + 100ms);
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .ipmi-motion-sheen > * {
+        position: relative;
+        z-index: 1;
+    }
+    html.ipmi-motion-enabled:not(.ipmi-page-ready) .progress-bar {
+        transform: scaleX(0.08);
+        transform-origin: left center;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .progress-bar {
+        transform-origin: left center;
+        transition: transform 720ms cubic-bezier(0.16, 1, 0.3, 1), width 720ms cubic-bezier(0.16, 1, 0.3, 1);
+        transition-delay: 160ms;
+    }
+    html.ipmi-motion-enabled.ipmi-page-ready .navbar {
+        animation: ipmi-motion-slide 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+}
+`;
+        document.head.appendChild(style);
+    }
+
+    function motionCandidates(root = document) {
+        const selectors = [
+            '.hw-page-head',
+            '.res-page-head',
+            '.gpu-page-head',
+            '.history-page-head',
+            '.cli-header',
+            '.cli-container',
+            '.login-card',
+            '.hw-health-item',
+            '.metric-box',
+            '.res-signal',
+            '.resource-card',
+            '.gpu-stat',
+            '.gpu-card',
+            '.history-stat-card',
+            '.insight-card',
+            '.card',
+            '.info-item',
+            '.terminal-line',
+            '.log-entry',
+            '.terminal-body',
+            '.audit-journal',
+            '.cli-line',
+            'tbody tr',
+            '.chart-card-body',
+            '.gpu-chart-panel',
+            '.interval-chart-container',
+            '.io-section'
+        ];
+        const nodes = selectors.flatMap((selector) => Array.from(root.querySelectorAll(selector)));
+        if (root instanceof Element && selectors.some((selector) => root.matches(selector))) {
+            nodes.unshift(root);
+        }
+        return nodes;
+    }
+
+    function primePageMotion(root = document) {
+        if (prefersReducedMotion()) return;
+        installMotionStyles();
+        const seen = new Set();
+        motionCandidates(root).slice(0, 80).forEach((node, index) => {
+            if (!node || seen.has(node)) return;
+            seen.add(node);
+            node.classList.add('ipmi-motion-target');
+            node.style.setProperty('--ipmi-motion-delay', `${Math.min(index * 34, 520)}ms`);
+
+            if (node.matches('.metric-box, .hw-health-item, .res-signal, .gpu-stat, .info-item, .io-section')) {
+                node.classList.add('ipmi-motion-pop', 'ipmi-motion-sheen');
+            } else if (node.matches('.terminal-line, .log-entry, .cli-line, tbody tr, .cli-header')) {
+                node.classList.add('ipmi-motion-slide');
+            } else if (node.matches('.chart-card-body, .gpu-chart-panel, .interval-chart-container')) {
+                node.classList.add('ipmi-motion-chart');
+            }
+        });
+
+        root.querySelectorAll('.hw-title-icon, .res-title-icon, .gpu-title-icon, .history-title-icon, .navbar-brand > i, .metric-icon, .stat-icon')
+            .forEach((node, index) => {
+                node.classList.add('ipmi-motion-icon');
+                node.style.setProperty('--ipmi-motion-delay', `${Math.min(index * 42 + 80, 560)}ms`);
+            });
+    }
+
+    function startMotionObserver() {
+        if (prefersReducedMotion() || window.__ipmiMotionObserver) return;
+        if (!document.body) {
+            nativeDocumentAddEventListener('DOMContentLoaded', startMotionObserver, { once: true });
+            return;
+        }
+        let queued = new Set();
+        let frame = 0;
+        const flush = () => {
+            frame = 0;
+            if (!document.documentElement.classList.contains('ipmi-page-ready')) {
+                frame = nativeSetTimeout(flush, 80);
+                return;
+            }
+            const nodes = Array.from(queued);
+            queued = new Set();
+            nodes.slice(0, 64).forEach((node, index) => {
+                if (!(node instanceof Element)) return;
+                primePageMotion(node);
+                node.querySelectorAll('.ipmi-motion-target, .ipmi-motion-icon').forEach((target) => {
+                    if (!target.style.getPropertyValue('--ipmi-motion-delay')) {
+                        target.style.setProperty('--ipmi-motion-delay', `${Math.min(index * 32, 320)}ms`);
+                    }
+                });
+            });
+        };
+        window.__ipmiMotionObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node instanceof Element) queued.add(node);
+                });
+            });
+            if (!frame && queued.size) frame = window.requestAnimationFrame(flush);
+        });
+        window.__ipmiMotionObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    function preparePageMotion() {
+        const root = document.documentElement;
+        if (prefersReducedMotion()) {
+            root.classList.add('ipmi-page-ready');
+            return;
+        }
+        installMotionStyles();
+        root.classList.add('ipmi-motion-enabled');
+        root.classList.remove('ipmi-page-ready');
+    }
+
+    function finishPageMotion(root = document) {
+        const html = document.documentElement;
+        if (prefersReducedMotion()) {
+            html.classList.add('ipmi-page-ready');
+            return;
+        }
+        primePageMotion(root);
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => html.classList.add('ipmi-page-ready'));
+        });
+    }
+
     function initPageMotion() {
         const root = document.documentElement;
         if (prefersReducedMotion()) {
@@ -498,8 +726,9 @@
             return;
         }
 
-        root.classList.add('ipmi-motion-enabled');
-        const markReady = () => window.requestAnimationFrame(() => root.classList.add('ipmi-page-ready'));
+        preparePageMotion();
+        startMotionObserver();
+        const markReady = () => finishPageMotion(document);
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', markReady, { once: true });
         } else {
@@ -507,7 +736,7 @@
         }
 
         window.addEventListener('pageshow', () => {
-            root.classList.add('ipmi-page-ready');
+            finishPageMotion(document);
         });
     }
 
@@ -527,6 +756,9 @@
         cssVar,
         isAbort,
         prefersReducedMotion,
+        preparePageMotion,
+        primePageMotion,
+        finishPageMotion,
         addCleanup,
         destroyPage,
         disposeBootstrap,
