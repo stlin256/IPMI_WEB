@@ -44,28 +44,45 @@
     function syncButton(button) {
         const theme = root.getAttribute('data-bs-theme') || 'light';
         const icon = theme === 'dark' ? 'fa-sun' : 'fa-moon';
-        button.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i>`;
+        let iconNode = button.querySelector('i');
+        if (!iconNode) {
+            button.textContent = '';
+            iconNode = document.createElement('i');
+            iconNode.setAttribute('aria-hidden', 'true');
+            button.appendChild(iconNode);
+        }
+        const iconClass = `fas ${icon}`;
+        if (iconNode.className !== iconClass) iconNode.className = iconClass;
         button.setAttribute('aria-label', labelFor(theme));
         button.setAttribute('title', labelFor(theme));
+    }
+
+    function bindButton(button) {
+        if (button.dataset.ipmiThemeBound === 'true') return;
+        button.dataset.ipmiThemeBound = 'true';
+        button.addEventListener('click', () => {
+            const current = root.getAttribute('data-bs-theme') || 'light';
+            setTheme(current === 'dark' ? 'light' : 'dark');
+            syncButton(button);
+        });
     }
 
     function createButton(extraClass) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `btn btn-outline-secondary ipmi-theme-toggle ${extraClass || ''}`.trim();
-        button.addEventListener('click', () => {
-            const current = root.getAttribute('data-bs-theme') || 'light';
-            setTheme(current === 'dark' ? 'light' : 'dark');
-            syncButton(button);
-        });
+        bindButton(button);
         syncButton(button);
         return button;
     }
 
     function mountThemeToggle() {
-        const existing = document.querySelector('.ipmi-theme-toggle');
-        if (existing) {
-            syncButton(existing);
+        const existing = document.querySelectorAll('.ipmi-theme-toggle');
+        if (existing.length) {
+            existing.forEach((button) => {
+                bindButton(button);
+                syncButton(button);
+            });
             return;
         }
 

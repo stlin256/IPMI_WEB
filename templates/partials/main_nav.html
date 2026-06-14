@@ -13,6 +13,11 @@
             <a class="nav-link {% if active_page == 'gpu' %}active {% endif %}me-3" href="/gpu">GPU</a>
             <a class="nav-link {% if active_page == 'history' %}active{% endif %}" href="/history">HIST</a>
         </div>
-        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
+        <div class="navbar-actions d-inline-flex align-items-center gap-2 ms-auto">
+            <button type="button" class="btn btn-outline-secondary ipmi-theme-toggle" aria-label="Switch theme" title="Switch theme">
+                <i class="fas fa-moon" aria-hidden="true"></i>
+            </button>
+            <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
+        </div>
     </div>
 </nav>

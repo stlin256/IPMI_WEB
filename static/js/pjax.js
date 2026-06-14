@@ -151,6 +151,42 @@
         if (page.htmlLang) document.documentElement.lang = page.htmlLang;
     }
 
+    function topLevelNavbar(root) {
+        return Array.from(root.children).find((node) => node.matches && node.matches('.navbar'));
+    }
+
+    function isStableMainNavbar(navbar) {
+        return Boolean(
+            navbar
+            && navbar.querySelector('#log-dot')
+            && navbar.querySelector('.navbar-nav.me-auto')
+        );
+    }
+
+    function syncStableNavbar(currentNavbar, incomingNavbar) {
+        const currentName = currentNavbar.querySelector('.navbar-brand .fw-bold');
+        const incomingName = incomingNavbar.querySelector('.navbar-brand .fw-bold');
+        if (currentName && incomingName && currentName.textContent !== incomingName.textContent) {
+            currentName.textContent = incomingName.textContent;
+        }
+    }
+
+    function replaceBodyHtml(page) {
+        const template = document.createElement('template');
+        template.innerHTML = page.bodyHtml;
+        const currentNavbar = topLevelNavbar(document.body);
+        const incomingNavbar = topLevelNavbar(template.content);
+
+        if (isStableMainNavbar(currentNavbar) && isStableMainNavbar(incomingNavbar)) {
+            syncStableNavbar(currentNavbar, incomingNavbar);
+            incomingNavbar.remove();
+            document.body.replaceChildren(currentNavbar, ...Array.from(template.content.childNodes));
+            return;
+        }
+
+        document.body.innerHTML = page.bodyHtml;
+    }
+
     function markInitialHeadStyles() {
         document.head.querySelectorAll('style:not([data-ipmi-pjax-head])').forEach((style) => {
             style.dataset.ipmiPjaxHead = 'initial';
@@ -265,7 +301,7 @@
 
             copyBodyState(page);
             syncHeadStyles(page);
-            document.body.innerHTML = page.bodyHtml;
+            replaceBodyHtml(page);
             document.title = page.title || document.title;
             updateNavigation(path);
             if (window.IPMI && typeof window.IPMI.primePageMotion === 'function') {

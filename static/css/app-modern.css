@@ -98,6 +98,14 @@ html[data-bs-theme="dark"] {
         transform: none;
     }
 
+    html.ipmi-motion-enabled .navbar .ipmi-motion-icon,
+    html.ipmi-motion-enabled.ipmi-page-ready .navbar .ipmi-motion-icon {
+        opacity: 1 !important;
+        transform: none !important;
+        animation: none !important;
+        will-change: auto !important;
+    }
+
 }
 
 html[data-bs-theme="dark"] body {
@@ -116,10 +124,18 @@ html[data-bs-theme="dark"] body {
 
 .navbar {
     position: relative;
+    z-index: 1030;
+    min-height: 3.75rem;
     background: color-mix(in srgb, var(--bg-card) 84%, transparent) !important;
     border-bottom: 1px solid var(--border-color) !important;
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 32px rgba(0, 0, 0, 0.16);
     backdrop-filter: blur(18px) saturate(1.25);
+}
+
+.navbar .container-fluid {
+    min-height: 3.25rem;
+    gap: 0.75rem;
+    flex-wrap: nowrap;
 }
 
 .navbar::after {
@@ -137,6 +153,48 @@ html[data-bs-theme="dark"] body {
 .nav-link.active,
 .nav-link:hover {
     color: var(--text-main) !important;
+}
+
+.navbar-brand {
+    flex: 0 1 min(22rem, 34vw);
+    min-width: 0;
+    margin-right: 0 !important;
+}
+
+.navbar-brand .fw-bold {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#log-dot {
+    display: block !important;
+    width: 0.58rem;
+    height: 0.58rem;
+    padding: 0 !important;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+}
+
+#log-dot.d-none {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.navbar-actions {
+    flex: 0 0 auto;
+    min-width: 5rem;
+    justify-content: flex-end;
+}
+
+.navbar-actions .btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
 }
 
 .nav-link {
@@ -565,6 +623,17 @@ html[data-bs-theme="light"] .btn-close-white {
 
     .navbar .btn {
         flex: 0 0 auto;
+    }
+
+    .navbar-actions {
+        min-width: 4.45rem;
+        gap: 0.45rem !important;
+    }
+
+    .navbar-actions .btn {
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
     }
 
     .ipmi-theme-toggle {

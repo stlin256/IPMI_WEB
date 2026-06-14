@@ -3,7 +3,10 @@
         <a class="navbar-brand d-flex align-items-center" href="/hardware">
             <i class="fas fa-shield-alt me-2 text-warning"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
         </a>
-        <div class="navbar-nav flex-row ms-auto">
+        <div class="navbar-actions navbar-nav flex-row align-items-center gap-2 ms-auto">
+            <button type="button" class="btn btn-outline-secondary ipmi-theme-toggle" aria-label="Switch theme" title="Switch theme">
+                <i class="fas fa-moon" aria-hidden="true"></i>
+            </button>
             <a class="btn btn-outline-secondary" href="/hardware" data-i18n-title="app.back" title="{{ t('app.back') }}"><i class="fas fa-arrow-left"></i></a>
         </div>
     </div>

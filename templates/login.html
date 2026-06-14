@@ -34,6 +34,96 @@
             clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%);
             opacity: 0.55;
         }
+        @keyframes login-stage-drift {
+            0% {
+                background-position: 0 0, 0 0, 0 0;
+                filter: saturate(0.96);
+            }
+            100% {
+                background-position: 2rem -1rem, 1.5rem 0, 0 1.5rem;
+                filter: saturate(1.08);
+            }
+        }
+        @keyframes login-frame-reveal {
+            0% {
+                clip-path: polygon(0 0, 0 0, 0 42%, 0 100%, 0 100%, 0 62%);
+                opacity: 0;
+                transform: translate3d(0, 0.75rem, 0) scale(0.992);
+            }
+            100% {
+                clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%);
+                opacity: 0.55;
+                transform: translate3d(0, 0, 0) scale(1);
+            }
+        }
+        @keyframes login-identity-reveal {
+            0% {
+                opacity: 0;
+                transform: translate3d(-1.25rem, 1rem, 0);
+                filter: blur(10px);
+            }
+            62% {
+                opacity: 1;
+                transform: translate3d(0.15rem, -0.15rem, 0);
+                filter: blur(0);
+            }
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+                filter: blur(0);
+            }
+        }
+        @keyframes login-wordmark-reveal {
+            0% {
+                opacity: 0;
+                transform: translate3d(0, 1.35rem, 0) scale(0.94);
+                filter: blur(12px);
+            }
+            58% {
+                opacity: 1;
+                transform: translate3d(0, -0.18rem, 0) scale(1.018);
+                filter: blur(0);
+            }
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+                filter: blur(0);
+            }
+        }
+        @keyframes login-card-reveal {
+            0% {
+                opacity: 0;
+                transform: translate3d(1.1rem, 1.35rem, 0) scale(0.975);
+                filter: blur(12px);
+            }
+            58% {
+                opacity: 1;
+                transform: translate3d(-0.12rem, -0.18rem, 0) scale(1.006);
+                filter: blur(0);
+            }
+            100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+                filter: blur(0);
+            }
+        }
+        @keyframes login-kicker-line {
+            0% { transform: scaleX(0); opacity: 0; }
+            100% { transform: scaleX(1); opacity: 1; }
+        }
+        @keyframes login-card-glow {
+            0% {
+                opacity: 0;
+                transform: translateX(-72%) skewX(-10deg);
+            }
+            36% {
+                opacity: 0.48;
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(72%) skewX(-10deg);
+            }
+        }
         .login-shell {
             width: min(100% - 2rem, 980px);
             display: grid;
@@ -80,11 +170,73 @@
             padding: 1.75rem;
             border-radius: 8px !important;
             text-align: left;
+            overflow: hidden;
+        }
+        .login-card::before {
+            content: "";
+            position: absolute;
+            inset: -20% -45%;
+            z-index: 0;
+            pointer-events: none;
+            background: linear-gradient(105deg, transparent 36%, color-mix(in srgb, var(--accent-yellow) 24%, transparent) 49%, transparent 62%);
+            opacity: 0;
+        }
+        .login-card > * {
+            position: relative;
+            z-index: 1;
         }
         .form-control { padding: 0.78rem 1rem; }
         .btn-primary {
             min-height: 2.85rem;
             font-weight: 850;
+        }
+        @media (prefers-reduced-motion: no-preference) {
+            .login-stage {
+                animation: login-stage-drift 22s ease-in-out infinite alternate;
+            }
+            .login-stage::before {
+                animation: login-frame-reveal 1.9s cubic-bezier(0.18, 0.84, 0.26, 1) both 180ms;
+            }
+            .login-identity {
+                animation: login-identity-reveal 1.45s cubic-bezier(0.18, 0.84, 0.26, 1) both 240ms;
+            }
+            .login-kicker::before {
+                transform-origin: left center;
+                animation: login-kicker-line 1.25s cubic-bezier(0.16, 1, 0.3, 1) both 640ms;
+            }
+            .login-wordmark {
+                transform-origin: left bottom;
+                animation: login-wordmark-reveal 1.65s cubic-bezier(0.18, 0.84, 0.26, 1) both 440ms;
+            }
+            .login-server {
+                animation: login-identity-reveal 1.35s cubic-bezier(0.18, 0.84, 0.26, 1) both 760ms;
+            }
+            .login-card {
+                animation: login-card-reveal 1.65s cubic-bezier(0.18, 0.84, 0.26, 1) both 780ms;
+            }
+            html.ipmi-motion-enabled .login-shell .login-card.ipmi-motion-target {
+                opacity: 0;
+                transform: translate3d(1.1rem, 1.35rem, 0) scale(0.975);
+                filter: blur(12px);
+            }
+            html.ipmi-motion-enabled.ipmi-page-ready .login-shell .login-card.ipmi-motion-target {
+                animation: login-card-reveal 1.65s cubic-bezier(0.18, 0.84, 0.26, 1) both 780ms;
+            }
+            .login-card::before {
+                animation: login-card-glow 2.9s cubic-bezier(0.16, 1, 0.3, 1) both 1.15s;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .login-stage,
+            .login-stage::before,
+            .login-identity,
+            .login-kicker::before,
+            .login-wordmark,
+            .login-server,
+            .login-card,
+            .login-card::before {
+                animation: none !important;
+            }
         }
         @media (max-width: 820px) {
             body { overflow-y: auto; }

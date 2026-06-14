@@ -694,7 +694,7 @@
             }
         });
 
-        root.querySelectorAll('.hw-title-icon, .res-title-icon, .gpu-title-icon, .history-title-icon, .navbar-brand > i, .metric-icon, .stat-icon')
+        root.querySelectorAll('.hw-title-icon, .res-title-icon, .gpu-title-icon, .history-title-icon, .metric-icon, .stat-icon')
             .forEach((node, index) => {
                 node.classList.add('ipmi-motion-icon');
                 node.style.setProperty('--ipmi-motion-delay', `${Math.min(index * 42 + 80, 560)}ms`);
