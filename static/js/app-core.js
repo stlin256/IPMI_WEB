@@ -75,9 +75,17 @@
     function runWithPageTracking(task) {
         trackingDepth += 1;
         try {
-            return task();
-        } finally {
+            const result = task();
+            if (result && typeof result.then === 'function') {
+                return result.finally(() => {
+                    trackingDepth -= 1;
+                });
+            }
             trackingDepth -= 1;
+            return result;
+        } catch (error) {
+            trackingDepth -= 1;
+            throw error;
         }
     }
 
@@ -269,7 +277,7 @@
         startTimer();
         if (visibleOnly) document.addEventListener('visibilitychange', handleVisibility);
 
-        return () => {
+        const stop = () => {
             stopped = true;
             if (timerId) nativeClearInterval(timerId);
             if (visibleOnly) document.removeEventListener('visibilitychange', handleVisibility);
