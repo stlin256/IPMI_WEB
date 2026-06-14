@@ -42,8 +42,13 @@
         .metric-unit { flex: 0 0 auto; font-size: clamp(0.78rem, 1.2vw, 1rem); color: var(--text-muted); font-weight: normal; }
         .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
         
-        .table-custom { font-size: 0.9rem; font-family: monospace; }
+        .table-custom { table-layout: fixed; width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; font-family: monospace; }
+        .table-custom .sensor-source-col { width: 16%; }
+        .table-custom .sensor-name-col { width: 34%; }
+        .table-custom .sensor-value-col { width: 32%; }
+        .table-custom .sensor-status-col { width: 18%; }
         .table-custom th { background-color: color-mix(in srgb, var(--bg-elevated) 70%, transparent) !important; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
+        .table-custom .sensor-table-head th { position: sticky; top: 0; z-index: 3; }
         .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; padding: 10px 12px; }
         .table-striped>tbody>tr:nth-of-type(odd)>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.03) !important; color: var(--text-main) !important; }
         .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: color-mix(in srgb, var(--accent-yellow) 9%, transparent) !important; color: var(--text-main) !important; }
@@ -395,6 +400,41 @@
                 white-space: nowrap;
             }
             .metric-unit { display: inline-block; }
+            .scroll-container {
+                overflow-x: hidden;
+            }
+            .table-custom {
+                min-width: 0;
+                font-size: 0.78rem;
+            }
+            .table-custom .hide-mobile,
+            .table-custom .sensor-status-col {
+                display: none !important;
+            }
+            .table-custom .sensor-source-col { width: 17%; }
+            .table-custom .sensor-name-col { width: 39%; }
+            .table-custom .sensor-value-col { width: 44%; }
+            .table-custom th,
+            .table-custom td {
+                padding: 0.75rem 0.55rem;
+            }
+            .table-custom .sensor-table-head th {
+                top: 0;
+            }
+            .table-custom td {
+                height: auto;
+            }
+            .sensor-name-link {
+                display: inline-block;
+                max-width: 100%;
+                overflow-wrap: anywhere;
+                line-height: 1.2;
+            }
+            .sensor-value-cell {
+                white-space: normal;
+                overflow-wrap: anywhere;
+                line-height: 1.25;
+            }
         }
     </style>
 </head>
@@ -571,7 +611,13 @@
                 </div>
                 <div class="card-body p-0 scroll-container">
                     <table class="table table-dark table-striped table-hover table-custom mb-0">
-                        <thead class="sticky-top bg-dark"><tr><th data-i18n="metrics.source">SOURCE</th><th data-i18n="metrics.name">NAME</th><th class="text-end" data-i18n="metrics.value">VALUE</th><th class="text-center hide-mobile" data-i18n="metrics.status">STATUS</th></tr></thead>
+                        <colgroup>
+                            <col class="sensor-source-col">
+                            <col class="sensor-name-col">
+                            <col class="sensor-value-col">
+                            <col class="sensor-status-col">
+                        </colgroup>
+                        <thead class="sensor-table-head bg-dark"><tr><th data-i18n="metrics.source">SOURCE</th><th data-i18n="metrics.name">NAME</th><th class="text-end" data-i18n="metrics.value">VALUE</th><th class="text-center hide-mobile" data-i18n="metrics.status">STATUS</th></tr></thead>
                         <tbody id="sensor-list">
                             {% if initial_hw_ready %}
                             {% for sensor in initial_hw.get('sensors', []) %}

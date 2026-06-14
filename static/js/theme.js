@@ -23,16 +23,31 @@
     function setTheme(theme) {
         const nextTheme = validTheme(theme) ? theme : 'light';
         root.setAttribute('data-bs-theme', nextTheme);
-        root.style.colorScheme = nextTheme;
+        root.style.colorScheme = 'only light';
         try {
             window.localStorage.setItem(storageKey, nextTheme);
         } catch (_e) {}
+        updateColorSchemeMeta();
         updateThemeColor(nextTheme);
         window.dispatchEvent(new CustomEvent('ipmi:theme-change', { detail: { theme: nextTheme } }));
     }
 
     function prefersReducedMotion() {
         return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    function updateVisualViewportMetrics() {
+        const viewport = window.visualViewport;
+        const visualWidth = viewport ? viewport.width : window.innerWidth;
+        const visualHeight = viewport ? viewport.height : window.innerHeight;
+        const offsetLeft = viewport ? viewport.offsetLeft : 0;
+        const offsetTop = viewport ? viewport.offsetTop : 0;
+        const rightOffset = Math.max(0, window.innerWidth - visualWidth - offsetLeft);
+        const bottomOffset = Math.max(0, window.innerHeight - visualHeight - offsetTop);
+        root.style.setProperty('--ipmi-visual-width', `${visualWidth}px`);
+        root.style.setProperty('--ipmi-visual-height', `${visualHeight}px`);
+        root.style.setProperty('--ipmi-visual-right-offset', `${rightOffset}px`);
+        root.style.setProperty('--ipmi-visual-bottom-offset', `${bottomOffset}px`);
     }
 
     function installThemeMotionStyles() {
@@ -187,6 +202,16 @@ html[data-bs-theme="light"] body::after {
         meta.setAttribute('content', theme === 'light' ? '#f3ead7' : '#12110e');
     }
 
+    function updateColorSchemeMeta() {
+        let meta = document.querySelector('meta[name="color-scheme"]');
+        if (!meta) {
+            meta = document.createElement('meta');
+            meta.setAttribute('name', 'color-scheme');
+            document.head.appendChild(meta);
+        }
+        meta.setAttribute('content', 'only light');
+    }
+
     function labelFor(theme) {
         const isZh = (root.lang || '').toLowerCase().startsWith('zh');
         if (theme === 'dark') return isZh ? '切换为浅色模式' : 'Switch to light mode';
@@ -255,6 +280,7 @@ html[data-bs-theme="light"] body::after {
 
     setTheme(preferredTheme());
     installThemeMotionStyles();
+    updateVisualViewportMetrics();
 
     window.IPMITheme = {
         get: () => root.getAttribute('data-bs-theme') || 'light',
@@ -273,6 +299,11 @@ html[data-bs-theme="light"] body::after {
     };
 
     document.addEventListener('DOMContentLoaded', mountThemeToggle);
+    window.addEventListener('resize', updateVisualViewportMetrics, { passive: true });
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', updateVisualViewportMetrics, { passive: true });
+        window.visualViewport.addEventListener('scroll', updateVisualViewportMetrics, { passive: true });
+    }
     window.addEventListener('ipmi:theme-change', () => {
         document.querySelectorAll('.ipmi-theme-toggle').forEach(syncButton);
     });
