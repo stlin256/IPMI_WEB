@@ -16,32 +16,86 @@
             display: grid;
             place-items: center;
             overflow: hidden;
+            --login-theme-x: calc(100vw - 2rem);
+            --login-theme-y: 2rem;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 6;
+            pointer-events: none;
+            opacity: 0;
+            clip-path: circle(0 at var(--login-theme-x) var(--login-theme-y));
+            background:
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--accent-yellow) 42%, transparent), transparent 9rem),
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--bg-body) 78%, transparent), transparent 62vmax),
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 18%, transparent), color-mix(in srgb, var(--accent-red) 16%, transparent));
+            filter: blur(14px) saturate(1.2);
+            mix-blend-mode: screen;
+        }
+        html[data-bs-theme="light"] body::before {
+            mix-blend-mode: multiply;
+            background:
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--accent-yellow) 34%, transparent), transparent 8rem),
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--bg-body) 74%, transparent), transparent 62vmax),
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 12%, transparent), color-mix(in srgb, var(--accent-red) 10%, transparent));
         }
         .login-stage {
             position: fixed;
             inset: 0;
             z-index: -1;
+            overflow: hidden;
             background:
                 radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent-yellow) 9%, transparent), transparent 19rem),
-                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 4%, transparent) 0 1px, transparent 1px 72px),
-                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 72px);
+                radial-gradient(circle at 78% 82%, color-mix(in srgb, var(--accent-blue) 5%, transparent), transparent 22rem);
         }
         .login-stage::before {
             content: "";
             position: absolute;
             inset: 9vh 8vw;
+            z-index: 1;
             border: 1px solid color-mix(in srgb, var(--accent-yellow) 28%, transparent);
             clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%);
             opacity: 0.55;
         }
+        .login-stage::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background:
+                linear-gradient(180deg, transparent 34%, color-mix(in srgb, var(--accent-yellow) 7%, transparent) 100%),
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 7%, transparent) 0 1px, transparent 1px 72px),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 5%, transparent) 0 1px, transparent 1px 72px);
+            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.78) 48%, #000 100%);
+            opacity: 0;
+            transform: translate3d(0, 0.45rem, 0) scale(1.012);
+            pointer-events: none;
+        }
         @keyframes login-stage-drift {
             0% {
                 background-position: 0 0, 0 0, 0 0;
-                filter: saturate(0.96);
             }
             100% {
-                background-position: 2rem -1rem, 1.5rem 0, 0 1.5rem;
-                filter: saturate(1.08);
+                background-position: 0 0, 1.75rem 0, 0 1.75rem;
+            }
+        }
+        @keyframes login-grid-reveal {
+            0% {
+                opacity: 0;
+                transform: translate3d(0, 0.45rem, 0) scale(1.012);
+                filter: blur(0.8px) saturate(0.86);
+            }
+            58% {
+                opacity: 0.72;
+                transform: translate3d(0, 0.06rem, 0) scale(1.002);
+                filter: blur(0.1px) saturate(1);
+            }
+            100% {
+                opacity: 0.88;
+                transform: translate3d(0, 0, 0) scale(1);
+                filter: blur(0) saturate(1.05);
             }
         }
         @keyframes login-frame-reveal {
@@ -124,12 +178,66 @@
                 transform: translateX(72%) skewX(-10deg);
             }
         }
+        @keyframes login-theme-wash {
+            0% {
+                opacity: 0;
+                clip-path: circle(0 at var(--login-theme-x) var(--login-theme-y));
+                filter: blur(20px) saturate(0.95);
+            }
+            38% {
+                opacity: 0.7;
+                clip-path: circle(58vmax at var(--login-theme-x) var(--login-theme-y));
+                filter: blur(10px) saturate(1.25);
+            }
+            100% {
+                opacity: 0;
+                clip-path: circle(142vmax at var(--login-theme-x) var(--login-theme-y));
+                filter: blur(4px) saturate(1);
+            }
+        }
+        @keyframes login-theme-stage-shift {
+            0% {
+                filter: brightness(0.95) saturate(0.95);
+            }
+            42% {
+                filter: brightness(1.2) saturate(1.25);
+            }
+            100% {
+                filter: brightness(1) saturate(1.05);
+            }
+        }
+        @keyframes login-theme-shell-sheen {
+            0% {
+                opacity: 0;
+                transform: translateX(-38%) skewX(-12deg);
+            }
+            38% {
+                opacity: 0.62;
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(38%) skewX(-12deg);
+            }
+        }
         .login-shell {
             width: min(100% - 2rem, 980px);
+            position: relative;
             display: grid;
             grid-template-columns: minmax(0, 1fr) 390px;
             align-items: center;
             gap: clamp(1.5rem, 5vw, 4.5rem);
+        }
+        .login-shell::before {
+            content: "";
+            position: absolute;
+            inset: -12% -8%;
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0;
+            background: linear-gradient(105deg, transparent 18%, color-mix(in srgb, var(--accent-yellow) 30%, transparent) 48%, transparent 76%);
+            transform: translateX(-36%) skewX(-12deg);
+            filter: blur(8px);
+            mix-blend-mode: screen;
         }
         .login-identity {
             min-width: 0;
@@ -185,34 +293,53 @@
             position: relative;
             z-index: 1;
         }
+        .login-stage,
+        .login-stage::before,
+        .login-stage::after,
+        .login-wordmark,
+        .login-server,
+        .login-kicker,
+        .login-card,
+        .form-control,
+        .input-group-text,
+        .btn-primary {
+            transition:
+                background-color 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                border-color 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                box-shadow 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                color 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                filter 680ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
         .form-control { padding: 0.78rem 1rem; }
         .btn-primary {
             min-height: 2.85rem;
             font-weight: 850;
         }
         @media (prefers-reduced-motion: no-preference) {
-            .login-stage {
-                animation: login-stage-drift 22s ease-in-out infinite alternate;
+            .login-stage::after {
+                animation:
+                    login-grid-reveal 1.35s cubic-bezier(0.18, 0.84, 0.26, 1) both 80ms,
+                    login-stage-drift 15s ease-in-out infinite alternate 1.35s;
             }
             .login-stage::before {
-                animation: login-frame-reveal 1.9s cubic-bezier(0.18, 0.84, 0.26, 1) both 180ms;
+                animation: login-frame-reveal 1.7s cubic-bezier(0.18, 0.84, 0.26, 1) both 980ms;
             }
             .login-identity {
-                animation: login-identity-reveal 1.45s cubic-bezier(0.18, 0.84, 0.26, 1) both 240ms;
+                animation: login-identity-reveal 1.45s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.35s;
             }
             .login-kicker::before {
                 transform-origin: left center;
-                animation: login-kicker-line 1.25s cubic-bezier(0.16, 1, 0.3, 1) both 640ms;
+                animation: login-kicker-line 1.05s cubic-bezier(0.16, 1, 0.3, 1) both 1.72s;
             }
             .login-wordmark {
                 transform-origin: left bottom;
-                animation: login-wordmark-reveal 1.65s cubic-bezier(0.18, 0.84, 0.26, 1) both 440ms;
+                animation: login-wordmark-reveal 1.55s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.85s;
             }
             .login-server {
-                animation: login-identity-reveal 1.35s cubic-bezier(0.18, 0.84, 0.26, 1) both 760ms;
+                animation: login-identity-reveal 1.3s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.18s;
             }
             .login-card {
-                animation: login-card-reveal 1.65s cubic-bezier(0.18, 0.84, 0.26, 1) both 780ms;
+                animation: login-card-reveal 1.55s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.35s;
             }
             html.ipmi-motion-enabled .login-shell .login-card.ipmi-motion-target {
                 opacity: 0;
@@ -220,15 +347,27 @@
                 filter: blur(12px);
             }
             html.ipmi-motion-enabled.ipmi-page-ready .login-shell .login-card.ipmi-motion-target {
-                animation: login-card-reveal 1.65s cubic-bezier(0.18, 0.84, 0.26, 1) both 780ms;
+                animation: login-card-reveal 1.55s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.35s;
             }
             .login-card::before {
-                animation: login-card-glow 2.9s cubic-bezier(0.16, 1, 0.3, 1) both 1.15s;
+                animation: login-card-glow 2.7s cubic-bezier(0.16, 1, 0.3, 1) both 2.85s;
+            }
+            html.login-theme-shifting body::before {
+                animation: login-theme-wash 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            html.login-theme-shifting .login-stage {
+                animation: login-theme-stage-shift 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            html.login-theme-shifting .login-shell::before {
+                animation: login-theme-shell-sheen 980ms cubic-bezier(0.16, 1, 0.3, 1) both 80ms;
             }
         }
         @media (prefers-reduced-motion: reduce) {
+            body::before,
             .login-stage,
             .login-stage::before,
+            .login-stage::after,
+            .login-shell::before,
             .login-identity,
             .login-kicker::before,
             .login-wordmark,
@@ -236,6 +375,11 @@
             .login-card,
             .login-card::before {
                 animation: none !important;
+            }
+            .login-stage::after {
+                opacity: 0.88;
+                transform: none;
+                filter: none;
             }
         }
         @media (max-width: 820px) {
@@ -297,6 +441,7 @@
         const loginBtn = document.getElementById('login-btn');
         const errorMsg = document.getElementById('login-error');
         const loginForm = document.getElementById('login-form');
+        let loginThemeTimer = null;
 
         if (waitSeconds > 0) {
             startCooldown(waitSeconds);
@@ -335,6 +480,24 @@
             loginBtn.disabled = true;
             loginBtn.innerText = t('app.verifying');
         };
+
+        window.addEventListener('ipmi:theme-change', () => {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const root = document.documentElement;
+            const toggle = document.querySelector('.ipmi-theme-toggle');
+            if (toggle) {
+                const rect = toggle.getBoundingClientRect();
+                document.body.style.setProperty('--login-theme-x', `${rect.left + rect.width / 2}px`);
+                document.body.style.setProperty('--login-theme-y', `${rect.top + rect.height / 2}px`);
+            }
+            root.classList.remove('login-theme-shifting');
+            void root.offsetWidth;
+            root.classList.add('login-theme-shifting');
+            clearTimeout(loginThemeTimer);
+            loginThemeTimer = setTimeout(() => {
+                root.classList.remove('login-theme-shifting');
+            }, 980);
+        });
     </script>
 </body>
 </html>
