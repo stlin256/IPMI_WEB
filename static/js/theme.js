@@ -11,11 +11,11 @@
             const saved = window.localStorage.getItem(storageKey);
             if (validTheme(saved)) return saved;
         } catch (_e) {}
-        return root.getAttribute('data-bs-theme') || 'dark';
+        return root.getAttribute('data-bs-theme') || 'light';
     }
 
     function setTheme(theme) {
-        const nextTheme = validTheme(theme) ? theme : 'dark';
+        const nextTheme = validTheme(theme) ? theme : 'light';
         root.setAttribute('data-bs-theme', nextTheme);
         root.style.colorScheme = nextTheme;
         try {
@@ -42,7 +42,7 @@
     }
 
     function syncButton(button) {
-        const theme = root.getAttribute('data-bs-theme') || 'dark';
+        const theme = root.getAttribute('data-bs-theme') || 'light';
         const icon = theme === 'dark' ? 'fa-sun' : 'fa-moon';
         button.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i>`;
         button.setAttribute('aria-label', labelFor(theme));
@@ -54,7 +54,7 @@
         button.type = 'button';
         button.className = `btn btn-outline-secondary ipmi-theme-toggle ${extraClass || ''}`.trim();
         button.addEventListener('click', () => {
-            const current = root.getAttribute('data-bs-theme') || 'dark';
+            const current = root.getAttribute('data-bs-theme') || 'light';
             setTheme(current === 'dark' ? 'light' : 'dark');
             syncButton(button);
         });
@@ -88,9 +88,9 @@
     setTheme(preferredTheme());
 
     window.IPMITheme = {
-        get: () => root.getAttribute('data-bs-theme') || 'dark',
+        get: () => root.getAttribute('data-bs-theme') || 'light',
         set: setTheme,
-        toggle: () => setTheme((root.getAttribute('data-bs-theme') || 'dark') === 'dark' ? 'light' : 'dark'),
+        toggle: () => setTheme((root.getAttribute('data-bs-theme') || 'light') === 'dark' ? 'light' : 'dark'),
         chart: () => {
             const styles = getComputedStyle(root);
             return {

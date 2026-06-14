@@ -6,7 +6,7 @@
 - Main surfaces: login, hardware dashboard, resource dashboard, GPU dashboard, history explorer and logs/settings.
 - Frontend debt: each template repeats navigation, theme variables, card styling, mobile breakpoints and chart colors.
 - Runtime behavior: frequent polling, many inline scripts, some DOM updates are already optimized, but chart/theme configuration is fragmented.
-- Theme state: pages force `data-bs-theme="dark"` and hard-code dark colors in template-level CSS.
+- Theme state: pages now start with `data-bs-theme="light"` and preserve a saved light/dark user preference through the shared theme script. Some older template-level dark utility classes remain, with light-mode adaptation centralized in `app-modern.css`.
 
 ## Refactor Direction
 
@@ -26,7 +26,7 @@
 
 ## Visual And Responsive Targets
 
-- Support persistent light/dark theme switching, with dark as the compatibility default.
+- Support persistent light/dark theme switching, with light as the default and dark retained as an operator preference.
 - Use neutral system colors plus blue, teal, green, amber and red semantic accents.
 - Keep operational screens dense and scannable; avoid decorative layouts that reduce data density.
 - Prefer 8px-radius cards and stable chart/container dimensions to prevent polling layout shifts.

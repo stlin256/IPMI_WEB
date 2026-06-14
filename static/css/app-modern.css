@@ -1,26 +1,4 @@
 html {
-    color-scheme: dark;
-    --bg-body: #12110e;
-    --bg-card: rgba(30, 28, 23, 0.94);
-    --bg-elevated: rgba(43, 40, 32, 0.9);
-    --border-color: rgba(230, 218, 190, 0.18);
-    --text-main: #f2ead8;
-    --text-muted: #a8a092;
-    --accent-blue: #6f8fa5;
-    --accent-cyan: #7f9c91;
-    --accent-green: #8a9b6f;
-    --accent-yellow: #c6a15b;
-    --accent-red: #c35f4b;
-    --accent-magenta: #9b6b74;
-    --accent-ember: #b8784d;
-    --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.28);
-    --focus-ring: 0 0 0 3px rgba(198, 161, 91, 0.22);
-    --surface-sheen:
-        linear-gradient(180deg, rgba(255, 248, 229, 0.055), rgba(255, 248, 229, 0.018)),
-        repeating-linear-gradient(0deg, rgba(255, 248, 229, 0.022) 0 1px, transparent 1px 13px);
-}
-
-html[data-bs-theme="light"] {
     color-scheme: light;
     --bg-body: #f3ead7;
     --bg-card: rgba(255, 250, 238, 0.94);
@@ -46,13 +24,38 @@ html[data-bs-theme="light"] {
 
 body {
     background:
-        radial-gradient(circle at 18% 8%, rgba(198, 161, 91, 0.09), transparent 22rem),
-        repeating-linear-gradient(90deg, rgba(255, 248, 229, 0.022) 0 1px, transparent 1px 96px),
-        repeating-linear-gradient(0deg, rgba(255, 248, 229, 0.018) 0 1px, transparent 1px 96px),
-        radial-gradient(circle at 50% 50%, rgba(255, 248, 229, 0.025) 0 1px, transparent 1px 5px),
+        radial-gradient(circle at 18% 8%, rgba(165, 121, 46, 0.08), transparent 22rem),
+        repeating-linear-gradient(90deg, rgba(68, 58, 43, 0.032) 0 1px, transparent 1px 96px),
+        repeating-linear-gradient(0deg, rgba(68, 58, 43, 0.022) 0 1px, transparent 1px 96px),
+        radial-gradient(circle at 50% 50%, rgba(68, 58, 43, 0.022) 0 1px, transparent 1px 5px),
         var(--bg-body) !important;
     color: var(--text-main) !important;
     text-rendering: optimizeLegibility;
+}
+
+html[data-bs-theme="dark"] {
+    color-scheme: dark;
+    --bg-body: #12110e;
+    --bg-card: rgba(30, 28, 23, 0.94);
+    --bg-elevated: rgba(43, 40, 32, 0.9);
+    --border-color: rgba(230, 218, 190, 0.18);
+    --text-main: #f2ead8;
+    --text-muted: #a8a092;
+    --accent-blue: #6f8fa5;
+    --accent-cyan: #7f9c91;
+    --accent-green: #8a9b6f;
+    --accent-yellow: #c6a15b;
+    --accent-red: #c35f4b;
+    --accent-magenta: #9b6b74;
+    --accent-ember: #b8784d;
+    --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.28);
+    --focus-ring: 0 0 0 3px rgba(198, 161, 91, 0.22);
+    --surface-sheen:
+        linear-gradient(180deg, rgba(255, 248, 229, 0.055), rgba(255, 248, 229, 0.018)),
+        repeating-linear-gradient(0deg, rgba(255, 248, 229, 0.022) 0 1px, transparent 1px 13px);
+    --bs-body-bg: var(--bg-body);
+    --bs-body-color: var(--text-main);
+    --bs-border-color: var(--border-color);
 }
 
 @keyframes ipmi-page-enter {
@@ -92,12 +95,12 @@ body {
 
 }
 
-html[data-bs-theme="light"] body {
+html[data-bs-theme="dark"] body {
     background:
-        radial-gradient(circle at 18% 8%, rgba(165, 121, 46, 0.08), transparent 22rem),
-        repeating-linear-gradient(90deg, rgba(68, 58, 43, 0.032) 0 1px, transparent 1px 96px),
-        repeating-linear-gradient(0deg, rgba(68, 58, 43, 0.022) 0 1px, transparent 1px 96px),
-        radial-gradient(circle at 50% 50%, rgba(68, 58, 43, 0.022) 0 1px, transparent 1px 5px),
+        radial-gradient(circle at 18% 8%, rgba(198, 161, 91, 0.09), transparent 22rem),
+        repeating-linear-gradient(90deg, rgba(255, 248, 229, 0.022) 0 1px, transparent 1px 96px),
+        repeating-linear-gradient(0deg, rgba(255, 248, 229, 0.018) 0 1px, transparent 1px 96px),
+        radial-gradient(circle at 50% 50%, rgba(255, 248, 229, 0.025) 0 1px, transparent 1px 5px),
         var(--bg-body) !important;
 }
 
