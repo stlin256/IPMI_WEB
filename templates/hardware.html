@@ -1,20 +1,27 @@
 <!DOCTYPE html>
-<html lang="{{ locale }}" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="light">
+{% set hardware_page_title = t('hardware.title') %}
+{% if hardware_page_title == 'hardware.title' %}{% set hardware_page_title = 'Hardware' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('hardware.title') }} - {{ server_name }} Ops</title>
+    <title>{{ hardware_page_title }} - {{ server_name }} Ops</title>
+   {% include 'partials/favicon.html' %}
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+   <link href="{{ url_for('static', filename='css/app-modern.css') }}?v=20260614-motion" rel="stylesheet">
+   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/app-core.js') }}?v=20260614-motion"></script>
+   <script src="{{ url_for('static', filename='js/pjax.js') }}?v=20260614-pjax"></script>
     
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
         body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .navbar { background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .nav-link:hover, .nav-link.active { color: var(--text-main) !important; }
 
         @media (max-width: 576px) {
             .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
@@ -26,30 +33,38 @@
         .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; padding: 1rem; }
         
-        .metric-box { padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-        .metric-box:hover { border-color: #58a6ff; transform: translateY(-2px); }
-        .metric-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 5px; }
-        .metric-unit { font-size: 1rem; color: var(--text-muted); font-weight: normal; }
+        .metric-box { min-width: 0; padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .metric-box:hover { border-color: color-mix(in srgb, var(--metric-accent) 55%, var(--border-color)); transform: translateY(-2px); }
+        .metric-value { display: flex; max-width: 100%; align-items: baseline; justify-content: center; gap: 0.35rem; font-family: Consolas, "Courier New", monospace; font-size: clamp(2rem, 3.8vw, 2.8rem); font-weight: 700; letter-spacing: 0; margin-bottom: 5px; line-height: 1.05; white-space: nowrap; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
+        .metric-value > span:first-child { min-width: 0; overflow: hidden; text-overflow: clip; }
+        .metric-number { display: inline-block; min-width: 4.25ch; text-align: right; }
+        #val-fan { min-width: 5.4ch; }
+        .metric-unit { flex: 0 0 auto; font-size: clamp(0.78rem, 1.2vw, 1rem); color: var(--text-muted); font-weight: normal; }
         .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
         
-        .table-custom { font-size: 0.9rem; font-family: monospace; }
-        .table-custom th { background-color: #161b22 !important; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
+        .table-custom { table-layout: fixed; width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; font-family: monospace; }
+        .table-custom .sensor-source-col { width: 16%; }
+        .table-custom .sensor-name-col { width: 34%; }
+        .table-custom .sensor-value-col { width: 32%; }
+        .table-custom .sensor-status-col { width: 18%; }
+        .table-custom th { background-color: color-mix(in srgb, var(--bg-elevated) 70%, transparent) !important; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding: 12px; }
+        .table-custom .sensor-table-head th { position: sticky; top: 0; z-index: 3; }
         .table-custom td { border-bottom: 1px solid var(--border-color); vertical-align: middle; padding: 10px 12px; }
         .table-striped>tbody>tr:nth-of-type(odd)>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.03) !important; color: var(--text-main) !important; }
-        .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: rgba(255, 255, 255, 0.06) !important; color: #fff !important; }
+        .table-hover>tbody>tr:hover>* { --bs-table-accent-bg: color-mix(in srgb, var(--accent-yellow) 9%, transparent) !important; color: var(--text-main) !important; }
         .scroll-container { max-height: 550px; overflow-y: auto; scrollbar-width: thin; }
 
         /* 传感器名称点击样式 */
         .sensor-name-link { color: var(--text-main); cursor: pointer; text-decoration: none; border-bottom: none; transition: all 0.2s; }
-        .sensor-name-link:hover { color: #1f6feb !important; }
+        .sensor-name-link:hover { color: var(--accent-red) !important; }
 
         /* 全宽 Modal 适配与美化 */
         @media (min-width: 992px) {
             .modal-xl-custom { max-width: 96vw; }
         }
         .modal-content-dark { 
-            background-color: #161b22; 
-            border: 1px solid #444c56; 
+            background-color: color-mix(in srgb, var(--bg-card) 96%, transparent);
+            border: 1px solid var(--border-color);
             box-shadow: 0 0 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
         }
         .modal-header-tint { background-color: rgba(255,255,255,0.03); }
@@ -57,24 +72,26 @@
         
         /* 标签美化 */
         .btn-check-custom + .btn { 
-            border-color: #444c56; color: var(--text-muted); background: #21262d; 
+            border-color: var(--border-color); color: var(--text-muted); background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
             border-radius: 6px; padding: 0.25rem 0.75rem; font-size: 0.85rem; font-weight: 600;
             white-space: nowrap; transition: all 0.2s;
         }
-        #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
-        #chk-temp:checked + .btn { background-color: rgba(31, 111, 235, 0.15); color: #58a6ff; border-color: #1f6feb; }
-        #chk-fan:checked + .btn { background-color: rgba(35, 134, 54, 0.15); color: #3fb950; border-color: #238636; }
+        #chk-pwr:checked + .btn { background-color: color-mix(in srgb, var(--accent-yellow) 14%, transparent); color: var(--accent-yellow); border-color: var(--accent-yellow); }
+        #chk-temp:checked + .btn { background-color: color-mix(in srgb, var(--accent-blue) 14%, transparent); color: var(--accent-blue); border-color: var(--accent-blue); }
+        #chk-fan:checked + .btn { background-color: color-mix(in srgb, var(--accent-green) 14%, transparent); color: var(--accent-green); border-color: var(--accent-green); }
 
         input[type=range] { touch-action: none; cursor: pointer; }
         
         /* 新增样式：处理禁用状态的视觉效果 */
         .fixed-control-group { transition: opacity 0.3s ease, filter 0.3s ease; }
         .fixed-control-group.disabled-visual { opacity: 0.5; filter: grayscale(0.8); pointer-events: none; }
-        .override-panel { border: 1px solid #30363d; border-radius: 10px; padding: 0.75rem; background: rgba(13, 17, 23, 0.45); }
+        .override-panel { border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; background: color-mix(in srgb, var(--bg-body) 42%, transparent); }
+        .fan-override-grid { margin-left: 0; margin-right: 0; }
+        .fan-override-grid > * { padding-left: 0.35rem; padding-right: 0.35rem; }
         
         /* 骨架屏流光扫过特效 */
         .skeleton-sweep {
-            position: relative; overflow: hidden; background-color: #0d1117; border-radius: 8px;
+            position: relative; overflow: hidden; background-color: color-mix(in srgb, var(--bg-body) 84%, transparent); border-radius: 8px;
         }
         .skeleton-sweep::after {
             content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -88,35 +105,434 @@
         .chart-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; display: none;
         }
+        .navbar {
+            background: color-mix(in srgb, var(--bg-card) 84%, transparent) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            backdrop-filter: blur(18px) saturate(1.25);
+        }
+        .hw-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .hw-shell::before {
+            content: "";
+            position: fixed;
+            inset: 3.5rem 0 auto;
+            height: 18rem;
+            pointer-events: none;
+            background:
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 4%, transparent) 0 1px, transparent 1px 7.5rem),
+                linear-gradient(180deg, color-mix(in srgb, var(--accent-yellow) 8%, transparent), transparent 72%);
+            opacity: 0.7;
+            mask-image: linear-gradient(to bottom, #000, transparent);
+            z-index: -1;
+        }
+        .hw-page-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 1.25rem;
+            align-items: end;
+            padding: 1.75rem 0 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .hw-title {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin: 0;
+            font-size: clamp(1.65rem, 2.8vw, 2.8rem);
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+        .hw-title-icon {
+            display: inline-grid;
+            place-items: center;
+            flex: 0 0 auto;
+            width: 2.6rem;
+            height: 2.6rem;
+            border-radius: 8px;
+            color: #fff7e8;
+            background: var(--accent-red);
+            border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
+            box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-red) 18%, transparent);
+            line-height: 1;
+            overflow: hidden;
+        }
+        .hw-title-icon i {
+            font-size: 1.35rem;
+            line-height: 1;
+        }
+        .hw-subline {
+            margin-top: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 750;
+        }
+        .hw-subline strong {
+            color: var(--text-main);
+            font-weight: 900;
+        }
+        .hw-health-strip {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1px;
+            min-width: min(100%, 520px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--border-color);
+            box-shadow: var(--shadow-soft);
+            isolation: isolate;
+        }
+        .hw-health-item {
+            position: relative;
+            padding: 0.85rem 1rem;
+            background: var(--surface-sheen), var(--bg-card);
+        }
+        .hw-health-item::after {
+            content: "";
+            position: absolute;
+            inset: auto 0 0;
+            height: 2px;
+            background: color-mix(in srgb, var(--accent-yellow) 68%, transparent);
+            opacity: 0.38;
+            transform: translateX(-100%);
+            animation: hw-scan 5.8s ease-in-out infinite;
+        }
+        .hw-health-item:nth-child(2)::after { animation-delay: 0.8s; }
+        .hw-health-item:nth-child(3)::after { animation-delay: 1.6s; }
+        .hw-health-label {
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .hw-health-value {
+            margin-top: 0.35rem;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 1.25rem;
+            font-weight: 950;
+            color: var(--text-main);
+            min-height: 1.5rem;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "lnum" 1;
+        }
+        #hw-strip-temp,
+        #hw-strip-power {
+            display: inline-block;
+            min-width: 3.5ch;
+            text-align: right;
+        }
+        #hw-strip-fan {
+            display: inline-block;
+            min-width: 8ch;
+        }
+        #sensor-count,
+        #fixedFanValuePct,
+        #fixedFanValueRpm,
+        #targetTempValue,
+        #rpm-range-display {
+            display: inline-block;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "lnum" 1;
+        }
+        #sensor-count { min-width: 2.5ch; text-align: center; }
+        #fixedFanValuePct,
+        #fixedFanValueRpm,
+        #targetTempValue {
+            min-width: 5.5ch;
+            min-height: 1.5rem;
+        }
+        .hw-section-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .hw-section-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 4.25rem),
+                linear-gradient(180deg, color-mix(in srgb, var(--text-main) 3%, transparent), transparent 26%);
+            opacity: 0.5;
+        }
+        .hw-section-card > * {
+            position: relative;
+            z-index: 1;
+        }
+        .metric-box {
+            --metric-accent: var(--accent-cyan);
+            border-radius: 8px !important;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--metric-accent) 8%, transparent), transparent 68%),
+                var(--surface-sheen),
+                var(--bg-card) !important;
+            border-color: var(--border-color) !important;
+            box-shadow: var(--shadow-soft);
+            min-height: 10.5rem;
+        }
+        .metric-box[data-accent="thermal"] { --metric-accent: var(--accent-blue); }
+        .metric-box[data-accent="power"] { --metric-accent: var(--accent-yellow); }
+        .metric-box[data-accent="airflow"] { --metric-accent: var(--accent-green); }
+        .metric-box::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 3px;
+            background: var(--metric-accent);
+            opacity: 0.64;
+        }
+        .metric-value {
+            color: var(--text-main) !important;
+            font-weight: 950;
+        }
+        .metric-icon {
+            opacity: 0.16;
+            color: var(--metric-accent) !important;
+        }
+        .hw-mode-card {
+            min-height: 100%;
+            min-width: 0;
+            overflow: hidden;
+            background:
+                var(--surface-sheen),
+                var(--bg-card) !important;
+        }
+        .hw-mode-card #mode-display {
+            max-width: 100%;
+            min-height: 2.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(1rem, 1.2vw, 1.32rem);
+            line-height: 1.12;
+            letter-spacing: 0;
+            color: var(--text-main);
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .hw-mode-card .btn {
+            max-width: 100%;
+            min-height: 2.85rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.15;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+        #fixed-mode-warning { min-height: 1.2rem; }
+        .hw-chart-body {
+            height: clamp(280px, 34vh, 380px);
+        }
+        .override-panel {
+            background:
+                color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+            border-color: var(--border-color);
+        }
+        .fixed-control-group .bg-dark {
+            border-color: var(--border-color) !important;
+            background: color-mix(in srgb, var(--bg-body) 70%, transparent) !important;
+        }
+        @keyframes hw-scan {
+            0%, 42% { transform: translateX(-100%); opacity: 0; }
+            56% { opacity: 0.62; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
+        @media (max-width: 992px) {
+            .hw-page-head { grid-template-columns: 1fr; align-items: start; }
+            .hw-health-strip { width: 100%; }
+        }
+        @media (min-width: 768px) and (max-width: 991.98px) {
+            .metric-box {
+                min-height: 10rem;
+                padding: 1.25rem 0.85rem;
+            }
+            .metric-value {
+                gap: 0.25rem;
+                font-size: clamp(1.65rem, 3.35vw, 2rem);
+            }
+            .metric-unit {
+                font-size: 0.72rem;
+            }
+            .hw-mode-card {
+                padding: 1.2rem 0.85rem !important;
+            }
+            .hw-mode-card #mode-display {
+                font-size: clamp(0.92rem, 1.3vw, 1.08rem);
+            }
+            .hw-mode-card .btn {
+                padding: 0.55rem 0.55rem;
+                font-size: 0.86rem;
+            }
+        }
+        @media (max-width: 576px) {
+            .hw-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
+            .hw-page-head { padding-top: 1.15rem; }
+            .hw-title-icon { width: 2.25rem; height: 2.25rem; }
+            .hw-title-icon i { font-size: 1.2rem; }
+            .hw-health-strip {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                min-width: 0;
+                width: 100%;
+            }
+            .hw-health-item {
+                min-width: 0;
+                padding: 0.7rem 0.65rem;
+            }
+            .hw-health-label {
+                font-size: 0.64rem;
+                white-space: nowrap;
+            }
+            .hw-health-value {
+                display: flex;
+                align-items: baseline;
+                gap: 0.25rem;
+                margin-top: 0.3rem;
+                font-size: clamp(1rem, 5.3vw, 1.35rem);
+                line-height: 1;
+                white-space: nowrap;
+            }
+            .metric-box { padding: 1.1rem 0.75rem; }
+            .metric-value {
+                font-size: clamp(1.75rem, 8.8vw, 2.35rem);
+                letter-spacing: 0;
+                white-space: nowrap;
+            }
+            .metric-unit { display: inline-block; }
+            .scroll-container {
+                overflow-x: hidden;
+            }
+            .table-custom {
+                min-width: 0;
+                font-size: 0.78rem;
+            }
+            .table-custom .hide-mobile,
+            .table-custom .sensor-status-col {
+                display: none !important;
+            }
+            .table-custom .sensor-source-col { width: 17%; }
+            .table-custom .sensor-name-col { width: 39%; }
+            .table-custom .sensor-value-col { width: 44%; }
+            .table-custom th,
+            .table-custom td {
+                padding: 0.75rem 0.55rem;
+            }
+            .table-custom .sensor-table-head th {
+                top: 0;
+            }
+            .table-custom td {
+                height: auto;
+            }
+            .sensor-name-link {
+                display: inline-block;
+                max-width: 100%;
+                overflow-wrap: anywhere;
+                line-height: 1.2;
+            }
+            .sensor-value-cell {
+                white-space: normal;
+                overflow-wrap: anywhere;
+                line-height: 1.25;
+            }
+        }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
-            </span>
-        </a>
-        <div class="navbar-nav flex-row me-auto ms-4">
-            <a class="nav-link active me-3" href="/hardware">HW</a>
-            <a class="nav-link me-3" href="/resources">RES</a>
-            <a class="nav-link me-3" href="/gpu">GPU</a>
-            <a class="nav-link" href="/history">HIST</a>
-        </div>
-        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
-    </div>
-</nav>
+{% set initial_hw = initial_hw|default({}) %}
+{% set initial_hw_display = initial_hw_display|default({}) %}
+{% set initial_hw_ready = initial_hw_ready|default(false) %}
+{% set initial_config = initial_config|default({}) %}
+{% set initial_config_ready = initial_config.get('ready', false) %}
+{% set hw_temp_initial = initial_hw_display.get('temp', '--') if initial_hw_ready else '--' %}
+{% set hw_power_initial = initial_hw_display.get('power', '--') if initial_hw_ready else '--' %}
+{% set hw_fan_initial = initial_hw_display.get('fan_rpm', '--') if initial_hw_ready else '--' %}
+{% set hw_sensor_count_initial = (initial_hw.get('sensors', [])|length) if initial_hw_ready else 0 %}
+{% set hw_rpm_range_initial = (initial_hw_display.get('min_rpm', 0) ~ ' - ' ~ initial_hw_display.get('max_rpm', 0) ~ ' RPM') if initial_hw_ready and initial_hw.get('max_rpm', 0) else '--' %}
+{% set fixed_enabled_initial = initial_config.get('fixed_fan_speed_enabled', false) if initial_config_ready else false %}
+{% set fixed_target_initial = initial_config.get('fixed_fan_speed_target', 30) if initial_config_ready else 30 %}
+{% set target_enabled_initial = initial_config.get('target_temp_mode_enabled', false) if initial_config_ready else false %}
+{% set target_temp_initial = initial_config.get('target_temp_target', 65) if initial_config_ready else 65 %}
+{% set calibration_ready_initial = initial_config.get('calibration_ready', false) if initial_config_ready else false %}
+{% set fixed_rpm_initial = '--' %}
+{% if initial_hw_ready and initial_hw.get('max_rpm', 0) %}
+{% set fixed_rpm_initial = ((initial_hw.get('max_rpm', 0)|int * fixed_target_initial / 100)|round(0, 'common')|int) %}
+{% endif %}
+{% set label_auto = t('hardware.modeAutomatic') %}{% if label_auto == 'hardware.modeAutomatic' %}{% set label_auto = 'Automatic' %}{% endif %}
+{% set label_manual = t('hardware.modeManual') %}{% if label_manual == 'hardware.modeManual' %}{% set label_manual = 'Manual' %}{% endif %}
+{% set label_fixed = t('hardware.modeFixed') %}{% if label_fixed == 'hardware.modeFixed' %}{% set label_fixed = 'Fixed Speed' %}{% endif %}
+{% set label_target = t('hardware.modeTargetTemp') %}{% if label_target == 'hardware.modeTargetTemp' %}{% set label_target = 'Target Temp' %}{% endif %}
+{% set label_locked = t('hardware.modeLocked') %}{% if label_locked == 'hardware.modeLocked' %}{% set label_locked = 'Mode Locked' %}{% endif %}
+{% set label_switch_manual = t('hardware.switchToManual') %}{% if label_switch_manual == 'hardware.switchToManual' %}{% set label_switch_manual = 'Switch to Manual' %}{% endif %}
+{% set label_switch_auto = t('hardware.switchToAuto') %}{% if label_switch_auto == 'hardware.switchToAuto' %}{% set label_switch_auto = 'Switch to Auto' %}{% endif %}
+{% set label_switch_mode = t('hardware.switchMode') %}{% if label_switch_mode == 'hardware.switchMode' %}{% set label_switch_mode = 'Switch Mode' %}{% endif %}
+{% set hw_mode_initial = initial_hw.get('mode', '') if initial_hw_ready else '' %}
+{% set hw_mode_display_initial = '--' %}
+{% set hw_mode_text_class_initial = 'text-muted' %}
+{% set hw_mode_button_class_initial = 'btn-outline-primary' %}
+{% set hw_mode_button_icon_initial = 'fa-exchange-alt' %}
+{% set hw_mode_button_text_initial = label_switch_mode %}
+{% set hw_mode_locked_initial = hw_mode_initial in ['fixed', 'target_temp'] %}
+{% if hw_mode_initial == 'fixed' %}
+{% set hw_mode_display_initial = label_fixed|upper %}
+{% set hw_mode_text_class_initial = 'text-warning' %}
+{% set hw_mode_button_class_initial = 'btn-secondary disabled' %}
+{% set hw_mode_button_icon_initial = 'fa-ban' %}
+{% set hw_mode_button_text_initial = label_locked %}
+{% elif hw_mode_initial == 'target_temp' %}
+{% set hw_mode_display_initial = label_target|upper %}
+{% set hw_mode_text_class_initial = 'text-info' %}
+{% set hw_mode_button_class_initial = 'btn-secondary disabled' %}
+{% set hw_mode_button_icon_initial = 'fa-ban' %}
+{% set hw_mode_button_text_initial = label_locked %}
+{% elif hw_mode_initial == 'auto' %}
+{% set hw_mode_display_initial = label_auto|upper %}
+{% set hw_mode_text_class_initial = 'text-success' %}
+{% set hw_mode_button_class_initial = 'btn-outline-success' %}
+{% set hw_mode_button_icon_initial = 'fa-hand-paper' %}
+{% set hw_mode_button_text_initial = label_switch_manual %}
+{% elif initial_hw_ready %}
+{% set hw_mode_display_initial = label_manual|upper %}
+{% set hw_mode_text_class_initial = 'text-primary' %}
+{% set hw_mode_button_class_initial = 'btn-outline-primary' %}
+{% set hw_mode_button_icon_initial = 'fa-robot' %}
+{% set hw_mode_button_text_initial = label_switch_auto %}
+{% endif %}
+{% set active_page = 'hardware' %}
+{% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
+<main class="hw-shell container-fluid px-3 px-md-4 pb-4">
+    <section class="hw-page-head">
+        <div>
+            <h1 class="hw-title">
+                <span class="hw-title-icon"><i class="fas fa-server"></i></span>
+                <span data-i18n="hardware.title">{{ hardware_page_title }}</span>
+            </h1>
+            <div class="hw-subline"><strong>{{ server_name }}</strong> · <span data-i18n="hardware.subline">hardware status overview</span></div>
+        </div>
+        <div class="hw-health-strip" aria-label="Hardware live summary">
+            <div class="hw-health-item">
+                <div class="hw-health-label" data-i18n="metrics.temp">Thermal</div>
+                <div class="hw-health-value"><span id="hw-strip-temp">{{ hw_temp_initial }}</span>°C</div>
+            </div>
+            <div class="hw-health-item">
+                <div class="hw-health-label" data-i18n="metrics.power">Power</div>
+                <div class="hw-health-value"><span id="hw-strip-power">{{ hw_power_initial }}</span>W</div>
+            </div>
+            <div class="hw-health-item">
+                <div class="hw-health-label" data-i18n="metrics.fan">Airflow</div>
+                <div class="hw-health-value"><span id="hw-strip-fan">{{ hw_fan_initial ~ ' RPM' if initial_hw_ready else '--' }}</span></div>
+            </div>
+        </div>
+    </section>
+
     <!-- 环境依赖警告栏 -->
     <div id="env-warning" class="alert alert-danger d-none mb-4 border-0 shadow-sm" role="alert">
         <div class="d-flex align-items-center">
             <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
             <div>
-                <h5 class="alert-heading mb-1 fw-bold">Environment Dependencies Missing</h5>
+                <h5 class="alert-heading mb-1 fw-bold" data-i18n="hardware.envMissingTitle">Environment Dependencies Missing</h5>
                 <p class="mb-0 small" id="env-warning-msg"></p>
             </div>
         </div>
@@ -125,41 +541,43 @@
     <div class="row g-3 mb-4">
         <!-- 顶部 4 个 Metric 卡片 -->
         <div class="col-6 col-md-3">
-            <div class="card metric-box">
+            <div class="card metric-box" data-accent="thermal">
                 <i class="fas fa-thermometer-half metric-icon text-primary"></i>
-                <div class="text-uppercase small text-muted fw-bold mb-1">CPU Max Temp</div>
-                <div class="metric-value text-primary"><span id="val-temp">--</span> <span class="metric-unit">°C</span></div>
+                <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.cpuMaxTemp">CPU Max Temp</div>
+                <div class="metric-value text-primary"><span id="val-temp" class="metric-number">{{ hw_temp_initial }}</span> <span class="metric-unit">°C</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card metric-box">
+            <div class="card metric-box" data-accent="power">
                 <i class="fas fa-bolt metric-icon text-warning"></i>
-                <div class="text-uppercase small text-muted fw-bold mb-1">Power Draw</div>
-                <div class="metric-value text-warning"><span id="val-power">--</span> <span class="metric-unit">W</span></div>
+                <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.powerDraw">Power Draw</div>
+                <div class="metric-value text-warning"><span id="val-power" class="metric-number">{{ hw_power_initial }}</span> <span class="metric-unit">W</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card metric-box">
+            <div class="card metric-box" data-accent="airflow">
                 <i class="fas fa-fan metric-icon text-success"></i>
-                <div class="text-uppercase small text-muted fw-bold mb-1">Fan Speed</div>
-                <div class="metric-value text-success"><span id="val-fan">--</span> <span class="metric-unit">RPM</span></div>
+                <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.fanSpeed">Fan Speed</div>
+                <div class="metric-value text-success"><span id="val-fan" class="metric-number">{{ hw_fan_initial }}</span> <span class="metric-unit">RPM</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
-                <div class="text-uppercase small text-muted fw-bold mb-2">Fan Control Mode</div>
-                <div id="mode-display" class="h3 fw-bold mb-3">--</div>
-                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()">Switch Mode</button>
-                <div id="fixed-mode-warning" class="text-warning small mt-2 d-none"><i class="fas fa-exclamation-triangle"></i> Disable override mode to switch</div>
+            <div class="card hw-mode-card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
+                <div class="text-uppercase small text-muted fw-bold mb-2" data-i18n="metrics.fanControlMode">Fan Control Mode</div>
+                <div id="mode-display" class="h3 fw-bold mb-3 {{ hw_mode_text_class_initial }}">{{ hw_mode_display_initial }}</div>
+                <button id="btn-mode" class="btn w-100 py-2 fw-bold {{ hw_mode_button_class_initial }}" onclick="toggleMode()">
+                    <i class="fas {{ hw_mode_button_icon_initial }} me-2"></i>{{ hw_mode_button_text_initial }}
+                </button>
+                <div id="fixed-mode-warning" class="text-warning small mt-2{% if not hw_mode_locked_initial %} d-none{% endif %}"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="hardware.disableOverrideMode">Disable override mode to switch</span></div>
             </div>
         </div>
     </div>
 
     <!-- 历史趋势图表 -->
-    <div class="card mb-4">
+    <div class="card hw-section-card mb-4">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div class="d-flex align-items-center">
-                <span class="fw-bold me-3"><i class="fas fa-history me-2"></i>Trends</span>
+                <span class="fw-bold me-3"><i class="fas fa-history me-2"></i><span data-i18n="metrics.trends">Trends</span></span>
                 <div class="btn-group btn-group-sm" id="tr-container">
                     <input type="radio" class="btn-check" name="histRange" id="hr1" value="1" onchange="saveHistRangePrefs(); loadHistory()">
                     <label class="btn btn-outline-secondary px-3" for="hr1">1H</label>
@@ -170,14 +588,14 @@
             
             <div class="d-flex gap-2">
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-pwr" checked onchange="handleTagChange()">
-                <label class="btn" for="chk-pwr">Power</label>
+                <label class="btn" for="chk-pwr" data-i18n="metrics.power">Power</label>
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-temp" checked onchange="handleTagChange()">
-                <label class="btn" for="chk-temp">Temp</label>
+                <label class="btn" for="chk-temp" data-i18n="metrics.temp">Temp</label>
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-fan" onchange="handleTagChange()">
-                <label class="btn" for="chk-fan">Fan</label>
+                <label class="btn" for="chk-fan" data-i18n="metrics.fan">Fan</label>
             </div>
         </div>
-        <div class="card-body p-3 position-relative" style="height: 320px;">
+        <div class="card-body p-3 position-relative hw-chart-body">
             <div id="chart-loader" class="chart-overlay skeleton-sweep"></div>
             <canvas id="mainChart"></canvas>
         </div>
@@ -186,15 +604,35 @@
     <div class="row g-4">
         <!-- 传感器列表 -->
         <div class="col-lg-8">
-            <div class="card h-100">
+            <div class="card hw-section-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-list-ul me-2"></i>Sensors List</span>
-                    <span class="badge bg-secondary" id="sensor-count">0</span>
+                    <span><i class="fas fa-list-ul me-2"></i><span data-i18n="metrics.sensorsList">Sensors List</span></span>
+                    <span class="badge bg-secondary" id="sensor-count">{{ hw_sensor_count_initial }}</span>
                 </div>
                 <div class="card-body p-0 scroll-container">
                     <table class="table table-dark table-striped table-hover table-custom mb-0">
-                        <thead class="sticky-top bg-dark"><tr><th>SOURCE</th><th>NAME</th><th class="text-end">VALUE</th><th class="text-center hide-mobile">STATUS</th></tr></thead>
-                        <tbody id="sensor-list"></tbody>
+                        <colgroup>
+                            <col class="sensor-source-col">
+                            <col class="sensor-name-col">
+                            <col class="sensor-value-col">
+                            <col class="sensor-status-col">
+                        </colgroup>
+                        <thead class="sensor-table-head bg-dark"><tr><th data-i18n="metrics.source">SOURCE</th><th data-i18n="metrics.name">NAME</th><th class="text-end" data-i18n="metrics.value">VALUE</th><th class="text-center hide-mobile" data-i18n="metrics.status">STATUS</th></tr></thead>
+                        <tbody id="sensor-list">
+                            {% if initial_hw_ready %}
+                            {% for sensor in initial_hw.get('sensors', []) %}
+                            {% set sensor_status = sensor.get('status', '') %}
+                            <tr data-name="{{ sensor.get('name', '') }}">
+                                <td class="text-muted small">{{ sensor.get('source', '') }}</td>
+                                <td><span class="sensor-name-link fw-bold" onclick='showSensorDetail({{ sensor.get("name", "") | tojson }})'>{{ sensor.get('name', '') }}</span></td>
+                                <td class="text-end font-monospace text-info sensor-value-cell">{{ sensor.get('value', '') }} <span class="text-muted small">{{ sensor.get('unit', '') }}</span></td>
+                                <td class="text-center hide-mobile sensor-status-cell">
+                                    <i class="fas fa-circle small {{ 'text-success' if sensor_status == 'ok' else 'text-warning' }}"></i> <span class="small text-muted">{{ sensor_status }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% endif %}
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -202,8 +640,8 @@
         
         <!-- 风扇控制区域 (修改部分) -->
         <div class="col-lg-4">
-            <div class="card h-100">
-                <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Fan Configuration</div>
+            <div class="card hw-section-card h-100">
+                <div class="card-header"><i class="fas fa-sliders-h me-2"></i><span data-i18n="metrics.fanConfiguration">Fan Configuration</span></div>
                 <div class="card-body d-flex flex-column py-3 px-4">
                     
                     <!-- 原有的曲线设置入口 -->
@@ -211,37 +649,39 @@
                         <canvas id="miniCurveChart"></canvas>
                     </div>
                     <button class="btn btn-primary w-100 mb-2 py-2" onclick="openCurveModal()">
-                        <i class="fas fa-edit me-1"></i> Edit Fan Curve
+                        <i class="fas fa-edit me-1"></i> <span data-i18n="metrics.editFanCurve">Edit Fan Curve</span>
                     </button>
                     <div class="text-muted small text-center mb-3" id="calibration-info">
-                        Calibrated Range: <span id="rpm-range-display" class="text-info font-monospace fw-bold">--</span>
+                        <span data-i18n="hardware.calibratedRange">Calibrated Range</span>: <span id="rpm-range-display" class="text-info font-monospace fw-bold">{{ hw_rpm_range_initial }}</span>
                     </div>
 
                     <div class="border-top border-secondary pt-3 mt-1">
-                        <div class="row g-3">
+                        <div class="row g-3 fan-override-grid">
                             <div class="col-12 col-md-6">
                                 <div class="override-panel h-100">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <label for="fixedFanSwitch" class="form-check-label fw-bold text-light small">
-                                            <i class="fas fa-thumbtack me-2 text-warning"></i> Fixed Speed
+                                            <i class="fas fa-thumbtack me-2 text-warning"></i> <span data-i18n="metrics.fixedSpeed">Fixed Speed</span>
                                         </label>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" role="switch" id="fixedFanSwitch" 
-                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleFixedSwitch(this)">
+                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleFixedSwitch(this)"
+                                                   {% if fixed_enabled_initial %}checked{% endif %}>
                                         </div>
                                     </div>
-                                    <div id="fixed-controls-wrapper" class="fixed-control-group disabled-visual">
-                                        <input type="range" class="form-range" min="10" max="100" id="fixedFanSlider" 
+                                    <div id="fixed-controls-wrapper" class="fixed-control-group{% if not fixed_enabled_initial %} disabled-visual{% endif %}">
+                                        <input type="range" class="form-range" min="10" max="100" id="fixedFanSlider"
+                                               value="{{ fixed_target_initial }}"
                                                oninput="handleFixedSliderInput(this.value)" 
-                                               onchange="handleFixedSliderChange(this.value)" disabled>
+                                               onchange="handleFixedSliderChange(this.value)" {% if not fixed_enabled_initial %}disabled{% endif %}>
                                         <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
                                             <div class="w-50 border-end border-secondary">
-                                                <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-6">--%</div>
-                                                <div class="text-muted small" style="font-size: 0.72rem;">TARGET</div>
+                                                <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-6">{{ fixed_target_initial }}%</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="metrics.target">TARGET</div>
                                             </div>
                                             <div class="w-50">
-                                                <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-6">--</div>
-                                                <div class="text-muted small" style="font-size: 0.72rem;">EST. RPM</div>
+                                                <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-6">{{ fixed_rpm_initial }}</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="metrics.estimatedRpm">EST. RPM</div>
                                             </div>
                                         </div>
                                     </div>
@@ -251,21 +691,23 @@
                                 <div class="override-panel h-100">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <label for="targetTempSwitch" class="form-check-label fw-bold text-light small">
-                                            <i class="fas fa-bullseye me-2 text-info"></i> Target Temp
+                                            <i class="fas fa-bullseye me-2 text-info"></i> <span data-i18n="metrics.targetTemp">Target Temp</span>
                                         </label>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" role="switch" id="targetTempSwitch" 
-                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleTargetTempSwitch(this)">
+                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleTargetTempSwitch(this)"
+                                                   {% if target_enabled_initial %}checked{% endif %} {% if not calibration_ready_initial %}disabled{% endif %}>
                                         </div>
                                     </div>
-                                    <div id="target-temp-controls-wrapper" class="fixed-control-group disabled-visual">
-                                        <input type="range" class="form-range" min="20" max="85" id="targetTempSlider" 
+                                    <div id="target-temp-controls-wrapper" class="fixed-control-group{% if not target_enabled_initial %} disabled-visual{% endif %}">
+                                        <input type="range" class="form-range" min="20" max="85" id="targetTempSlider"
+                                               value="{{ target_temp_initial }}"
                                                oninput="handleTargetTempSliderInput(this.value)" 
-                                               onchange="handleTargetTempSliderChange(this.value)" disabled>
+                                               onchange="handleTargetTempSliderChange(this.value)" {% if not target_enabled_initial %}disabled{% endif %}>
                                         <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
                                             <div class="w-100">
-                                                <div id="targetTempValue" class="font-monospace text-info fw-bold fs-6">--°C</div>
-                                                <div class="text-muted small" style="font-size: 0.72rem;">CPU TARGET</div>
+                                                <div id="targetTempValue" class="font-monospace text-info fw-bold fs-6">{{ target_temp_initial }}°C</div>
+                                                <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="hardware.cpuTarget">CPU TARGET</div>
                                             </div>
                                         </div>
                                     </div>
@@ -278,21 +720,75 @@
             </div>
         </div>
     </div>
-</div>
+</main>
+
+{% set hw_switch_mode_title = t('hardware.switchModeTitle') %}
+{% if hw_switch_mode_title == 'hardware.switchModeTitle' %}{% set hw_switch_mode_title = 'Switch Mode?' %}{% endif %}
+{% set hw_switch_mode_confirm = t('hardware.confirmSwitchMode') %}
+{% if hw_switch_mode_confirm == 'hardware.confirmSwitchMode' %}{% set hw_switch_mode_confirm = 'Confirm switch mode?' %}{% endif %}
+{% set hw_calibration_title = t('hardware.calibrationTitle') %}
+{% if hw_calibration_title == 'hardware.calibrationTitle' %}{% set hw_calibration_title = 'Fan Calibration' %}{% endif %}
+{% set hw_calibration_confirm = t('hardware.calibrationConfirm') %}
+{% if hw_calibration_confirm == 'hardware.calibrationConfirm' %}{% set hw_calibration_confirm = 'Calibration takes a few minutes. Fans will slow down, then speed up. Continue?' %}{% endif %}
+{% set hw_notice_title = t('hardware.noticeTitle') %}
+{% if hw_notice_title == 'hardware.noticeTitle' %}{% set hw_notice_title = 'Hardware Notice' %}{% endif %}
+{% set hw_cancel_label = t('app.cancel') %}
+{% if hw_cancel_label == 'app.cancel' %}{% set hw_cancel_label = 'Cancel' %}{% endif %}
+{% set hw_confirm_label = t('app.confirm') %}
+{% if hw_confirm_label == 'app.confirm' %}{% set hw_confirm_label = 'Confirm' %}{% endif %}
+{% set hw_got_it_label = t('update.gotIt') %}
+{% if hw_got_it_label == 'update.gotIt' %}{% set hw_got_it_label = 'Got it' %}{% endif %}
 
 <!-- 模式切换确认 Modal -->
-<div class="modal fade" id="modeConfirmModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modeConfirmModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="modeConfirmModalTitle" aria-describedby="mode-msg-confirm">
     <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content bg-dark border-secondary shadow-lg">
+        <div class="modal-content shadow-lg">
             <div class="modal-body p-4 text-center">
-                <div class="mb-3">
-                    <i id="mode-icon-confirm" class="fas fa-robot fs-1 text-primary"></i>
+                <div class="ipmi-modal-symbol mx-auto">
+                    <i id="mode-icon-confirm" class="fas fa-robot fs-4 text-primary"></i>
                 </div>
-                <h5 class="modal-title mb-2 fw-bold text-light">Switch Mode?</h5>
-                <p id="mode-msg-confirm" class="text-muted small mb-4">Confirm switch to AUTOMATIC mode?</p>
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-secondary flex-grow-1 fw-bold" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" id="btn-confirm-mode" class="btn btn-primary flex-grow-1 fw-bold">Confirm</button>
+                <h5 class="modal-title mb-2 fw-bold text-light" id="modeConfirmModalTitle" data-i18n="hardware.switchModeTitle">{{ hw_switch_mode_title }}</h5>
+                <p id="mode-msg-confirm" class="ipmi-modal-copy small mb-4">{{ hw_switch_mode_confirm }}</p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal" data-i18n="app.cancel">{{ hw_cancel_label }}</button>
+                    <button type="button" id="btn-confirm-mode" class="btn btn-primary fw-bold" data-i18n="app.confirm">{{ hw_confirm_label }}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 风扇校准确认 Modal -->
+<div class="modal fade" id="calibrationConfirmModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="calibrationConfirmModalTitle" aria-describedby="calibrationConfirmModalMessage">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="ipmi-modal-symbol warning mx-auto">
+                    <i class="fas fa-tachometer-alt fs-4"></i>
+                </div>
+                <h5 class="modal-title mb-2 fw-bold" id="calibrationConfirmModalTitle" data-i18n="hardware.calibrationTitle">{{ hw_calibration_title }}</h5>
+                <p class="ipmi-modal-copy small mb-4" id="calibrationConfirmModalMessage" data-i18n="hardware.calibrationConfirm">{{ hw_calibration_confirm }}</p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal" data-i18n="app.cancel">{{ hw_cancel_label }}</button>
+                    <button type="button" id="btn-confirm-calibration" class="btn btn-primary fw-bold" data-i18n="app.confirm">{{ hw_confirm_label }}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hardware notice Modal -->
+<div class="modal fade" id="hardwareNoticeModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="hardware-notice-title" aria-describedby="hardware-notice-message">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div id="hardware-notice-symbol" class="ipmi-modal-symbol mx-auto">
+                    <i id="hardware-notice-icon" class="fas fa-check fs-4"></i>
+                </div>
+                <h5 id="hardware-notice-title" class="modal-title mb-2 fw-bold" data-i18n="hardware.noticeTitle">{{ hw_notice_title }}</h5>
+                <p id="hardware-notice-message" class="ipmi-modal-copy small mb-4"></p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-primary fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ hw_got_it_label }}</button>
                 </div>
             </div>
         </div>
@@ -300,17 +796,17 @@
 </div>
 
 <!-- Modal 保持不变 -->
-<div class="modal fade" id="curveModal" tabindex="-1">
+<div class="modal fade" id="curveModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="curveModalTitle">
     <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
+        <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title">Manual Fan Curve (Target RPM %)</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="curveModalTitle" data-i18n="hardware.manualFanCurve">Manual Fan Curve (Target RPM %)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex justify-content-end mb-3">
                     <button class="btn btn-sm btn-outline-warning" onclick="startCalibration()">
-                        <i class="fas fa-tachometer-alt me-1"></i> Run Calibration
+                        <i class="fas fa-tachometer-alt me-1"></i> <span data-i18n="hardware.runCalibration">Run Calibration</span>
                     </button>
                 </div>
                 <div class="row">
@@ -321,22 +817,22 @@
                 </div>
             </div>
             <div class="modal-footer border-top border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-success" onclick="saveCurve()">Save & Apply</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.close">{{ t('app.close') }}</button>
+                <button type="button" class="btn btn-success" onclick="saveCurve()" data-i18n="app.applyAndSave">{{ t('app.applyAndSave') }}</button>
             </div>
         </div>
     </div>
 </div>
 
-<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1">
+<div class="modal fade" id="calibModal" data-bs-backdrop="static" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="calibModalTitle" aria-describedby="calib-log">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content bg-dark border-warning">
+        <div class="modal-content shadow-lg">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title text-warning"><i class="fas fa-cog fa-spin me-2"></i>Calibrating Fans...</h5>
+                <h5 class="modal-title text-warning" id="calibModalTitle"><i class="fas fa-cog fa-spin me-2"></i><span data-i18n="hardware.calibratingFans">Calibrating Fans...</span></h5>
             </div>
             <div class="modal-body text-center pt-2">
                 <div class="my-4">
-                    <div class="text-uppercase small text-muted mb-1">Current Speed</div>
+                    <div class="text-uppercase small text-muted mb-1" data-i18n="hardware.currentSpeed">Current Speed</div>
                     <div style="font-family: 'SF Mono', Consolas, monospace; font-size: 3.5rem; font-weight: 700; color: #fff;">
                         <span id="calib-realtime-rpm">---</span> <span style="font-size: 1rem; color: #8b949e">RPM</span>
                     </div>
@@ -344,21 +840,21 @@
                 <div class="progress mb-3" style="height: 6px; background: #30363d;">
                     <div id="calib-progress" class="progress-bar bg-warning" style="width: 0%"></div>
                 </div>
-                <div id="calib-log" class="font-monospace small text-white-50">Initializing...</div>
+                <div id="calib-log" class="font-monospace small text-white-50" data-i18n="app.loading">Initializing...</div>
             </div>
         </div>
     </div>
 </div>
 
 <!-- 传感器详细历史 Modal -->
-<div class="modal fade" id="sensorDetailModal" tabindex="-1">
+<div class="modal fade" id="sensorDetailModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="modal-sensor-name">
     <div class="modal-dialog modal-xl modal-xl-custom modal-dialog-centered">
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary py-2">
                 <h5 class="modal-title fs-6 fw-bold text-primary">
-                    <i class="fas fa-chart-line me-2"></i><span id="modal-sensor-name">Sensor Trend</span>
+                    <i class="fas fa-chart-line me-2"></i><span id="modal-sensor-name" data-i18n="hardware.sensorTrend">Sensor Trend</span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body p-3">
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -376,11 +872,11 @@
 </div>
 
 <!-- Version Update Notice Modal -->
-<div class="modal fade" id="updateNoticeModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="updateNoticeModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="updateNoticeModalTitle" aria-describedby="update-notice-plain">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content modal-content-dark shadow-lg">
             <div class="modal-header modal-header-tint border-bottom border-secondary">
-                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-sparkles me-2"></i><span data-i18n="update.title">{{ t('update.title') }}</span></h5>
+                <h5 class="modal-title fw-bold text-primary" id="updateNoticeModalTitle"><i class="fas fa-sparkles me-2"></i><span data-i18n="update.title">{{ t('update.title') }}</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body p-4">
@@ -406,13 +902,17 @@
             <div class="toast-body">
                 <i class="fas fa-check-circle me-2"></i> <span id="toast-msg" data-i18n="app.operationSuccess">{{ t('app.operationSuccess') }}</span>
             </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
         </div>
     </div>
 </div>
 
 <script>
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};
+    window.IPMI_INITIAL_HW = {{ initial_hw | tojson }};
+    window.IPMI_INITIAL_HW_READY = {{ initial_hw_ready | tojson }};
+    window.IPMI_INITIAL_CONFIG = {{ initial_config | tojson }};
+    window.IPMI_INITIAL_CONFIG_READY = {{ initial_config_ready | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script>
@@ -429,15 +929,70 @@
     let lastSavedTargetTemp = null;
     let updateNoticeModal = null;
     let updateNoticePendingAck = false;
+    let hardwareNoticeModal = null;
+    let calibrationConfirmModal = null;
+    let calibrationModal = null;
+
+    function tx(key, fallback, params = {}) {
+        const translated = t(key, params);
+        return translated === key ? fallback : translated;
+    }
+
+    function formatStableMetric(value, { digits = 1, integer = false } = {}) {
+        if (value === null || value === undefined || value === '') return '--';
+        const number = Number(value);
+        if (!Number.isFinite(number)) return String(value);
+        if (integer || Math.abs(number - Math.round(number)) < (0.5 * Math.pow(10, -digits))) {
+            return String(Math.round(number));
+        }
+        return number.toFixed(digits).replace(/\.?0+$/, '');
+    }
+
+    function setTextIfChanged(id, value) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const next = String(value);
+        if (el.textContent !== next) el.textContent = next;
+    }
+
+    function setClassNameIfChanged(el, value) {
+        if (el && el.className !== value) el.className = value;
+    }
+
+    function setHtmlIfChanged(el, value) {
+        if (el && el.innerHTML !== value) el.innerHTML = value;
+    }
+
+    function cssVar(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+
+    function colorWithAlpha(hexColor, alpha) {
+        const hex = String(hexColor || '').trim().replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(127, 127, 127, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    const chartInk = () => ({
+        grid: cssVar('--border-color', '#3a3328'),
+        muted: cssVar('--text-muted', '#a8a092'),
+        power: cssVar('--accent-yellow', '#c6a15b'),
+        temp: cssVar('--accent-blue', '#6f8fa5'),
+        fan: cssVar('--accent-green', '#8a9b6f'),
+        red: cssVar('--accent-red', '#c35f4b')
+    });
 
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 800, easing: 'easeOutQuart' },
+        animation: { duration: 260, easing: 'easeOutQuart' },
         interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
         scales: { 
-            x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } }, 
-            y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
-            y1: { display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#8b949e' } }
+            x: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted, maxTicksLimit: 8 } },
+            y: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted } },
+            y1: { display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartInk().muted } }
         },
         elements: { 
             point: { radius: 0, hitRadius: 10 },
@@ -454,19 +1009,24 @@
                 responsive: true, maintainAspectRatio: false, animation: false,
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
-                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: '#1f6feb', tension: 0.3 } }
+                elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: chartInk().temp, tension: 0.3 } }
             }
         });
 
         // 初始化加载顺序
         loadPrefs();
         loadHistRangePrefs();
-        loadInitialConfig(); 
-        refreshData(); 
+        if (!(window.IPMI_INITIAL_HW_READY && applyHardwareData(window.IPMI_INITIAL_HW))) {
+            refreshData();
+        }
+        if (window.IPMI_INITIAL_CONFIG_READY) {
+            applyControlConfig(window.IPMI_INITIAL_CONFIG);
+        }
+        loadInitialConfig();
         loadHistory(false); 
         
-        setInterval(refreshData, 1000); 
-        setInterval(() => loadHistory(true), 20000);
+        window.IPMI.poll(refreshData, 1000, { visibleOnly: true, immediate: false });
+        window.IPMI.poll(() => loadHistory(true), 20000, { visibleOnly: true, immediate: false });
     }
     
     // --- Fan Override Controls ---
@@ -486,48 +1046,52 @@
         return body;
     }
 
+    function applyControlConfig(d) {
+        if(!d) return false;
+
+        if(d.curve) {
+            currentCurve = d.curve || {};
+            const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
+            const data = labels.map(k=>currentCurve[k]);
+            miniCurveChart.data.labels = labels;
+            miniCurveChart.data.datasets = [{data: data, borderColor: chartInk().temp, borderWidth: 2, fill: true, backgroundColor: colorWithAlpha(chartInk().temp, 0.14), tension: 0.3}];
+            miniCurveChart.update('none');
+        }
+
+        const isFixed = isTruthy(d.fixed_fan_speed_enabled);
+        const fixedTarget = d.fixed_fan_speed_target || 30;
+        const isTargetTemp = isTruthy(d.target_temp_mode_enabled);
+        const targetTemp = d.target_temp_target || 65;
+        const calibrationReady = isTruthy(d.calibration_ready);
+
+        const fixedSwitch = document.getElementById('fixedFanSwitch');
+        const fixedSlider = document.getElementById('fixedFanSlider');
+        if (fixedSwitch.checked !== isFixed) fixedSwitch.checked = isFixed;
+        if (fixedSlider.value !== String(fixedTarget)) fixedSlider.value = fixedTarget;
+        lastSavedFixedTarget = parseInt(fixedTarget);
+        updateFixedUIState(isFixed);
+        updateFixedValuesDisplay(fixedTarget);
+
+        const targetSwitch = document.getElementById('targetTempSwitch');
+        const targetSlider = document.getElementById('targetTempSlider');
+        if (targetSlider.value !== String(targetTemp)) targetSlider.value = targetTemp;
+        lastSavedTargetTemp = parseInt(targetTemp);
+        updateTargetTempValuesDisplay(targetTemp);
+        updateTargetTempCalibrationState(calibrationReady);
+
+        const targetEnabled = isTargetTemp && calibrationReady;
+        if (targetSwitch.checked !== targetEnabled) targetSwitch.checked = targetEnabled;
+        updateTargetTempUIState(targetEnabled);
+
+        if (isFixed) {
+            if (targetSwitch.checked) targetSwitch.checked = false;
+            updateTargetTempUIState(false);
+        }
+        return true;
+    }
+
     function loadInitialConfig() {
-        fetch('/api/config').then(r => r.json()).then(d => {
-            if(!d) return;
-
-            if(d.curve) {
-                const labels = Object.keys(d.curve).sort((a,b)=>a-b);
-                const data = labels.map(k=>d.curve[k]);
-                miniCurveChart.data.labels = labels;
-                miniCurveChart.data.datasets = [{data: data, borderColor: '#1f6feb', borderWidth: 2, fill: true, backgroundColor: 'rgba(31, 111, 235, 0.2)', tension: 0.3}];
-                miniCurveChart.update();
-            }
-
-            const isFixed = isTruthy(d.fixed_fan_speed_enabled);
-            const fixedTarget = d.fixed_fan_speed_target || 30;
-            const isTargetTemp = isTruthy(d.target_temp_mode_enabled);
-            const targetTemp = d.target_temp_target || 65;
-            const calibrationReady = isTruthy(d.calibration_ready);
-
-            const fixedSwitch = document.getElementById('fixedFanSwitch');
-            const fixedSlider = document.getElementById('fixedFanSlider');
-            fixedSwitch.checked = isFixed;
-            fixedSlider.value = fixedTarget;
-            lastSavedFixedTarget = parseInt(fixedTarget);
-            updateFixedUIState(isFixed);
-            updateFixedValuesDisplay(fixedTarget);
-
-            const targetSwitch = document.getElementById('targetTempSwitch');
-            const targetSlider = document.getElementById('targetTempSlider');
-            targetSlider.value = targetTemp;
-            lastSavedTargetTemp = parseInt(targetTemp);
-            updateTargetTempValuesDisplay(targetTemp);
-            updateTargetTempCalibrationState(calibrationReady);
-
-            const targetEnabled = isTargetTemp && calibrationReady;
-            targetSwitch.checked = targetEnabled;
-            updateTargetTempUIState(targetEnabled);
-
-            if (isFixed) {
-                targetSwitch.checked = false;
-                updateTargetTempUIState(false);
-            }
-        });
+        fetch('/api/config').then(r => r.json()).then(applyControlConfig);
     }
 
     function toggleFixedSwitch(el) {
@@ -670,13 +1234,13 @@
     }
 
     function updateFixedValuesDisplay(pct) {
-        document.getElementById('fixedFanValuePct').innerText = pct + '%';
+        setTextIfChanged('fixedFanValuePct', `${formatStableMetric(pct, { digits: 0, integer: true })}%`);
         const estRpm = maxRPM > 0 ? Math.round(maxRPM * (pct/100)) : '--';
-        document.getElementById('fixedFanValueRpm').innerText = estRpm;
+        setTextIfChanged('fixedFanValueRpm', formatStableMetric(estRpm, { digits: 0, integer: true }));
     }
 
     function updateTargetTempValuesDisplay(temp) {
-        document.getElementById('targetTempValue').innerText = temp + '°C';
+        setTextIfChanged('targetTempValue', `${formatStableMetric(temp, { digits: 0, integer: true })}°C`);
     }
 
     // --- Fan Override Controls End ---
@@ -689,6 +1253,23 @@
         toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
         const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
         toast.show();
+    }
+
+    function showHardwareNotice(message, isError = false, title = tx('hardware.noticeTitle', 'Hardware Notice')) {
+        const modalEl = document.getElementById('hardwareNoticeModal');
+        if (!modalEl) {
+            showToast(message, isError);
+            return;
+        }
+        const symbol = document.getElementById('hardware-notice-symbol');
+        const icon = document.getElementById('hardware-notice-icon');
+        document.getElementById('hardware-notice-title').innerText = title;
+        document.getElementById('hardware-notice-message').innerText = message;
+        symbol.classList.toggle('danger', isError);
+        symbol.classList.remove('warning');
+        icon.className = `fas ${isError ? 'fa-triangle-exclamation' : 'fa-check'} fs-4`;
+        if (!hardwareNoticeModal) hardwareNoticeModal = new bootstrap.Modal(modalEl);
+        hardwareNoticeModal.show();
     }
 
     function escapeHtml(value) {
@@ -776,146 +1357,162 @@
         }
     }
 
-    function refreshData() {
-        fetch('/api/status_hardware').then(r => r.json()).then(d => {
-            if(!d || !d.sensors) return;
+    function applyHardwareData(d) {
+        if(!d || !d.sensors) return false;
 
-            // 环境检测
-            const envWarn = document.getElementById('env-warning');
-            const envMsg = document.getElementById('env-warning-msg');
-            if (d.env && (!d.env.ipmitool || !d.env.sensors)) {
-                let missing = [];
-                if (!d.env.ipmitool) missing.push('<strong>ipmitool</strong>');
-                if (!d.env.sensors) missing.push('<strong>lm-sensors</strong>');
-                envMsg.innerHTML = t('hardware.envMissingMessage', { components: missing.join(' / ') });
-                envWarn.classList.remove('d-none');
-            } else {
-                envWarn.classList.add('d-none');
-            }
-            document.getElementById('val-temp').innerText = d.temp;
-            document.getElementById('val-power').innerText = d.power;
-            document.getElementById('val-fan').innerText = d.fan_rpm;
-            
-            // 更新全局 RPM 数据
-            maxRPM = d.max_rpm || 0;
-            minRPM = d.min_rpm || 0;
-            const calibrated = maxRPM > 0;
-            const rangeText = calibrated ? `${minRPM} - ${maxRPM} RPM` : t('hardware.notCalibrated');
-            document.getElementById('rpm-range-display').innerText = rangeText;
-            updateTargetTempCalibrationState(calibrated);
+        // 环境检测
+        const envWarn = document.getElementById('env-warning');
+        const envMsg = document.getElementById('env-warning-msg');
+        if (d.env && (!d.env.ipmitool || !d.env.sensors)) {
+            let missing = [];
+            if (!d.env.ipmitool) missing.push('<strong>ipmitool</strong>');
+            if (!d.env.sensors) missing.push('<strong>lm-sensors</strong>');
+            envMsg.innerHTML = t('hardware.envMissingMessage', { components: missing.join(' / ') });
+            envWarn.classList.remove('d-none');
+        } else {
+            envWarn.classList.add('d-none');
+        }
+        const tempText = formatStableMetric(d.temp, { digits: 1 });
+        const powerText = formatStableMetric(d.power, { digits: 0, integer: true });
+        const fanText = formatStableMetric(d.fan_rpm, { digits: 0, integer: true });
+        setTextIfChanged('val-temp', tempText);
+        setTextIfChanged('val-power', powerText);
+        setTextIfChanged('val-fan', fanText);
+        setTextIfChanged('hw-strip-temp', tempText);
+        setTextIfChanged('hw-strip-power', powerText);
+        setTextIfChanged('hw-strip-fan', `${fanText} RPM`);
 
-            if (!isDraggingFixedSlider) {
-                const currentSliderVal = document.getElementById('fixedFanSlider').value;
-                updateFixedValuesDisplay(currentSliderVal);
-            }
-            if (!isDraggingTargetTempSlider) {
-                const currentTargetTemp = document.getElementById('targetTempSlider').value;
-                updateTargetTempValuesDisplay(currentTargetTemp);
-            }
+        // 更新全局 RPM 数据
+        maxRPM = d.max_rpm || 0;
+        minRPM = d.min_rpm || 0;
+        const calibrated = maxRPM > 0;
+        const minRpmText = formatStableMetric(minRPM, { digits: 0, integer: true });
+        const maxRpmText = formatStableMetric(maxRPM, { digits: 0, integer: true });
+        const rangeText = calibrated ? `${minRpmText} - ${maxRpmText} RPM` : t('hardware.notCalibrated');
+        setTextIfChanged('rpm-range-display', rangeText);
+        updateTargetTempCalibrationState(calibrated);
 
-            const modeText = document.getElementById('mode-display');
-            const btn = document.getElementById('btn-mode');
-            const warnMsg = document.getElementById('fixed-mode-warning');
-            const fixedSwitch = document.getElementById('fixedFanSwitch');
-            const targetSwitch = document.getElementById('targetTempSwitch');
+        if (!isDraggingFixedSlider) {
+            const currentSliderVal = document.getElementById('fixedFanSlider').value;
+            updateFixedValuesDisplay(currentSliderVal);
+        }
+        if (!isDraggingTargetTempSlider) {
+            const currentTargetTemp = document.getElementById('targetTempSlider').value;
+            updateTargetTempValuesDisplay(currentTargetTemp);
+        }
 
-            if (d.mode === 'fixed' || d.mode === 'target_temp') {
-                const isFixedMode = d.mode === 'fixed';
-                modeText.innerText = isFixedMode ? t('hardware.modeFixed').toUpperCase() : t('hardware.modeTargetTemp').toUpperCase();
-                modeText.className = `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`;
-                btn.className = 'btn w-100 py-2 fw-bold btn-secondary disabled';
-                btn.innerHTML = `<i class="fas fa-ban me-2"></i>${t('hardware.modeLocked')}`;
-                warnMsg.classList.remove('d-none');
-                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${t('hardware.disableModeToSwitch', { mode: isFixedMode ? t('metrics.fixedSpeed') : t('metrics.targetTemp') })}`;
+        const modeText = document.getElementById('mode-display');
+        const btn = document.getElementById('btn-mode');
+        const warnMsg = document.getElementById('fixed-mode-warning');
+        const fixedSwitch = document.getElementById('fixedFanSwitch');
+        const targetSwitch = document.getElementById('targetTempSwitch');
 
-                if (isFixedMode) {
-                    if (!fixedSwitch.checked) {
-                        fixedSwitch.checked = true;
-                        updateFixedUIState(true);
-                    }
-                    if (targetSwitch.checked) {
-                        targetSwitch.checked = false;
-                        updateTargetTempUIState(false);
-                    }
-                } else {
-                    if (!targetSwitch.checked) {
-                        targetSwitch.checked = true;
-                        updateTargetTempUIState(true);
-                    }
-                    if (fixedSwitch.checked) {
-                        fixedSwitch.checked = false;
-                        updateFixedUIState(false);
-                    }
-                }
-            } else {
-                const isAuto = d.mode === 'auto';
-                modeText.innerText = isAuto ? t('hardware.modeAutomatic').toUpperCase() : t('hardware.modeManual').toUpperCase();
-                modeText.className = `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`;
-                btn.className = `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
-                btn.innerHTML = isAuto ? `<i class="fas fa-hand-paper me-2"></i>${t('hardware.switchToManual')}` : `<i class="fas fa-robot me-2"></i>${t('hardware.switchToAuto')}`;
-                btn.onclick = toggleMode;
-                warnMsg.classList.add('d-none');
+        if (d.mode === 'fixed' || d.mode === 'target_temp') {
+            const isFixedMode = d.mode === 'fixed';
+            const fixedLabel = tx('hardware.modeFixed', 'Fixed Speed');
+            const targetTempLabel = tx('hardware.modeTargetTemp', 'Target Temp');
+            setTextIfChanged('mode-display', (isFixedMode ? fixedLabel : targetTempLabel).toUpperCase());
+            setClassNameIfChanged(modeText, `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`);
+            setClassNameIfChanged(btn, 'btn w-100 py-2 fw-bold btn-secondary disabled');
+            setHtmlIfChanged(btn, `<i class="fas fa-ban me-2"></i>${tx('hardware.modeLocked', 'Mode Locked')}`);
+            warnMsg.classList.remove('d-none');
+            setHtmlIfChanged(warnMsg, `<i class="fas fa-exclamation-triangle"></i> ${tx('hardware.disableModeToSwitch', 'Disable override mode to switch', { mode: isFixedMode ? tx('metrics.fixedSpeed', 'Fixed Speed') : tx('metrics.targetTemp', 'Target Temp') })}`);
 
-                if (fixedSwitch.checked) {
-                    fixedSwitch.checked = false;
-                    updateFixedUIState(false);
+            if (isFixedMode) {
+                if (!fixedSwitch.checked) {
+                    fixedSwitch.checked = true;
+                    updateFixedUIState(true);
                 }
                 if (targetSwitch.checked) {
                     targetSwitch.checked = false;
                     updateTargetTempUIState(false);
                 }
+            } else {
+                if (!targetSwitch.checked) {
+                    targetSwitch.checked = true;
+                    updateTargetTempUIState(true);
+                }
+                if (fixedSwitch.checked) {
+                    fixedSwitch.checked = false;
+                    updateFixedUIState(false);
+                }
             }
+        } else {
+            const isAuto = d.mode === 'auto';
+            const automaticLabel = tx('hardware.modeAutomatic', 'Automatic');
+            const manualLabel = tx('hardware.modeManual', 'Manual');
+            setTextIfChanged('mode-display', (isAuto ? automaticLabel : manualLabel).toUpperCase());
+            setClassNameIfChanged(modeText, `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`);
+            setClassNameIfChanged(btn, `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`);
+            setHtmlIfChanged(btn, isAuto ? `<i class="fas fa-hand-paper me-2"></i>${tx('hardware.switchToManual', 'Switch to Manual')}` : `<i class="fas fa-robot me-2"></i>${tx('hardware.switchToAuto', 'Switch to Auto')}`);
+            btn.onclick = toggleMode;
+            warnMsg.classList.add('d-none');
 
-            // 传感器列表渲染 (性能优化：增量更新 DOM，避免全量替换导致的卡顿)
-            const tbody = document.getElementById('sensor-list');
-            const seenNames = new Set();
+            if (fixedSwitch.checked) {
+                fixedSwitch.checked = false;
+                updateFixedUIState(false);
+            }
+            if (targetSwitch.checked) {
+                targetSwitch.checked = false;
+                updateTargetTempUIState(false);
+            }
+        }
 
-            d.sensors.forEach(s => {
-                seenNames.add(s.name);
-                // 使用名称的 Base64 编码作为 ID，避免特殊字符和空格引起的问题
-                const safeId = "snr-" + btoa(encodeURIComponent(s.name)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-                let row = document.getElementById(safeId);
-                
-                const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
-                const valueHtml = `${s.value} <span class="text-muted small">${s.unit}</span>`;
-                const statusHtml = `<i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span>`;
+        // 传感器列表渲染 (性能优化：增量更新 DOM，避免全量替换导致的卡顿)
+        const tbody = document.getElementById('sensor-list');
+        const seenNames = new Set();
 
-                if (!row) {
-                    // 创建新行
-                    const tr = document.createElement('tr');
-                    tr.id = safeId;
-                    tr.setAttribute('data-name', s.name);
-                    tr.innerHTML = `
-                        <td class="text-muted small">${s.source}</td>
-                        <td><span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span></td>
-                        <td class="text-end font-monospace text-info sensor-value-cell">${valueHtml}</td>
-                        <td class="text-center hide-mobile sensor-status-cell">${statusHtml}</td>
-                    `;
-                    tbody.appendChild(tr);
-                } else {
-                    // 更新现有行 (仅当内容变化时操作 DOM)
-                    const valCell = row.querySelector('.sensor-value-cell');
-                    const stCell = row.querySelector('.sensor-status-cell');
-                    if (valCell && valCell.innerHTML !== valueHtml) valCell.innerHTML = valueHtml;
-                    if (stCell && stCell.innerHTML !== statusHtml) stCell.innerHTML = statusHtml;
-                }
-            });
+        d.sensors.forEach(s => {
+            seenNames.add(s.name);
+            // 使用名称的 Base64 编码作为 ID，避免特殊字符和空格引起的问题
+            const safeId = "snr-" + btoa(encodeURIComponent(s.name)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+            let row = document.getElementById(safeId) || Array.from(tbody.rows).find(existing => existing.getAttribute('data-name') === s.name);
+            if (row && !row.id) row.id = safeId;
 
-            // 移除不再存在的传感器
-            Array.from(tbody.rows).forEach(row => {
-                const name = row.getAttribute('data-name');
-                if (name && !seenNames.has(name)) {
-                    row.remove();
-                }
-            });
+            const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
+            const valueHtml = `${s.value} <span class="text-muted small">${s.unit}</span>`;
+            const statusHtml = `<i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span>`;
 
-            document.getElementById('sensor-count').innerText = d.sensors.length;
-        }).catch(e => console.log('Fetch error:', e));
+            if (!row) {
+                // 创建新行
+                const tr = document.createElement('tr');
+                tr.id = safeId;
+                tr.setAttribute('data-name', s.name);
+                tr.innerHTML = `
+                    <td class="text-muted small">${s.source}</td>
+                    <td><span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span></td>
+                    <td class="text-end font-monospace text-info sensor-value-cell">${valueHtml}</td>
+                    <td class="text-center hide-mobile sensor-status-cell">${statusHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            } else {
+                // 更新现有行 (仅当内容变化时操作 DOM)
+                const valCell = row.querySelector('.sensor-value-cell');
+                const stCell = row.querySelector('.sensor-status-cell');
+                if (valCell && valCell.innerHTML !== valueHtml) valCell.innerHTML = valueHtml;
+                if (stCell && stCell.innerHTML !== statusHtml) stCell.innerHTML = statusHtml;
+            }
+        });
+
+        // 移除不再存在的传感器
+        Array.from(tbody.rows).forEach(row => {
+            const name = row.getAttribute('data-name');
+            if (name && !seenNames.has(name)) {
+                row.remove();
+            }
+        });
+
+        setTextIfChanged('sensor-count', d.sensors.length);
+        return true;
+    }
+
+    function refreshData() {
+        fetch('/api/status_hardware').then(r => r.json()).then(applyHardwareData).catch(e => console.log('Fetch error:', e));
     }
 
     function handleTagChange() {
         savePrefs();
-        updateChart();
+       updateChart(isSilent ? 'none' : undefined);
     }
 
     function savePrefs() {
@@ -1006,7 +1603,7 @@
        });
     }
 
-    function updateChart() {
+    function updateChart(updateMode) {
        if (!historyData.times) return;
        
        const datasets = [];
@@ -1019,18 +1616,18 @@
        };
 
        if(document.getElementById('chk-pwr').checked)
-           datasets.push({label:t('metrics.power'), data:historyData.power, borderColor:'#e3b341', backgroundColor: createGradient('#e3b341'), fill: true});
+           datasets.push({label:t('metrics.power'), data:historyData.power, borderColor: chartInk().power, backgroundColor: createGradient(chartInk().power), fill: true});
        
        if(document.getElementById('chk-temp').checked)
-           datasets.push({label:t('metrics.temp'), data:historyData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient('#1f6feb'), fill: true});
+           datasets.push({label:t('metrics.temp'), data:historyData.cpu_temp, borderColor: chartInk().temp, backgroundColor: createGradient(chartInk().temp), fill: true});
        
        if(document.getElementById('chk-fan').checked)
-           datasets.push({label:t('metrics.fan'), data:historyData.fan_rpm, borderColor:'#2ea043', yAxisID: 'y1'});
+           datasets.push({label:t('metrics.fan'), data:historyData.fan_rpm, borderColor: chartInk().fan, yAxisID: 'y1'});
 
        mainChart.data.labels = historyData.times;
        mainChart.data.datasets = datasets;
        mainChart.options.scales.y1.display = document.getElementById('chk-fan').checked;
-       mainChart.update();
+       mainChart.update(updateMode);
     }
 
     // Modal 和曲线设置部分
@@ -1075,7 +1672,7 @@
         const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
         curveChart = new Chart(ctx, {
             type: 'line', data: {
-                labels: labels, datasets: [{ data: labels.map(k => currentCurve[k]), borderColor: '#1f6feb', borderWidth: 2, tension: 0.3 }]
+                labels: labels, datasets: [{ data: labels.map(k => currentCurve[k]), borderColor: chartInk().temp, borderWidth: 2, tension: 0.3 }]
             },
             options: { 
                 plugins: { 
@@ -1090,7 +1687,7 @@
                         }
                     }
                 }, 
-                scales: { y: { min: 0, max: 100, grid: { color: '#333' } }, x: { grid: { color: '#333' } } } 
+                scales: { y: { min: 0, max: 100, grid: { color: chartInk().grid } }, x: { grid: { color: chartInk().grid } } }
             }
         });
     }
@@ -1119,9 +1716,9 @@
         
         // 更新 Modal 内容
         const isAuto = pendingMode === 'auto';
-        document.getElementById('mode-icon-confirm').className = `fas ${isAuto ? 'fa-robot text-success' : 'fa-hand-paper text-primary'} fs-1`;
-        document.getElementById('mode-msg-confirm').innerText = t('hardware.confirmSwitchMode', { mode: pendingMode === 'auto' ? t('hardware.modeAutomatic') : t('hardware.modeManual') });
-        document.getElementById('btn-confirm-mode').className = `btn ${isAuto ? 'btn-success' : 'btn-primary'} flex-grow-1 fw-bold`;
+        document.getElementById('mode-icon-confirm').className = `fas ${isAuto ? 'fa-robot text-success' : 'fa-hand-paper text-primary'} fs-4`;
+        document.getElementById('mode-msg-confirm').innerText = tx('hardware.confirmSwitchMode', 'Confirm switch to {mode} mode?', { mode: pendingMode === 'auto' ? t('hardware.modeAutomatic') : t('hardware.modeManual') });
+        document.getElementById('btn-confirm-mode').className = `btn ${isAuto ? 'btn-success' : 'btn-primary'} fw-bold`;
         
         modeModal.show();
     }
@@ -1143,16 +1740,34 @@
 
     let calibInterval;
     function startCalibration() {
-        if(!confirm(t('hardware.calibrationConfirm'))) return;
-        bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
-        const calibModal = new bootstrap.Modal(document.getElementById('calibModal'));
-        calibModal.show();
+        if (!calibrationConfirmModal) {
+            calibrationConfirmModal = new bootstrap.Modal(document.getElementById('calibrationConfirmModal'));
+        }
+        calibrationConfirmModal.show();
+    }
+
+    function beginCalibration() {
+        if (calibrationConfirmModal) calibrationConfirmModal.hide();
+        const curveModal = bootstrap.Modal.getInstance(document.getElementById('curveModal'));
+        if (curveModal) curveModal.hide();
+        if (!calibrationModal) {
+            calibrationModal = new bootstrap.Modal(document.getElementById('calibModal'));
+        }
+        document.getElementById('calib-progress').style.width = '0%';
+        document.getElementById('calib-log').innerText = 'Initializing...';
+        document.getElementById('calib-realtime-rpm').innerText = '---';
+        calibrationModal.show();
         fetch('/api/calibration/start', {method: 'POST'}).then(r=>r.json()).then(d=>{
             if(d.status === 'started') {
                 calibInterval = setInterval(checkCalibStatus, 1000);
             }
+        }).catch((error) => {
+            if (calibrationModal) calibrationModal.hide();
+            showHardwareNotice(error.message || tx('hardware.calibrationStartFailed', 'Failed to start calibration.'), true);
         });
     }
+
+    document.getElementById('btn-confirm-calibration').onclick = beginCalibration;
 
     function checkCalibStatus() {
         fetch('/api/calibration/status').then(r=>r.json()).then(d => {
@@ -1162,8 +1777,8 @@
             if(!d.active && d.progress >= 100) {
                 clearInterval(calibInterval);
                 setTimeout(() => {
-                    bootstrap.Modal.getInstance(document.getElementById('calibModal')).hide();
-                    alert(t('hardware.calibrationComplete'));
+                    if (calibrationModal) calibrationModal.hide();
+                    showHardwareNotice(tx('hardware.calibrationComplete', 'Calibration complete.'), false, tx('hardware.calibrationTitle', 'Fan Calibration'));
                     refreshData();
                 }, 1000);
             }
@@ -1241,10 +1856,10 @@
             finalValues = data.values.map(v => uniqueStates.indexOf(v));
         }
 
-        const themeColor = '#3fb950'; // 翡翠绿
+        const themeColor = chartInk().fan;
         const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(63, 185, 80, 0.3)');
-        gradient.addColorStop(1, 'rgba(63, 185, 80, 0)');
+        gradient.addColorStop(0, colorWithAlpha(themeColor, 0.22));
+        gradient.addColorStop(1, colorWithAlpha(themeColor, 0));
 
         sensorDetailChart = new Chart(ctx, {
             type: 'line',
@@ -1280,13 +1895,13 @@
                 },
                 scales: {
                     x: { 
-                        grid: { color: '#30363d' }, 
-                        ticks: { color: '#8b949e', maxTicksLimit: 10 } 
+                        grid: { color: chartInk().grid },
+                        ticks: { color: chartInk().muted, maxTicksLimit: 10 }
                     },
                     y: { 
-                        grid: { color: '#30363d' }, 
+                        grid: { color: chartInk().grid },
                         ticks: { 
-                            color: '#8b949e',
+                            color: chartInk().muted,
                             stepSize: isNumeric ? undefined : 1,
                             callback: function(value) {
                                 if (!isNumeric && yLabels) return yLabels[value];
@@ -1304,13 +1919,9 @@
         init();
         setTimeout(checkUpdateNotice, 800);
         checkLogStatus();
-        setInterval(checkLogStatus, 5000);
+        window.IPMI.poll(checkLogStatus, 5000, { visibleOnly: true, immediate: false });
     });
 </script>
-<footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
-    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
-        <i class="fab fa-github me-1"></i>GitHub @stlin256
-    </a>
-</footer>
+{% include 'partials/footer.html' %}
 </body>
 </html>

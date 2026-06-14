@@ -7,23 +7,32 @@
         });
     }
 
+    function hasMessage(key) {
+        return Object.prototype.hasOwnProperty.call(messages, key);
+    }
+
+    function translateKey(key, params = {}) {
+        return hasMessage(key) ? format(messages[key], params) : null;
+    }
+
     window.t = function (key, params = {}) {
-        return format(messages[key] || key, params);
+        return format(hasMessage(key) ? messages[key] : key, params);
     };
 
     function translateMappedAttribute(el, attr, textMap) {
         if (!el.hasAttribute(attr)) return;
         const value = el.getAttribute(attr);
         if (!textMap[value]) return;
-        const translated = window.t(textMap[value]);
-        if (translated !== value) el.setAttribute(attr, translated);
+        const translated = translateKey(textMap[value]);
+        if (translated !== null && translated !== value) el.setAttribute(attr, translated);
     }
 
     function translateTextNode(node, textMap) {
         const original = node.nodeValue;
         const trimmed = original.trim();
         if (!trimmed || !textMap[trimmed]) return;
-        const translated = window.t(textMap[trimmed]);
+        const translated = translateKey(textMap[trimmed]);
+        if (translated === null) return;
         if (translated === trimmed) return;
         const nextValue = original.replace(trimmed, translated);
         if (nextValue !== original) node.nodeValue = nextValue;
@@ -31,19 +40,23 @@
 
     window.applyI18n = function (root = document) {
         root.querySelectorAll('[data-i18n]').forEach((el) => {
-            const translated = window.t(el.dataset.i18n);
+            const translated = translateKey(el.dataset.i18n);
+            if (translated === null) return;
             if (el.textContent !== translated) el.textContent = translated;
         });
         root.querySelectorAll('[data-i18n-title]').forEach((el) => {
-            const translated = window.t(el.dataset.i18nTitle);
+            const translated = translateKey(el.dataset.i18nTitle);
+            if (translated === null) return;
             if (el.title !== translated) el.title = translated;
         });
         root.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
-            const translated = window.t(el.dataset.i18nPlaceholder);
+            const translated = translateKey(el.dataset.i18nPlaceholder);
+            if (translated === null) return;
             if (el.placeholder !== translated) el.placeholder = translated;
         });
         root.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
-            const translated = window.t(el.dataset.i18nAriaLabel);
+            const translated = translateKey(el.dataset.i18nAriaLabel);
+            if (translated === null) return;
             if (el.getAttribute('aria-label') !== translated) el.setAttribute('aria-label', translated);
         });
         const textMap = messages._textMap || {};

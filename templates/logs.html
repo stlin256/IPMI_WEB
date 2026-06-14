@@ -1,26 +1,23 @@
 <!DOCTYPE html>
-<html lang="{{ locale }}" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{{ t('logs.title') }} - {{ server_name }} Ops</title>
+    {% include 'partials/favicon.html' %}
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/app-modern.css') }}?v=20260614-motion" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app-core.js') }}?v=20260614-motion"></script>
+    <script src="{{ url_for('static', filename='js/pjax.js') }}?v=20260614-pjax"></script>
     <style>
-        :root { 
-            --bg-body: #0d1117; 
-            --border-color: #30363d; 
-            --text-main: #e6edf3; 
-            --text-muted: #8b949e;
-            --text-success: #3fb950;
-            --text-danger: #f85149;
-            --text-warning: #d29922;
-            --text-blue: #58a6ff;
-            --accent-blue: #1f6feb;
-            --accent-red: #f85149;
-            --accent-green: #3fb950;
-            --accent-yellow: #d29922;
+        :root {
+            --text-success: var(--accent-green);
+            --text-danger: var(--accent-red);
+            --text-warning: var(--accent-yellow);
+            --text-blue: var(--accent-blue);
         }
         body { 
             background-color: var(--bg-body); 
@@ -36,16 +33,17 @@
         
         /* 统一导航栏样式 */
         .navbar { 
-            background-color: rgba(22, 27, 34, 0.95) !important; 
+            background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important;
             backdrop-filter: blur(10px); 
             border-bottom: 1px solid var(--border-color); 
             flex-shrink: 0;
         }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .nav-link:hover, .nav-link.active { color: var(--text-main) !important; }
         
         /* CLI 风格容器 */
         .cli-container { 
+            width: min(100%, 1680px);
             padding: 0 20px;
             max-width: 100%;
             flex: 1;
@@ -61,7 +59,7 @@
             align-items: flex-start;
             padding: 8px 0;
             line-height: 1.5;
-            border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
         }
         .cli-line:last-child { border-bottom: none; }
         
@@ -83,7 +81,9 @@
         
         .cli-content {
             flex-grow: 1;
-            word-break: break-all;
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
             font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', monospace;
         }
         
@@ -101,26 +101,26 @@
             border: 1px solid transparent;
         }
         .cli-tag-ip { 
-            background: rgba(31, 111, 235, 0.15); 
+            background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
             color: var(--text-blue); 
-            border-color: rgba(31, 111, 235, 0.3); 
+            border-color: color-mix(in srgb, var(--accent-blue) 35%, transparent);
         }
-        .cli-tag-ip:hover { background: rgba(31, 111, 235, 0.25); }
+        .cli-tag-ip:hover { background: color-mix(in srgb, var(--accent-blue) 22%, transparent); }
         .cli-tag-ua { 
-            background: rgba(139, 148, 158, 0.15); 
+            background: color-mix(in srgb, var(--text-muted) 14%, transparent);
             color: var(--text-muted); 
-            border-color: rgba(139, 148, 158, 0.3); 
+            border-color: color-mix(in srgb, var(--text-muted) 28%, transparent);
         }
-        .cli-tag-ua:hover { background: rgba(139, 148, 158, 0.25); color: var(--text-main); }
+        .cli-tag-ua:hover { background: color-mix(in srgb, var(--text-muted) 20%, transparent); color: var(--text-main); }
         
         /* 高亮效果 */
         .highlighted .cli-tag-ip {
-            background: rgba(31, 111, 235, 0.4) !important;
+            background: color-mix(in srgb, var(--accent-blue) 30%, transparent) !important;
             border-color: var(--accent-blue) !important;
-            box-shadow: 0 0 12px rgba(31, 111, 235, 0.5);
+            box-shadow: 0 0 12px color-mix(in srgb, var(--accent-blue) 22%, transparent);
         }
         .highlighted .cli-tag-ua {
-            background: rgba(31, 111, 235, 0.3) !important;
+            background: color-mix(in srgb, var(--accent-blue) 22%, transparent) !important;
             border-color: var(--accent-blue) !important;
         }
         
@@ -128,7 +128,7 @@
         .cli-details {
             margin: 8px 0;
             padding: 16px;
-            background: rgba(13, 17, 23, 0.95);
+            background: color-mix(in srgb, var(--bg-body) 82%, transparent);
             border-radius: 8px;
             border: 1px solid var(--border-color);
             overflow: hidden;
@@ -184,7 +184,7 @@
             align-items: center;
             padding: 6px 0;
             font-size: 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-color) 48%, transparent);
         }
         .cli-history-item:last-child { border-bottom: none; }
         .cli-history-time {
@@ -199,12 +199,13 @@
         }
         
         .terminal-body {
-            background: #0d1117;
+            background: var(--surface-sheen), color-mix(in srgb, var(--bg-card) 96%, transparent);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 16px;
             flex: 1;
             overflow-y: auto;
+            overflow-x: hidden;
             min-height: 0;
         }
         
@@ -232,84 +233,25 @@
             .cli-history-item { flex-wrap: wrap; }
             .cli-history-time { min-width: 80px; }
             
-            /* 系统设置 Modal 移动端优化 */
-            #settingsModal .modal-body { 
-                flex-direction: column !important; 
-                min-height: auto !important;
-            }
-            #settingsModal .border-end { 
-                border-end-width: 0 !important; 
-                border-bottom: 1px solid var(--border-color) !important; 
-                width: 100% !important; 
-                flex-shrink: 0; 
-            }
-            #settingsModal .nav { 
-                flex-direction: row !important; 
-                overflow-x: auto; 
-                overflow-y: hidden; 
-                flex-wrap: nowrap !important;
-                padding-bottom: 5px !important;
-            }
-            #settingsModal .nav-link { 
-                flex-shrink: 0; 
-                padding: 10px 12px !important; 
-                font-size: 12px !important;
-                white-space: nowrap;
-            }
-            #settingsModal .nav-link i { margin-right: 4px !important; }
-            #settingsModal .tab-content { 
-                max-height: 50vh; 
-                overflow-y: auto;
-                padding: 15px !important;
-            }
-            #settingsModal .modal-dialog {
-                margin: 10px !important;
-                max-width: calc(100% - 20px) !important;
-            }
-            #settingsModal .modal-content {
-                max-height: 90vh !important;
-            }
-            
             /* 页面标题栏按钮移动端优化 */
             .d-flex.flex-wrap.justify-content-between { gap: 10px !important; }
             .d-flex.align-items-center.gap-3 { gap: 10px !important; flex-wrap: wrap; }
             .d-flex.align-items-center.gap-2 { gap: 8px !important; flex-wrap: wrap; justify-content: flex-end; }
             .btn-sm { padding: 6px 12px !important; font-size: 12px !important; }
-            
-            /* 设置表单控件优化 */
-            #settingsModal .form-label { font-size: 12px !important; margin-bottom: 4px !important; }
-            #settingsModal .form-control, #settingsModal .form-select {
-                font-size: 13px !important;
-                padding: 8px 10px !important;
-            }
-            #settingsModal .input-group-text { padding: 8px 10px !important; font-size: 12px !important; }
-            
-            /* 告警规则卡片优化 */
-            #settingsModal .rule-card .card-body { padding: 10px !important; }
-            #settingsModal .rule-card .d-flex { flex-wrap: wrap !important; gap: 8px !important; }
-            #settingsModal .rule-card input[type="text"] { min-width: 100px !important; }
-            
-            /* 报告设置卡片优化 */
-            #settingsModal .p-3.bg-black.bg-opacity-25 { padding: 12px !important; }
-            #settingsModal .p-3.bg-black.bg-opacity-25 .row { margin: 0 !important; }
-            #settingsModal .p-3.bg-black.bg-opacity-25 .col-12, 
-            #settingsModal .p-3.bg-black.bg-opacity-25 .col-md-6 { 
-                padding: 0 5px !important; 
-            }
         }
         
         /* 极小屏优化 (小于 400px) */
         @media (max-width: 400px) {
-            #settingsModal .nav-link { padding: 8px 10px !important; font-size: 11px !important; }
-            #settingsModal .nav-link i { display: none !important; }
-            #settingsModal .tab-content { padding: 10px !important; }
+            .cli-container {
+                padding-inline: 12px;
+            }
         }
         
         /* 滚动条美化 */
         .terminal-body::-webkit-scrollbar { width: 8px; }
         .terminal-body::-webkit-scrollbar-track { background: var(--bg-body); }
         .terminal-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-        .terminal-body::-webkit-scrollbar-thumb:hover { background: #484f58; }
+        .terminal-body::-webkit-scrollbar-thumb:hover { background: var(--accent-yellow); }
 
         /* 动画效果 */
         .fade-in-up { animation: fadeInUp 0.3s ease-out; }
@@ -324,12 +266,612 @@
             to { opacity: 1; }
         }
 
+        /* Settings modal: compact editorial control desk */
+        #settingsModal {
+            --settings-rail: 188px;
+            z-index: 2200;
+        }
+
+        body:has(#settingsModal.show) .modal-backdrop {
+            z-index: 2190;
+        }
+
+        #discardModal {
+            z-index: 2310 !important;
+        }
+
+        body:has(#discardModal.show) .modal-backdrop {
+            z-index: 2300;
+        }
+
+        #settingsModal .modal-dialog {
+            width: min(1040px, calc(100vw - 2rem));
+            max-width: min(1040px, calc(100vw - 2rem));
+        }
+
+        #settingsModal .modal-content {
+            max-height: calc(100dvh - 2rem);
+            overflow: hidden;
+            border-radius: 8px !important;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 98%, transparent), color-mix(in srgb, var(--bg-elevated) 70%, transparent)),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 2.6%, transparent) 0 1px, transparent 1px 14px) !important;
+            box-shadow: 0 26px 70px rgba(0, 0, 0, 0.36);
+        }
+
+        #settingsModal .modal-header {
+            min-height: 52px;
+            padding: 0.8rem 1rem 0.72rem;
+            background:
+                linear-gradient(90deg, color-mix(in srgb, var(--accent-red) 11%, transparent), transparent 44%),
+                color-mix(in srgb, var(--bg-card) 86%, transparent);
+        }
+
+        #settingsModal .modal-title {
+            display: inline-flex;
+            min-width: 0;
+            align-items: center;
+            gap: 0.55rem;
+            color: var(--text-main) !important;
+            font-size: 0.94rem !important;
+            letter-spacing: 0;
+            overflow-wrap: anywhere;
+        }
+
+        #settingsModal .modal-title i {
+            color: var(--accent-red);
+        }
+
+        #settingsModal .modal-body {
+            display: grid !important;
+            grid-template-columns: var(--settings-rail) minmax(0, 1fr);
+            min-height: 0 !important;
+            height: min(68vh, 650px);
+            padding: 0 !important;
+            overflow: hidden;
+        }
+
+        #settingsModal .settings-rail {
+            min-width: 0;
+            min-height: 0;
+            border-right: 1px solid var(--border-color);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--accent-yellow) 8%, transparent), transparent 42%),
+                color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+            overflow: hidden auto;
+        }
+
+        #settingsModal #settings-tabs {
+            display: flex;
+            min-height: 100%;
+            gap: 0.28rem;
+            padding: 0.7rem;
+        }
+
+        #settingsModal #settings-tabs .nav-link {
+            width: 100%;
+            min-height: 42px;
+            display: grid;
+            grid-template-columns: 1.15rem minmax(0, 1fr);
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.58rem 0.68rem !important;
+            margin: 0 !important;
+            border: 1px solid transparent;
+            border-radius: 8px !important;
+            color: var(--text-muted) !important;
+            background: transparent !important;
+            font-size: 0.82rem !important;
+            font-weight: 800;
+            line-height: 1.15;
+            text-align: left !important;
+            overflow: hidden;
+            overflow-wrap: normal;
+            white-space: nowrap;
+        }
+
+        #settingsModal #settings-tabs .nav-link i {
+            margin: 0 !important;
+            color: color-mix(in srgb, var(--text-muted) 78%, transparent);
+            text-align: center;
+            font-size: 0.95rem;
+        }
+
+        #settingsModal #settings-tabs .nav-link span {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #settingsModal #settings-tabs .nav-link:hover {
+            transform: none;
+            border-color: color-mix(in srgb, var(--accent-yellow) 30%, transparent);
+            background: color-mix(in srgb, var(--accent-yellow) 8%, transparent) !important;
+        }
+
+        #settingsModal #settings-tabs .nav-link.active {
+            color: var(--text-main) !important;
+            border-color: color-mix(in srgb, var(--accent-red) 42%, var(--border-color));
+            background:
+                linear-gradient(90deg, color-mix(in srgb, var(--accent-red) 18%, transparent), color-mix(in srgb, var(--accent-yellow) 7%, transparent)) !important;
+            box-shadow: inset 3px 0 0 var(--accent-red);
+        }
+
+        #settingsModal #settings-tabs .nav-link.active i {
+            color: var(--accent-red);
+        }
+
+        #settingsModal #settings-tabs .border-top {
+            margin-top: auto !important;
+            padding-top: 0.68rem !important;
+            border-top-color: var(--border-color) !important;
+        }
+
+        #settingsModal .tab-content {
+            min-width: 0;
+            min-height: 0;
+            max-height: none !important;
+            padding: 1rem 1.15rem !important;
+            overflow: hidden auto !important;
+            scrollbar-gutter: stable;
+        }
+
+        #settingsModal .tab-pane {
+            max-width: 100%;
+        }
+
+        #settingsModal h6 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0 0 0.85rem !important;
+            color: var(--accent-red) !important;
+            font-size: 0.78rem;
+            font-weight: 950 !important;
+            letter-spacing: 0;
+            text-transform: uppercase;
+        }
+
+        #settingsModal h6:not(:first-child) {
+            padding-top: 1rem;
+            border-top: 1px solid color-mix(in srgb, var(--border-color) 66%, transparent);
+        }
+
+        #settingsModal h6::before {
+            content: "";
+            width: 0.48rem;
+            height: 0.48rem;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 11%, transparent);
+        }
+
+        #settingsModal .mb-4 {
+            margin-bottom: 1rem !important;
+        }
+
+        #settingsModal .row {
+            min-width: 0;
+        }
+
+        #settingsModal .form-label {
+            max-width: 100%;
+            margin-bottom: 0.36rem;
+            color: var(--text-muted) !important;
+            font-size: 0.74rem !important;
+            font-weight: 850 !important;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
+        #settingsModal .form-text,
+        #settingsModal .small {
+            line-height: 1.42;
+            overflow-wrap: anywhere;
+        }
+
+        #settingsModal .form-control,
+        #settingsModal .form-select,
+        #settingsModal .input-group-text {
+            min-height: 38px;
+            border-radius: 8px;
+            font-size: 0.86rem;
+        }
+
+        #settingsModal .input-group > .form-control,
+        #settingsModal .input-group > .form-select {
+            min-width: 0;
+        }
+
+        #settingsModal .input-group-text {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        #settingsModal .alert,
+        #settingsModal .bg-black.bg-opacity-25 {
+            border-radius: 8px !important;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 76%, transparent), color-mix(in srgb, var(--bg-card) 58%, transparent)) !important;
+            border-color: color-mix(in srgb, var(--border-color) 76%, transparent) !important;
+        }
+
+        #settingsModal .accordion-button {
+            color: var(--accent-red) !important;
+            font-size: 0.86rem;
+            line-height: 1.25;
+        }
+
+        #settingsModal .btn {
+            min-height: 34px;
+            font-size: 0.82rem;
+            font-weight: 850;
+        }
+
+        #settingsModal .btn-link {
+            min-height: 0;
+        }
+
+        #settingsModal #check-hw-hours,
+        #settingsModal #check-hist-hours {
+            gap: 0.45rem !important;
+        }
+
+        #settingsModal #check-hw-hours .btn,
+        #settingsModal #check-hist-hours .btn {
+            min-width: 54px;
+            padding-inline: 0.75rem !important;
+        }
+
+        #settingsModal .modal-footer {
+            gap: 0.65rem;
+            padding: 0.72rem 1rem !important;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 72%, transparent), color-mix(in srgb, var(--bg-elevated) 68%, transparent)) !important;
+        }
+
+        #settingsModal .modal-footer .btn {
+            min-width: min(12rem, 42vw);
+            padding-inline: 1rem !important;
+        }
+
+        @media (max-width: 768px) {
+            #settingsModal .modal-dialog {
+                width: calc(100vw - 1rem);
+                max-width: calc(100vw - 1rem);
+                margin: 0.5rem auto !important;
+            }
+
+            #settingsModal .modal-content {
+                max-height: calc(100dvh - 1rem) !important;
+            }
+
+            #settingsModal .modal-header {
+                padding: 0.72rem 0.8rem;
+            }
+
+            #settingsModal .modal-body {
+                display: grid !important;
+                grid-template-columns: minmax(0, 1fr);
+                height: min(74dvh, 680px);
+            }
+
+            #settingsModal .settings-rail {
+                width: 100% !important;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-color);
+                overflow: hidden;
+            }
+
+            #settingsModal #settings-tabs {
+                min-height: 0;
+                flex-direction: row !important;
+                gap: 0.4rem;
+                padding: 0.55rem;
+                overflow-x: auto;
+                overflow-y: hidden;
+                scrollbar-width: thin;
+            }
+
+            #settingsModal #settings-tabs .nav-link {
+                width: auto;
+                min-width: 7.2rem;
+                grid-template-columns: 1rem minmax(0, 1fr);
+                flex: 0 0 auto;
+                padding: 0.52rem 0.62rem !important;
+                font-size: 0.78rem !important;
+            }
+
+            #settingsModal #settings-tabs .border-top {
+                margin-top: 0 !important;
+                padding-top: 0.52rem !important;
+                border-top: 0 !important;
+            }
+
+            #settingsModal .tab-content {
+                padding: 0.82rem !important;
+            }
+
+            #settingsModal .modal-footer {
+                flex-wrap: nowrap;
+                justify-content: stretch;
+            }
+
+            #settingsModal .modal-footer .btn {
+                flex: 1 1 0;
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 420px) {
+            #settingsModal .modal-dialog {
+                width: calc(100vw - 0.7rem);
+                max-width: calc(100vw - 0.7rem);
+            }
+
+            #settingsModal #settings-tabs .nav-link {
+                min-width: 6.25rem;
+                font-size: 0.72rem !important;
+            }
+
+            #settingsModal #settings-tabs .nav-link i {
+                font-size: 0.82rem;
+            }
+
+            #settingsModal .tab-content {
+                padding: 0.68rem !important;
+            }
+
+            #settingsModal .row.g-3 {
+                --bs-gutter-x: 0.65rem;
+                --bs-gutter-y: 0.65rem;
+            }
+        }
+
+        #confirmModal,
+        #discardModal,
+        #releaseNotesModal,
+        #importModal,
+        #delayModal {
+            --dialog-accent: var(--accent-red);
+        }
+
+        #discardModal { --dialog-accent: var(--accent-yellow); }
+        #releaseNotesModal,
+        #importModal,
+        #delayModal { --dialog-accent: var(--accent-blue); }
+
+        #confirmModal .modal-dialog,
+        #discardModal .modal-dialog {
+            width: min(420px, calc(100vw - 1.4rem));
+            max-width: min(420px, calc(100vw - 1.4rem));
+        }
+
+        #releaseNotesModal .modal-dialog,
+        #importModal .modal-dialog {
+            width: min(860px, calc(100vw - 1.4rem));
+            max-width: min(860px, calc(100vw - 1.4rem));
+        }
+
+        #delayModal .modal-dialog {
+            width: min(520px, calc(100vw - 1.4rem));
+            max-width: min(520px, calc(100vw - 1.4rem));
+        }
+
+        #confirmModal .modal-content,
+        #discardModal .modal-content,
+        #releaseNotesModal .modal-content,
+        #importModal .modal-content,
+        #delayModal .modal-content {
+            max-height: calc(100dvh - 1.6rem);
+            overflow: hidden;
+            border-radius: 8px !important;
+            border-color: color-mix(in srgb, var(--dialog-accent) 42%, var(--border-color)) !important;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--dialog-accent) 8%, transparent), transparent 38%),
+                var(--surface-sheen),
+                var(--bg-card) !important;
+            box-shadow: 0 24px 62px rgba(0, 0, 0, 0.36);
+        }
+
+        #releaseNotesModal .modal-header,
+        #importModal .modal-header,
+        #delayModal .modal-header {
+            min-height: 52px;
+            padding: 0.82rem 1rem 0.72rem;
+            background:
+                linear-gradient(90deg, color-mix(in srgb, var(--dialog-accent) 12%, transparent), transparent 50%),
+                color-mix(in srgb, var(--bg-card) 86%, transparent);
+        }
+
+        #releaseNotesModal .modal-title,
+        #importModal .modal-title,
+        #delayModal .modal-title {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            font-weight: 900;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
+        #releaseNotesModal .modal-title i,
+        #importModal .modal-title i,
+        #delayModal .modal-title i {
+            color: var(--dialog-accent) !important;
+        }
+
+        #releaseNotesModal .modal-body,
+        #importModal .modal-body,
+        #delayModal .modal-body {
+            max-height: min(66dvh, 620px);
+            padding: 1rem !important;
+            overflow: auto;
+        }
+
+        #releaseNotesModal .modal-footer,
+        #importModal .modal-footer,
+        #delayModal .modal-footer {
+            padding: 0.72rem 1rem;
+            background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+        }
+
+        #confirmModal .modal-body,
+        #discardModal .modal-body {
+            padding: 1.25rem !important;
+        }
+
+        #confirmModal #confirm-icon,
+        #discardModal .modal-body > i {
+            display: inline-grid;
+            place-items: center;
+            width: 3.15rem;
+            height: 3.15rem;
+            margin-bottom: 0.9rem !important;
+            border: 1px solid color-mix(in srgb, var(--dialog-accent) 46%, transparent);
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--dialog-accent) 12%, transparent);
+            color: var(--dialog-accent) !important;
+            font-size: 1.45rem !important;
+        }
+
+        #confirmModal h5,
+        #discardModal h5 {
+            color: var(--text-main);
+            font-size: 1rem;
+            line-height: 1.24;
+            overflow-wrap: anywhere;
+        }
+
+        #confirmModal p,
+        #discardModal p {
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        #confirmModal .d-flex,
+        #discardModal .d-grid {
+            gap: 0.65rem !important;
+        }
+
+        #confirmModal .btn,
+        #discardModal .btn,
+        #releaseNotesModal .btn,
+        #importModal .btn,
+        #delayModal .btn {
+            min-height: 36px;
+            font-size: 0.86rem;
+            font-weight: 850;
+        }
+
+        #importModal #import-precheck-view .text-center {
+            padding-block: 2.25rem !important;
+        }
+
+        #importModal #import-precheck-view i {
+            display: inline-grid;
+            place-items: center;
+            width: 4rem;
+            height: 4rem;
+            margin-bottom: 1rem !important;
+            border: 1px solid color-mix(in srgb, var(--dialog-accent) 34%, transparent);
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--dialog-accent) 10%, transparent);
+            color: var(--dialog-accent) !important;
+            font-size: 1.55rem !important;
+        }
+
+        #importModal h5 {
+            color: var(--text-main);
+            font-size: 1.02rem;
+            line-height: 1.28;
+            overflow-wrap: anywhere;
+        }
+
+        #importModal .alert {
+            border-radius: 8px;
+            border-color: color-mix(in srgb, var(--dialog-accent) 28%, var(--border-color));
+            background: color-mix(in srgb, var(--bg-elevated) 58%, transparent) !important;
+            overflow-wrap: anywhere;
+        }
+
+        #importModal .table-responsive {
+            max-width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: auto;
+        }
+
+        #importModal .table {
+            min-width: 640px;
+            margin-bottom: 0;
+            --bs-table-bg: transparent;
+            --bs-table-color: var(--text-main);
+            --bs-table-border-color: var(--border-color);
+        }
+
+        #releaseNotesModal #release-notes-content {
+            min-width: 0;
+            line-height: 1.52;
+            overflow-wrap: anywhere;
+        }
+
+        #delayModal .form-label {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+        }
+
+        #delayModal .input-group > .form-control {
+            min-width: 0;
+        }
+
+        @media (max-width: 576px) {
+            #confirmModal .modal-dialog,
+            #discardModal .modal-dialog,
+            #releaseNotesModal .modal-dialog,
+            #importModal .modal-dialog,
+            #delayModal .modal-dialog {
+                width: calc(100vw - 0.8rem);
+                max-width: calc(100vw - 0.8rem);
+                margin: 0.4rem auto;
+            }
+
+            #releaseNotesModal .modal-body,
+            #importModal .modal-body,
+            #delayModal .modal-body {
+                max-height: min(72dvh, 640px);
+                padding: 0.82rem !important;
+            }
+
+            #confirmModal .d-flex {
+                flex-direction: column;
+            }
+
+            #importModal .alert.d-flex {
+                align-items: flex-start !important;
+                flex-direction: column;
+                gap: 0.35rem;
+            }
+
+            #importModal .modal-footer {
+                flex-wrap: nowrap;
+            }
+
+            #importModal .modal-footer .btn {
+                flex: 1 1 0;
+                min-width: 0;
+            }
+        }
+
         .rule-card {
             transition: all 0.2s ease;
             border: 1px solid var(--border-color) !important;
-            background: rgba(255,255,255,0.02) !important;
+            background: color-mix(in srgb, var(--bg-card) 88%, transparent) !important;
         }
-        .rule-card:hover { border-color: var(--accent-blue) !important; background: rgba(255,255,255,0.04) !important; }
+        .rule-card:hover { border-color: var(--accent-yellow) !important; background: color-mix(in srgb, var(--accent-yellow) 8%, transparent) !important; }
 
         /* 响应式艺术字 */
         .about-ascii {
@@ -352,7 +894,7 @@
 
         /* 1. 图表容器比例 */
         .interval-chart-container {
-            background: rgba(22, 27, 34, 0.4);
+            background: color-mix(in srgb, var(--bg-card) 78%, transparent);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             margin-bottom: 12px;
@@ -367,7 +909,7 @@
         }
 
         .chart-loading {
-            background: rgba(13, 17, 23, 0.8) !important;
+            background: color-mix(in srgb, var(--bg-body) 78%, transparent) !important;
         }
 
         /* 流光动画 */
@@ -381,7 +923,7 @@
             background: linear-gradient(
                 90deg, 
                 transparent 25%, 
-                rgba(255, 255, 255, 0.06) 50%, 
+                color-mix(in srgb, var(--text-main) 7%, transparent) 50%,
                 transparent 75%
             );
             animation: chart-shimmer 1.5s infinite linear;
@@ -425,16 +967,16 @@
             font-size: 11px;
             font-weight: bold;
             padding: 1px 6px;
-            background: rgba(13, 17, 23, 0.8);
+            background: color-mix(in srgb, var(--bg-body) 82%, transparent);
             border-radius: 4px;
-            border: 1px solid rgba(255,255,255,0.05);
+            border: 1px solid var(--border-color);
             transition: color 0.3s ease;
         }
 
         /* Chart tooltip */
         .chart-tooltip {
             position: absolute;
-            background: rgba(13, 17, 23, 0.95);
+            background: color-mix(in srgb, var(--bg-card) 96%, transparent);
             border: 1px solid var(--border-color);
             border-radius: 4px;
             padding: 4px 8px;
@@ -450,20 +992,298 @@
         .chart-tooltip.visible {
             opacity: 1;
         }
+
+        /* Audit journal: compact editorial log stream */
+        .terminal-body.audit-journal {
+            position: relative;
+            padding: 12px;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 94%, transparent), color-mix(in srgb, var(--bg-card) 88%, transparent)),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 18px) !important;
+            border-color: color-mix(in srgb, var(--border-color) 82%, transparent);
+        }
+
+        #logs-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .cli-line {
+            --row-accent: var(--accent-blue);
+            position: relative;
+            display: grid;
+            grid-template-columns: 132px minmax(0, 1fr);
+            gap: 10px;
+            align-items: start;
+            min-width: 0;
+            padding: 10px 12px 10px 14px;
+            border: 1px solid color-mix(in srgb, var(--border-color) 62%, transparent);
+            border-radius: 8px;
+            background:
+                linear-gradient(90deg, color-mix(in srgb, var(--row-accent) 9%, transparent), transparent 38%),
+                color-mix(in srgb, var(--bg-elevated) 42%, transparent);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-main) 5%, transparent);
+            overflow: hidden;
+            transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
+        }
+
+        .cli-line::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 3px;
+            background: var(--row-accent);
+            opacity: 0.86;
+        }
+
+        .cli-line:hover {
+            transform: translateY(-1px);
+            border-color: color-mix(in srgb, var(--row-accent) 48%, var(--border-color));
+        }
+
+        .cli-line.log-success { --row-accent: var(--accent-green); }
+        .cli-line.log-fail { --row-accent: var(--accent-red); }
+        .cli-line.log-warn { --row-accent: var(--accent-yellow); }
+        .cli-line.log-info { --row-accent: var(--accent-blue); }
+
+        .cli-stamp {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .cli-time {
+            min-width: 0;
+            color: var(--text-muted);
+            font-family: "SF Mono", "Consolas", "Monaco", "Menlo", monospace;
+            font-size: 10.5px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-status {
+            min-width: 0;
+            width: fit-content;
+            max-width: 100%;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 7px;
+            border: 1px solid color-mix(in srgb, var(--row-accent) 46%, var(--border-color));
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--row-accent) 12%, transparent);
+            color: var(--row-accent);
+            font-family: "SF Mono", "Consolas", "Monaco", "Menlo", monospace;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .cli-status::before {
+            content: "";
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+        }
+
+        .cli-content {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-wrap: anywhere;
+            word-break: normal;
+            font-family: inherit;
+        }
+
+        .cli-meta {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .cli-tag {
+            max-width: min(20rem, 100%);
+            min-width: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 7px;
+            margin: 0;
+            border-radius: 6px;
+            font-size: 10.5px;
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cli-module {
+            min-width: 0;
+            max-width: 100%;
+            color: var(--text-main);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            overflow-wrap: anywhere;
+        }
+
+        .cli-message {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            min-width: 0;
+            color: var(--text-main);
+            line-height: 1.42;
+        }
+
+        .cli-message-text {
+            flex: 1 1 24rem;
+            min-width: min(16rem, 100%);
+            color: color-mix(in srgb, var(--text-main) 82%, var(--text-muted));
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        .cli-detail-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex: 0 0 auto;
+            width: 24px;
+            height: 22px;
+            padding: 0;
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 36%, var(--border-color));
+            border-radius: 6px;
+            color: var(--accent-blue);
+            background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .cli-detail-toggle i {
+            font-size: 10.5px;
+        }
+
+        .cli-detail-toggle:hover {
+            color: var(--text-main);
+            background: color-mix(in srgb, var(--accent-blue) 16%, transparent);
+        }
+
+        .highlighted.cli-tag,
+        .cli-tag.highlighted {
+            border-color: var(--accent-yellow) !important;
+            background: color-mix(in srgb, var(--accent-yellow) 18%, transparent) !important;
+            color: var(--text-main) !important;
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-yellow) 10%, transparent);
+        }
+
+        .cli-details {
+            margin: -2px 0 4px 142px;
+            padding: 12px 14px;
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 72%, transparent), color-mix(in srgb, var(--bg-card) 74%, transparent)),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 3%, transparent) 0 1px, transparent 1px 16px);
+            border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+            border-left: 3px solid var(--accent-blue);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .cli-details-title {
+            color: var(--text-muted);
+            font-size: 10.5px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .cli-details pre {
+            max-width: 100%;
+            font-size: 11px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        @media (max-width: 768px) {
+            .terminal-body.audit-journal {
+                padding: 8px;
+            }
+
+            #logs-content {
+                gap: 7px;
+            }
+
+            .cli-line {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 8px;
+                padding: 10px 10px 10px 12px;
+            }
+
+            .cli-stamp {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .cli-time {
+                flex: 1 1 auto;
+                font-size: 10px;
+            }
+
+            .cli-status {
+                flex: 0 0 auto;
+            }
+
+            .cli-message {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 24px;
+                align-items: start;
+                gap: 8px;
+            }
+
+            .cli-message-text {
+                display: block;
+                min-width: 0;
+            }
+
+            .cli-detail-toggle {
+                margin-top: 1px;
+            }
+
+            .cli-tag {
+                max-width: 100%;
+            }
+
+            .cli-details {
+                margin: 0 0 4px 0;
+                padding: 10px;
+            }
+        }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center" href="/hardware">
-            <i class="fas fa-shield-alt me-2 text-warning"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-        </a>
-        <div class="navbar-nav flex-row ms-auto">
-            <a class="btn btn-outline-secondary" href="/hardware" data-i18n-title="app.back" title="{{ t('app.back') }}"><i class="fas fa-arrow-left"></i></a>
-        </div>
-    </div>
-</nav>
+{% include 'partials/back_nav.html' %}
 
 <div class="container cli-container">
     <!-- Toast 容器 -->
@@ -479,7 +1299,7 @@
     </div>
 
     <!-- 确认删除 Modal -->
-    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+    <div class="modal fade" id="confirmModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg" style="z-index: 2100;">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-danger shadow-lg">
                 <div class="modal-body p-4 text-center">
@@ -496,13 +1316,13 @@
     </div>
 
     <!-- 放弃修改确认 Modal -->
-    <div class="modal fade" id="discardModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+    <div class="modal fade" id="discardModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="discardModalTitle" aria-describedby="discardModalMessage" style="z-index: 2100;">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content bg-dark border-warning shadow-lg">
                 <div class="modal-body p-4 text-center">
                     <i class="fas fa-exclamation-triangle text-warning fs-1 mb-3"></i>
-                    <h5 class="fw-bold" data-i18n="settings.unsavedTitle">{{ t('settings.unsavedTitle') }}</h5>
-                    <p class="text-muted small mb-4" data-i18n="settings.unsavedBody">{{ t('settings.unsavedBody') }}</p>
+                    <h5 class="fw-bold" id="discardModalTitle" data-i18n="settings.unsavedTitle">{{ t('settings.unsavedTitle') }}</h5>
+                    <p class="text-muted small mb-4" id="discardModalMessage" data-i18n="settings.unsavedBody">{{ t('settings.unsavedBody') }}</p>
                     <div class="d-grid gap-2">
                         <button class="btn btn-warning fw-bold" id="discard-confirm-btn" data-i18n="settings.discard">{{ t('settings.discard') }}</button>
                         <button class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="settings.keepEditing">{{ t('settings.keepEditing') }}</button>
@@ -513,11 +1333,11 @@
     </div>
 
     <!-- 更新日志 Modal -->
-    <div class="modal fade" id="releaseNotesModal" tabindex="-1" aria-hidden="true" style="z-index: 2100;">
+    <div class="modal fade" id="releaseNotesModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="releaseNotesModalTitle" aria-describedby="release-notes-content" style="z-index: 2100;">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i><span data-i18n="logs.changelogTitle">{{ t('logs.changelogTitle') }}</span></h5>
+                    <h5 class="modal-title fw-bold" id="releaseNotesModalTitle"><i class="fas fa-list-alt me-2 text-primary"></i><span data-i18n="logs.changelogTitle">{{ t('logs.changelogTitle') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -530,16 +1350,16 @@
     </div>
 
     <!-- 综合设置 Modal -->
-    <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content bg-dark border-secondary shadow-lg">
-                <div class="modal-header border-secondary py-2">
-                    <h5 class="modal-title fs-6 text-muted-plus fw-bold"><i class="fas fa-cog me-2"></i><span data-i18n="settings.title">{{ t('settings.title') }}</span></h5>
+    <div class="modal fade" id="settingsModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="settingsModalTitle">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content border-secondary shadow-lg">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fs-6 text-muted-plus fw-bold" id="settingsModalTitle"><i class="fas fa-cog me-2"></i><span data-i18n="settings.title">{{ t('settings.title') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
-                <div class="modal-body p-0 d-flex" style="min-height: 450px;">
+                <div class="modal-body">
                     <!-- 左侧侧边栏 Tab -->
-                    <div class="border-end border-secondary bg-black bg-opacity-25" style="width: 160px; flex-shrink: 0;">
+                    <div class="settings-rail">
                         <div class="nav flex-column nav-pills p-2" id="settings-tabs" role="tablist">
                             <button class="nav-link active text-start py-3 mb-1" data-bs-toggle="pill" data-bs-target="#tab-display" type="button">
                                 <i class="fas fa-desktop me-2"></i> <span data-i18n="settings.display">{{ t('settings.display') }}</span>
@@ -565,7 +1385,7 @@
                         </div>
                     </div>
                     <!-- 右侧内容区 -->
-                    <div class="tab-content p-4 flex-grow-1 overflow-auto" style="max-height: 550px;">
+                    <div class="tab-content">
                         <!-- 图表设置 Tab -->
                         <div class="tab-pane fade show active" id="tab-display">
                             <h6 class="text-primary mb-4 fw-bold" data-i18n="settings.basic">{{ t('settings.basic') }}</h6>
@@ -953,7 +1773,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer border-secondary py-2 bg-black bg-opacity-25">
+                <div class="modal-footer border-secondary">
                     <button class="btn btn-sm btn-outline-secondary px-4" data-bs-dismiss="modal" data-i18n="app.close">{{ t('app.close') }}</button>
                     <button class="btn btn-sm btn-primary px-5 fw-bold" id="btn-save-global" onclick="saveGlobalSettings()">
                         <span id="save-btn-text" data-i18n="app.applyAndSave">{{ t('app.applyAndSave') }}</span>
@@ -965,11 +1785,11 @@
     </div>
 
     <!-- 导入预览 Modal -->
-    <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="importModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="importModalTitle" aria-describedby="import-precheck-view">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content bg-dark border-secondary shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-file-import me-2"></i><span data-i18n="logs.importTitle">{{ t('logs.importTitle') }}</span></h5>
+                    <h5 class="modal-title fw-bold" id="importModalTitle"><i class="fas fa-file-import me-2"></i><span data-i18n="logs.importTitle">{{ t('logs.importTitle') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -1036,11 +1856,11 @@
     </div>
 
     <!-- 延迟设置 Modal -->
-    <div class="modal fade" id="delayModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="delayModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="delayModalTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark border-secondary">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title"><i class="fas fa-palette me-2"></i><span data-i18n="settings.delayThresholds">{{ t('settings.delayThresholds') }}</span></h5>
+                    <h5 class="modal-title" id="delayModalTitle"><i class="fas fa-palette me-2"></i><span data-i18n="settings.delayThresholds">{{ t('settings.delayThresholds') }}</span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -1089,7 +1909,7 @@
     </div>
 
     <!-- 日志容器 -->
-    <div class="terminal-body" id="logs-container" style="border-radius: 8px;">
+    <div class="terminal-body audit-journal" id="logs-container">
         <div id="logs-content">
             <div class="text-center py-5 text-muted">
                 <i class="fas fa-spinner fa-spin fa-lg mb-3"></i>
@@ -1111,6 +1931,209 @@
 </script>
 <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script>
+    const LOGS_TEXT_FALLBACKS = {
+        'app.close': 'Close',
+        'app.cancel': 'Cancel',
+        'app.confirm': 'Confirm',
+        'app.loading': 'Loading',
+        'app.operationSuccess': 'Operation succeeded',
+        'app.settings': 'Settings',
+        'app.applyAndSave': 'Apply and save',
+        'app.save': 'Save',
+        'update.gotIt': 'Got it',
+        'app.simplifiedChinese': 'Simplified Chinese',
+        'app.english': 'English',
+        'app.language': 'Language',
+        'app.languageHelp': 'Changing language takes effect after saving.',
+        'settings.title': 'System Settings',
+        'settings.display': 'Charts',
+        'settings.storage': 'Storage',
+        'settings.alerts': 'Alerts',
+        'settings.summary': 'Reports',
+        'settings.email': 'Email',
+        'settings.certificate': 'Certificates',
+        'settings.about': 'About',
+        'settings.basic': 'Basic Settings',
+        'settings.serverName': 'Server Name',
+        'settings.serverNamePlaceholder': 'For example: MY_SERVER',
+        'settings.delayThresholds': 'Collection Delay Thresholds',
+        'settings.warnThreshold': 'Warning Threshold',
+        'settings.dangerThreshold': 'Danger Threshold',
+        'settings.seconds': 'seconds',
+        'settings.dashboardHours': 'Dashboard Ranges',
+        'settings.hardwareOptions': 'Hardware page options',
+        'settings.historyOptions': 'History page options',
+        'settings.daysHint': 'Select the time windows available on dashboards.',
+        'settings.storagePolicy': 'Data Retention',
+        'settings.retentionGrace': 'Shortening retention starts a 3-day grace period. Restore the original duration to cancel pending deletion.',
+        'settings.retentionDays': 'Retention period',
+        'settings.days': 'days',
+        'settings.dbUsage': 'Database',
+        'settings.stored': 'Stored',
+        'settings.diskFree': 'Disk free',
+        'settings.lowDiskAutoReclaim': 'Low Disk Auto Reclaim',
+        'settings.lowDiskAllow': 'Allow automatic reclaim when disk is low',
+        'settings.lowDiskHelp': 'The system can prune old telemetry only after the configured grace rules allow it.',
+        'settings.sqliteReclaimable': 'SQLite reclaimable',
+        'settings.autoDeleteProtect': 'Delete protection',
+        'settings.sqliteReclaimHelp': 'Reclaimable space is estimated from SQLite free pages.',
+        'settings.customAlerts': 'Custom Alerts',
+        'settings.addRule': 'Add Rule',
+        'settings.summarySchedule': 'Report Schedule',
+        'settings.summaryEnable': 'Enable summary reports',
+        'settings.summaryEnableHelp': 'Send periodic operational summaries to configured recipients.',
+        'settings.daily': 'Daily',
+        'settings.weekly': 'Weekly',
+        'settings.customInterval': 'Custom interval',
+        'settings.sendNow': 'Send now',
+        'settings.dailyTime': 'Daily time',
+        'settings.weeklyDay': 'Weekly day',
+        'settings.sendTime': 'Send time',
+        'settings.sendIntervalHours': 'Interval',
+        'settings.hours': 'hours',
+        'settings.weekday.0': 'Sunday',
+        'settings.weekday.1': 'Monday',
+        'settings.weekday.2': 'Tuesday',
+        'settings.weekday.3': 'Wednesday',
+        'settings.weekday.4': 'Thursday',
+        'settings.weekday.5': 'Friday',
+        'settings.weekday.6': 'Saturday',
+        'settings.saved': 'Settings saved',
+        'settings.loadFailed': 'Failed to load settings: {message}',
+        'settings.saveFailed': 'Failed to save settings: {message}',
+        'settings.unsavedTitle': 'Unsaved changes',
+        'settings.unsavedBody': 'Discard changes?',
+        'settings.discard': 'Discard',
+        'settings.keepEditing': 'Keep editing',
+        'logs.title': 'Logs',
+        'logs.autoRefreshing': 'Auto refreshing',
+        'logs.confirmDeleteRuleTitle': 'Confirm delete',
+        'logs.deleteUnrecoverable': 'This cannot be undone.',
+        'logs.confirmDelete': 'Delete',
+        'logs.changelogTitle': 'Changelog',
+        'logs.noReleaseNotes': 'No release notes',
+        'logs.noReleaseContent': 'No content',
+        'logs.loadReleaseFailed': 'Failed to load release notes: {message}',
+        'logs.exportConfig': 'Export config',
+        'logs.importConfig': 'Import config',
+        'logs.exportConfigSuccess': 'Configuration exported',
+        'logs.exportConfigFailed': 'Export failed: {message}',
+        'logs.importTitle': 'Import Configuration',
+        'logs.importChoosePrompt': 'Choose a configuration file to begin',
+        'logs.chooseJsonFile': 'Choose JSON file',
+        'logs.backupVersion': 'Backup version',
+        'logs.exportTime': 'Export time',
+        'logs.softwareVersion': 'Software version',
+        'logs.importWarning': 'Importing selected items will overwrite current settings.',
+        'logs.importRetentionWarning': 'Lower retention values may delete older data after the grace period.',
+        'logs.settingItem': 'Item',
+        'logs.currentValue': 'Current',
+        'logs.importValue': 'Import',
+        'logs.confirmImport': 'Confirm import',
+        'logs.parseFailed': 'Parse failed: {message}',
+        'logs.importSuccess': 'Import succeeded',
+        'logs.importFailed': 'Import failed',
+        'logs.versionCompatibility': 'Version compatibility',
+        'logs.configVersionNewer': 'This backup was exported by {configVersion}; current version is {currentVersion}.',
+        'logs.unknown': 'Unknown',
+        'logs.delayChart': '24H Collection Delay',
+        'logs.warnDelayHelp': 'Values above this threshold are marked as warning.',
+        'logs.dangerDelayHelp': 'Values above this threshold are marked as danger.',
+        'logs.emailConfig': 'Email Notifications',
+        'logs.goConfigure': 'Configure',
+        'logs.emailConfigIncompleteTitle': 'Email configuration required',
+        'logs.emailConfigIncompleteBody': 'Configure recipients and mail delivery before sending reports.',
+        'logs.emailReceiver': 'Recipients',
+        'logs.emailReceiverHelp': 'Separate multiple addresses with commas.',
+        'logs.emailServerConfig': 'Mail server configuration',
+        'logs.emailMode': 'Delivery mode',
+        'logs.systemMta': 'System MTA',
+        'logs.externalSmtp': 'External SMTP',
+        'logs.mtaLinuxOnly': 'System MTA is only available on Linux hosts.',
+        'logs.smtpServer': 'SMTP server',
+        'logs.smtpPort': 'Port',
+        'logs.smtpUser': 'Username',
+        'logs.smtpPassword': 'Password',
+        'logs.smtpEncryption': 'Use SSL/TLS',
+        'logs.emailSenderName': 'Sender display name',
+        'logs.emailSenderPlaceholder': 'IPMI_WEB',
+        'logs.sendTestEmail': 'Send test email',
+        'logs.certificateTitle': 'HTTPS Certificate',
+        'logs.refresh': 'Refresh',
+        'logs.currentStatus': 'Current status',
+        'logs.certificateExpiry': 'Certificate expiry',
+        'logs.remainingTime': 'Time remaining',
+        'logs.certificateHelp': 'Uploading a certificate replaces the current service certificate. Format, validity, and private key match are checked before saving.',
+        'logs.certFile': 'PEM / CRT certificate',
+        'logs.keyFile': 'KEY private key',
+        'logs.chooseFile': 'Choose file',
+        'logs.noFileSelected': 'No file selected',
+        'logs.uploadCertificate': 'Upload and replace certificate',
+        'logs.expiresSoon': 'Expiring soon',
+        'logs.installed': 'Installed',
+        'logs.incomplete': 'Incomplete',
+        'logs.notInstalled': 'Not installed',
+        'logs.certUploadFailed': 'Certificate upload failed',
+        'logs.certSelectBoth': 'Select both the certificate file and the private key file.',
+        'logs.certSavedRestart': 'Certificate saved. Restart now to apply it?',
+        'logs.restartForCertTitle': 'Restart service to apply certificate?',
+        'logs.restartNow': 'Restart now',
+        'logs.restartRequestFailed': 'Restart request failed',
+        'logs.restarting': 'Restarting service',
+        'logs.restartFailed': 'Restart failed: {message}',
+        'logs.noAlertRules': 'No alert rules yet',
+        'logs.highlightFingerprint': 'Highlight matching fingerprints',
+        'logs.disabled': 'Disabled',
+        'logs.protected': 'Protected',
+        'logs.activeNow': 'Active',
+        'logs.savedPasswordPlaceholder': 'Saved password unchanged',
+        'about.tagline': 'A compact operational console for IPMI telemetry and automation.',
+        'about.version': 'Version',
+        'about.repository': 'Repository',
+        'about.changelog': 'Changelog',
+        'about.view': 'View'
+    };
+
+    const baseTranslate = window.t || ((key) => key);
+    window.t = function (key, params = {}) {
+        let text = baseTranslate(key, params);
+        if (text === key && LOGS_TEXT_FALLBACKS[key]) {
+            text = LOGS_TEXT_FALLBACKS[key];
+            Object.entries(params || {}).forEach(([name, value]) => {
+                text = text.replaceAll(`{${name}}`, value);
+            });
+        }
+        return text;
+    };
+
+    function applyLogsFallbacks(root = document) {
+        const scope = root.querySelectorAll ? root : document;
+        scope.querySelectorAll('[data-i18n]').forEach((el) => {
+            const key = el.dataset.i18n;
+            if (el.textContent.trim() === key && LOGS_TEXT_FALLBACKS[key]) el.textContent = window.t(key);
+        });
+        scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+            const key = el.dataset.i18nPlaceholder;
+            if (el.getAttribute('placeholder') === key && LOGS_TEXT_FALLBACKS[key]) el.setAttribute('placeholder', window.t(key));
+        });
+        scope.querySelectorAll('[data-i18n-title]').forEach((el) => {
+            const key = el.dataset.i18nTitle;
+            if (el.getAttribute('title') === key && LOGS_TEXT_FALLBACKS[key]) el.setAttribute('title', window.t(key));
+        });
+        scope.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+            const key = el.dataset.i18nAriaLabel;
+            if (el.getAttribute('aria-label') === key && LOGS_TEXT_FALLBACKS[key]) el.setAttribute('aria-label', window.t(key));
+        });
+        scope.querySelectorAll('*').forEach((el) => {
+            if (el.children.length > 0) return;
+            const text = el.textContent.trim();
+            if (LOGS_TEXT_FALLBACKS[text]) el.textContent = window.t(text);
+        });
+    }
+
+    applyLogsFallbacks();
+    document.addEventListener('DOMContentLoaded', () => applyLogsFallbacks());
+
     let importModal;
 
     function showToast(msg, isError = false) {
@@ -1204,39 +2227,21 @@
 
                 // 如果配置版本高于当前软件版本，强制弹出提示
                 if (compareVersions(configVersion, currentSWVersion) > 0) {
-                    // 使用临时创建的 Modal 提示
-                    if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
-                    const modalEl = document.getElementById('discardModal');
-                    const title = modalEl.querySelector('h5');
-                    const msg = modalEl.querySelector('p');
-                    const btn = document.getElementById('discard-confirm-btn');
-                    const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
-                    
-                    const oldTitle = title.innerText;
-                    const oldMsg = msg.innerText;
-                    const oldBtnText = btn.innerText;
-
-                    title.innerText = t('logs.versionCompatibility');
-                    title.className = "fw-bold text-warning";
-                    msg.innerHTML = t('logs.configVersionNewer', { configVersion: `<span class="text-warning fw-bold">${configVersion}</span>`, currentVersion: `<span class="text-success fw-bold">${currentSWVersion}</span>` });
-                    btn.innerText = t('app.confirm');
-                    btn.className = "btn btn-warning fw-bold";
-                    if (cancelBtn) cancelBtn.style.display = 'none'; // 隐藏取消按钮，强制点击确认
-
-                    btn.onclick = async () => {
-                        // 还原 Modal 样式供下次使用
-                        title.innerText = oldTitle;
-                        title.className = "fw-bold";
-                        msg.innerText = oldMsg;
-                        btn.innerText = oldBtnText;
-                        btn.className = "btn btn-warning fw-bold";
-                        if (cancelBtn) cancelBtn.style.display = 'block';
-                        discardModal.hide();
-                        // 修复硬编码：在预检视图中动态显示当前软件版本
-                        document.getElementById('import-sw-val').innerText = currentSWVersion;
-                        await proceedPrecheck(config, currentSWVersion);
-                    };
-                    discardModal.show();
+                    showDiscardModal({
+                        title: t('logs.versionCompatibility'),
+                        titleClass: 'fw-bold text-warning',
+                        messageHtml: t('logs.configVersionNewer', {
+                            configVersion: `<span class="text-warning fw-bold">${configVersion}</span>`,
+                            currentVersion: `<span class="text-success fw-bold">${currentSWVersion}</span>`
+                        }),
+                        confirmText: t('app.confirm'),
+                        confirmClass: 'btn btn-warning fw-bold',
+                        cancelVisible: false,
+                        onConfirm: async () => {
+                            document.getElementById('import-sw-val').innerText = currentSWVersion;
+                            await proceedPrecheck(config, currentSWVersion);
+                        }
+                    });
                     return;
                 }
 
@@ -1473,9 +2478,13 @@
     }
 
     // 切换折叠
-    function toggleDetails(id) {
+    function toggleDetails(id, trigger) {
         const el = document.getElementById(id);
-        el.classList.toggle('show');
+        if (!el) return;
+        const isOpen = el.classList.toggle('show');
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', String(isOpen));
+        }
     }
 
     let lastTimestamp = 0;
@@ -1538,6 +2547,50 @@
     function translateMaybe(key, fallback = '') {
         const translated = t(key);
         return translated === key ? fallback : translated;
+    }
+
+    function looksLikeI18nKey(value) {
+        return /^[a-z][a-z0-9_-]*(\.[a-zA-Z0-9_-]+)+$/.test(String(value || '').trim());
+    }
+
+    function resolveLabel(key, fallback) {
+        const label = t(key);
+        return looksLikeI18nKey(label) ? fallback : label;
+    }
+
+    function humanizeAction(action) {
+        return String(action || '')
+            .toLowerCase()
+            .split('_')
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+    }
+
+    function auditModuleLabel(moduleName) {
+        const raw = String(moduleName || 'UNKNOWN');
+        const key = auditModuleFallbacks[raw] || 'logs.audit.unknown';
+        return resolveLabel(key, raw);
+    }
+
+    function auditMessageLabel(log) {
+        const localized = localizeAuditMessage(log);
+        const fallback = log.message || humanizeAction(log.action) || '';
+        return looksLikeI18nKey(localized) ? fallback : localized;
+    }
+
+    function formatAuditTime(log) {
+        const provided = String(log.time_str || '').trim();
+        if (provided) return provided;
+
+        const rawTimestamp = Number(log.timestamp);
+        if (!Number.isFinite(rawTimestamp) || rawTimestamp <= 0) return '';
+
+        const date = new Date(rawTimestamp > 1e12 ? rawTimestamp : rawTimestamp * 1000);
+        if (Number.isNaN(date.getTime())) return '';
+
+        const pad = value => String(value).padStart(2, '0');
+        return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     }
 
     function localizeAlertMetric(metric) {
@@ -1687,42 +2740,50 @@
     function renderLogLine(log, idx) {
         const fingerprintId = getFingerprintId(log.operator, log.ua);
         const uaTag = parseUAInfo(log.ua);
-        const safeTime = escapeHtml(log.time_str);
+        const safeTime = escapeHtml(formatAuditTime(log));
         const safeOperator = escapeHtml(log.operator);
-        const safeModule = escapeHtml(t(auditModuleFallbacks[log.module] || 'logs.audit.unknown'));
+        const safeModule = escapeHtml(auditModuleLabel(log.module));
         const safeFingerprint = escapeAttr(fingerprintId);
         
-        // 统一状态配置 - 所有状态使用等宽长度 [XXXX] 格式
+        // 统一状态配置
         const isSuccess = log.action === 'LOGIN_SUCCESS';
         const isFail = log.action === 'LOGIN_FAIL' || log.level === 'SECURITY' || log.level === 'ERROR';
         
         let statusClass = 'info';
-        let statusText = '[INFO]';
+        let statusText = 'INFO';
         
         if (isSuccess) {
             statusClass = 'success';
-            statusText = '[ OK ]';
+            statusText = 'OK';
         } else if (isFail) {
             statusClass = 'fail';
-            statusText = '[FAIL]';
+            statusText = 'FAIL';
         } else if (log.level === 'WARN') {
             statusClass = 'warn';
-            statusText = '[WARN]';
+            statusText = 'WARN';
         }
         
         const detailsId = `detail-${log.timestamp}-${idx}`;
         
-        const mainMsg = localizeAuditMessage(log);
+        const mainMsg = auditMessageLabel(log);
         const detailsContent = localizeAuditDetails(log);
         const safeMainMsg = escapeHtml(mainMsg);
         const safeDetailsContent = escapeHtml(detailsContent);
         const safeDetailsId = escapeAttr(detailsId);
+        const detailsLabel = resolveLabel('logs.details', 'Details');
+        const detailsTitle = resolveLabel('logs.detailsTitle', 'Details');
+        const safeDetailsLabel = escapeHtml(detailsLabel);
+        const safeDetailsLabelAttr = escapeAttr(detailsLabel);
+        const safeDetailsTitle = escapeHtml(detailsTitle);
         
         return `
-            <div class="cli-line fingerprint-group">
-                <span class="cli-time">${safeTime}</span>
-                <span class="cli-status ${statusClass}">${statusText}</span>
+            <div class="cli-line fingerprint-group log-${statusClass}">
+                <div class="cli-stamp">
+                    <span class="cli-time">${safeTime}</span>
+                    <span class="cli-status ${statusClass}">${statusText}</span>
+                </div>
                 <div class="cli-content">
+                    <div class="cli-meta">
                     <span class="cli-tag cli-tag-ip" 
                           data-fingerprint="${safeFingerprint}"
                           onclick="highlightFingerprint('${safeFingerprint}', event)"
@@ -1733,19 +2794,22 @@
                           onclick="highlightFingerprint('${safeFingerprint}', event)"
                           title="${escapeAttr(t('logs.highlightFingerprint'))}">${uaTag}</span>
                     ` : ''}
-                    <span class="fw-bold">${safeModule}</span>
-                    <span class="text-muted">${safeMainMsg}</span>
+                        <span class="cli-module">${safeModule}</span>
+                    </div>
+                    <div class="cli-message">
+                        <span class="cli-message-text">${safeMainMsg}</span>
                     ${detailsContent ? `
-                        <a href="javascript:void(0)" class="text-primary ms-2" onclick="toggleDetails('${safeDetailsId}')">
-                            [${escapeHtml(t('logs.details'))}]
+                        <a href="javascript:void(0)" class="cli-detail-toggle" onclick="toggleDetails('${safeDetailsId}', this)" aria-expanded="false" aria-controls="${safeDetailsId}" aria-label="${safeDetailsLabelAttr}" title="${safeDetailsLabelAttr}">
+                            <i class="fas fa-receipt"></i><span class="visually-hidden">${safeDetailsLabel}</span>
                         </a>
                     ` : ''}
+                    </div>
                 </div>
             </div>
             ${detailsContent ? `
                 <div class="cli-details collapse" id="${safeDetailsId}">
                     <div class="cli-details-title">
-                        <i class="fas fa-info-circle me-1"></i> ${escapeHtml(t('logs.detailsTitle'))}
+                        <i class="fas fa-info-circle me-1"></i> ${safeDetailsTitle}
                     </div>
                     <pre>${safeDetailsContent}</pre>
                 </div>
@@ -1898,35 +2962,17 @@
 
     // 显示配置不完整弹窗
     function showConfigIncompleteModal() {
-        if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
-        const modalEl = document.getElementById('discardModal');
-        const title = modalEl.querySelector('h5');
-        const msg = modalEl.querySelector('p');
-        const btn = document.getElementById('discard-confirm-btn');
-        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
-        
-        const oldTitle = title.innerText;
-        const oldMsg = msg.innerText;
-        const oldBtnText = btn.innerText;
-
-        title.innerText = t('logs.emailConfigIncompleteTitle');
-        title.className = "fw-bold text-danger";
-        msg.innerHTML = t('logs.emailConfigIncompleteBody');
-        btn.innerText = t('logs.goConfigure');
-        btn.className = "btn btn-primary fw-bold";
-        
-        btn.onclick = () => {
-            // 切换到邮件 Tab
-            const emailTab = document.querySelector('[data-bs-target="#tab-email"]');
-            if (emailTab) emailTab.click();
-            // 还原 Modal
-            title.innerText = oldTitle;
-            title.className = "fw-bold";
-            msg.innerText = oldMsg;
-            btn.innerText = oldBtnText;
-            discardModal.hide();
-        };
-        discardModal.show();
+        showDiscardModal({
+            title: t('logs.emailConfigIncompleteTitle'),
+            titleClass: 'fw-bold text-danger',
+            messageHtml: t('logs.emailConfigIncompleteBody'),
+            confirmText: t('logs.goConfigure'),
+            confirmClass: 'btn btn-primary fw-bold',
+            onConfirm: () => {
+                const emailTab = document.querySelector('[data-bs-target="#tab-email"]');
+                if (emailTab) emailTab.click();
+            }
+        });
     }
 
     // 处理报告开关变动
@@ -1948,6 +2994,59 @@
     let dbSizeTimer = null;
     let hasPendingChanges = false;
     let initialSettingsSnapshot = null; // 存储打开时的原始快照
+
+    function resetDiscardModalState() {
+        const modalEl = document.getElementById('discardModal');
+        if (!modalEl) return;
+        const title = document.getElementById('discardModalTitle');
+        const msg = document.getElementById('discardModalMessage');
+        const btn = document.getElementById('discard-confirm-btn');
+        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+        if (title) {
+            title.className = 'fw-bold';
+            title.innerText = t('settings.unsavedTitle');
+        }
+        if (msg) msg.innerText = t('settings.unsavedBody');
+        if (btn) {
+            btn.className = 'btn btn-warning fw-bold';
+            btn.innerText = t('settings.discard');
+            btn.onclick = null;
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = '';
+            cancelBtn.innerText = t('settings.keepEditing');
+        }
+    }
+
+    function showDiscardModal(options = {}) {
+        const modalEl = document.getElementById('discardModal');
+        if (!modalEl) return;
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+        if (!discardModal) discardModal = new bootstrap.Modal(modalEl);
+        resetDiscardModalState();
+
+        const title = document.getElementById('discardModalTitle');
+        const msg = document.getElementById('discardModalMessage');
+        const btn = document.getElementById('discard-confirm-btn');
+        const cancelBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+        if (title && options.title) title.innerText = options.title;
+        if (title && options.titleClass) title.className = options.titleClass;
+        if (msg && options.messageHtml !== undefined) msg.innerHTML = options.messageHtml;
+        else if (msg && options.message !== undefined) msg.innerText = options.message;
+        if (btn && options.confirmText) btn.innerText = options.confirmText;
+        if (btn && options.confirmClass) btn.className = options.confirmClass;
+        if (cancelBtn && options.cancelVisible === false) cancelBtn.style.display = 'none';
+        if (btn) {
+            btn.onclick = async () => {
+                if (options.onConfirm) await options.onConfirm();
+                if (options.autoHide !== false) discardModal.hide();
+            };
+        }
+        modalEl.addEventListener('hidden.bs.modal', resetDiscardModalState, { once: true });
+        discardModal.show();
+    }
 
     // 邮件模式切换 UI 交互
     function toggleEmailMode(mode) {
@@ -2330,7 +3429,12 @@
     }
 
     async function openDelaySettings() {
-        if (!settingsModal) settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+        const settingsModalEl = document.getElementById('settingsModal');
+        if (!settingsModalEl) return;
+        if (settingsModalEl && settingsModalEl.parentElement !== document.body) {
+            document.body.appendChild(settingsModalEl);
+        }
+        if (!settingsModal) settingsModal = new bootstrap.Modal(settingsModalEl);
         
         try {
             settingsModal.show();
@@ -2811,9 +3915,10 @@
         const getColor = (val) => {
             const warn = parseFloat(delayConfig.log_delay_warn) || 1.5;
             const danger = parseFloat(delayConfig.log_delay_danger) || 5.0;
-            if (val <= warn) return '#1a7f37'; 
-            if (val <= danger) return '#d29922';
-            return '#f85149';
+            const styles = getComputedStyle(document.documentElement);
+            if (val <= warn) return styles.getPropertyValue('--accent-green').trim() || '#6e7d52';
+            if (val <= danger) return styles.getPropertyValue('--accent-yellow').trim() || '#a5792e';
+            return styles.getPropertyValue('--accent-red').trim() || '#a94e3f';
         };
 
         try {
@@ -2935,9 +4040,10 @@
                 const ts = typeof item === 'object' ? item.t : null;
                 
                 const getColor = (v) => {
-                    if (v <= delayConfig.log_delay_warn) return '#1a7f37'; // 进一步加深绿色
-                    if (v <= delayConfig.log_delay_danger) return '#d29922'; // 黄色
-                    return '#f85149';                 // 红色
+                    const styles = getComputedStyle(document.documentElement);
+                    if (v <= delayConfig.log_delay_warn) return styles.getPropertyValue('--accent-green').trim() || '#6e7d52';
+                    if (v <= delayConfig.log_delay_danger) return styles.getPropertyValue('--accent-yellow').trim() || '#a5792e';
+                    return styles.getPropertyValue('--accent-red').trim() || '#a94e3f';
                 };
 
                 // 计算时间点
@@ -2998,9 +4104,7 @@
 
     // 自动刷新
     function startAutoRefresh() {
-        setInterval(() => {
-            loadLogs();
-        }, 3000); // 每3秒检查新日志
+        window.IPMI.poll(loadLogs, 3000, { visibleOnly: true, immediate: false });
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
@@ -3026,15 +4130,14 @@
 
             // 拦截关闭
             settingsModalEl.addEventListener('hide.bs.modal', (e) => {
-                if (checkChanges() && !bypassModalCheck) {
+                if (hasPendingChanges && checkChanges() && !bypassModalCheck) {
                     e.preventDefault(); 
-                    if (!discardModal) discardModal = new bootstrap.Modal(document.getElementById('discardModal'));
-                    document.getElementById('discard-confirm-btn').onclick = () => {
-                        bypassModalCheck = true;
-                        discardModal.hide();
-                        settingsModal.hide();
-                    };
-                    discardModal.show();
+                    showDiscardModal({
+                        onConfirm: () => {
+                            bypassModalCheck = true;
+                            settingsModal.hide();
+                        }
+                    });
                     return;
                 }
                 bypassModalCheck = false; // 重置标记
@@ -3081,10 +4184,8 @@
     });
 </script>
 
-<footer class="text-center w-100 mb-3 mt-auto" style="pointer-events: none; flex-shrink: 0;">
-    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
-        <i class="fab fa-github me-1"></i>GitHub @stlin256
-    </a>
-</footer>
+{% set footer_class = 'mb-3 mt-auto' %}
+{% set footer_style = 'pointer-events: none; flex-shrink: 0;' %}
+{% include 'partials/footer.html' %}
 </body>
 </html>

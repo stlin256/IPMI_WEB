@@ -1,123 +1,400 @@
 <!DOCTYPE html>
-<html lang="{{ locale }}" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="light">
+{% set gpu_page_title = t('gpu.title') %}
+{% if gpu_page_title == 'gpu.title' %}{% set gpu_page_title = 'GPU Monitoring' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('gpu.title') }} - {{ server_name }} Ops</title>
+    <title>{{ gpu_page_title }} - {{ server_name }} Ops</title>
+    {% include 'partials/favicon.html' %}
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/app-modern.css') }}?v=20260614-motion" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app-core.js') }}?v=20260614-motion"></script>
+    <script src="{{ url_for('static', filename='js/pjax.js') }}?v=20260614-pjax"></script>
     
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
-        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
-
-        @media (max-width: 576px) {
-            .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
-            .navbar-nav.me-auto { margin-left: 0.5rem !important; }
-            .nav-link { font-size: 0.9rem !important; margin-right: 0.5rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
-            .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
+        body { min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
+        .gpu-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .gpu-page-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 1.25rem;
+            align-items: end;
+            padding: 1.75rem 0 1.25rem;
+            border-bottom: 1px solid var(--border-color);
         }
-        
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s; }
-        .card:hover { transform: translateY(-2px); }
-        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); padding: 1.25rem; font-weight: 700; font-size: 1.25rem; }
-        
-        .progress { background-color: #21262d; height: 16px; border-radius: 8px; }
-        .gpu-label { font-size: 1.15rem; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
-        .gpu-value { font-family: 'SF Mono', Consolas, monospace; font-weight: 800; color: #fff; font-size: 1.35rem; }
-        
-        .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; padding: 1.5rem; border-top: 1px solid var(--border-color); }
-        .info-item { display: flex; flex-direction: column; }
-        .info-label { font-size: 1rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
-        .info-value { font-family: 'SF Mono', Consolas, monospace; font-size: 1.4rem; font-weight: 700; color: #58a6ff; }
-
-        .temp-badge { font-size: 1.25rem !important; font-weight: 800 !important; padding: 0.4rem 0.8rem !important; color: #fff !important; }
-
-        .agent-offline { filter: grayscale(1); pointer-events: none; opacity: 0.6; }
-        .offline-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 1000; font-size: 2rem; color: #f85149; text-shadow: 0 0 10px #000; display: none; background: rgba(0,0,0,0.5); padding: 1rem 2rem; border-radius: 10px; backdrop-filter: blur(5px); }
-        
-        /* 保持 2x2 布局，即使在手机端 */
-        @media (max-width: 768px) {
-            .info-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem; padding: 1rem; }
-            .info-value { font-size: 1.1rem; }
+        .gpu-title {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin: 0;
+            font-size: clamp(1.65rem, 2.8vw, 2.8rem);
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+        .gpu-title-icon {
+            display: inline-grid;
+            place-items: center;
+            flex: 0 0 auto;
+            width: 2.6rem;
+            height: 2.6rem;
+            border-radius: 8px;
+            color: #fff7e8;
+            background: var(--accent-blue);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 72%, var(--border-color));
+            box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-blue) 16%, transparent);
+            line-height: 1;
+            overflow: hidden;
+        }
+        .gpu-title-icon i {
+            font-size: 1.35rem;
+            line-height: 1;
+        }
+        .gpu-subline {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem 1rem;
+            align-items: center;
+            margin-top: 0.75rem;
+            color: var(--text-muted);
+        }
+        .gpu-actions { display: flex; gap: 0.6rem; align-items: center; }
+        .gpu-actions .btn {
+            min-height: 2.4rem;
+            border-radius: 8px;
+            font-weight: 700;
+        }
+        .gpu-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            border-radius: 999px;
+            padding: 0.35rem 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+        .gpu-status-pill::before {
+            content: "";
+            width: 0.52rem;
+            height: 0.52rem;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 18%, transparent);
+        }
+        .gpu-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.85rem;
+            margin: 1.25rem 0;
+        }
+        .gpu-stat {
+            min-height: 6rem;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background:
+                var(--surface-sheen),
+                color-mix(in srgb, var(--bg-card) 92%, transparent);
+            box-shadow: var(--shadow-soft);
+        }
+        .gpu-stat-label {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .gpu-stat-value {
+            margin-top: 0.65rem;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: clamp(1.35rem, 2.5vw, 2rem);
+            font-weight: 900;
+            color: var(--text-main);
+        }
+        .gpu-grid { margin-top: 0.5rem; }
+        .gpu-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px !important;
+            transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        }
+        .gpu-card::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 3px;
+            background: var(--accent-blue);
+            opacity: 0.68;
+        }
+        .gpu-card:hover {
+            transform: translateY(-3px);
+            border-color: color-mix(in srgb, var(--accent-blue) 55%, var(--border-color)) !important;
+            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+        }
+        .gpu-card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.1rem 1.1rem 0.8rem;
+        }
+        .gpu-name {
+            min-width: 0;
+            font-weight: 850;
+            font-size: 1.05rem;
+        }
+        .gpu-index {
+            color: var(--text-muted);
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 0.76rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .temp-badge {
+            border-radius: 999px !important;
+            padding: 0.38rem 0.7rem !important;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-weight: 900 !important;
+            color: #fff !important;
+        }
+        .gpu-card-body { padding: 0.25rem 1.1rem 1rem; }
+        .gpu-meter { margin-bottom: 1rem; }
+        .gpu-meter-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+            margin-bottom: 0.45rem;
+        }
+        .gpu-label {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 850;
+            text-transform: uppercase;
+        }
+        .gpu-value {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 1rem;
+            font-weight: 900;
+            color: var(--text-main);
+        }
+        .progress {
+            height: 0.5rem;
+            border-radius: 999px;
+            background-color: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
+            overflow: hidden;
+        }
+        .gpu-card .progress-bar {
+            width: 100% !important;
+            transform: scaleX(var(--ipmi-progress, 0));
+            transform-origin: left center;
+            transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 1px;
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            background: var(--border-color);
+        }
+        .info-item {
+            min-width: 0;
+            padding: 0.85rem;
+            background: color-mix(in srgb, var(--bg-card) 94%, transparent);
+        }
+        .info-label {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            font-weight: 850;
+            text-transform: uppercase;
+        }
+        .info-value {
+            display: block;
+            margin-top: 0.35rem;
+            overflow-wrap: anywhere;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 0.96rem;
+            font-weight: 900;
+            color: var(--accent-blue);
+        }
+        .gpu-chart-panel {
+            height: 170px;
+            padding: 0.9rem;
+            background: color-mix(in srgb, var(--bg-elevated) 34%, transparent);
+        }
+        .agent-offline { filter: grayscale(1); pointer-events: none; opacity: 0.55; }
+        .offline-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            display: none;
+            padding: 1rem 1.25rem;
+            border: 1px solid color-mix(in srgb, var(--accent-red) 45%, var(--border-color));
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+            box-shadow: var(--shadow-soft);
+            color: var(--accent-red);
+            font-weight: 900;
+            backdrop-filter: blur(12px);
+        }
+        @media (max-width: 992px) {
+            .gpu-page-head { grid-template-columns: 1fr; align-items: start; }
+            .gpu-actions { justify-content: flex-start; }
+            .gpu-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 576px) {
+            .gpu-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
+            .gpu-page-head { padding-top: 1.15rem; }
+            .gpu-title-icon { width: 2.25rem; height: 2.25rem; }
+            .gpu-title-icon i { font-size: 1.2rem; }
+            .gpu-actions { width: 100%; }
+            .gpu-actions .btn { flex: 1 1 0; }
+            .gpu-summary-grid { grid-template-columns: 1fr; }
+            .gpu-card-head { flex-direction: column; }
+            .temp-badge { align-self: flex-start; }
         }
     </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
 
-<nav class="navbar navbar-expand navbar-dark sticky-top">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
-            </span>
-        </a>
-        <div class="navbar-nav flex-row me-auto ms-4">
-            <a class="nav-link me-3" href="/hardware">HW</a>
-            <a class="nav-link me-3" href="/resources">RES</a>
-            <a class="nav-link active me-3" href="/gpu">GPU</a>
-            <a class="nav-link" href="/history">HIST</a>
-        </div>
-        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
-    </div>
-</nav>
+{% set active_page = 'gpu' %}
+{% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+{% set gpu_checking_label = t('gpu.checking') %}
+{% if gpu_checking_label == 'gpu.checking' %}{% set gpu_checking_label = 'Checking...' %}{% endif %}
+{% set gpu_last_update_label = t('gpu.lastUpdate') %}
+{% if gpu_last_update_label == 'gpu.lastUpdate' %}{% set gpu_last_update_label = 'Last updated' %}{% endif %}
+{% set gpu_configure_label = t('gpu.configure') %}
+{% if gpu_configure_label == 'gpu.configure' %}{% set gpu_configure_label = 'Configure' %}{% endif %}
+{% set gpu_agent_offline_label = t('gpu.agentOffline') %}
+{% if gpu_agent_offline_label == 'gpu.agentOffline' %}{% set gpu_agent_offline_label = 'GPU Agent Offline' %}{% endif %}
+{% set gpu_refresh_label = t('logs.refresh') %}
+{% if gpu_refresh_label == 'logs.refresh' %}{% set gpu_refresh_label = 'Refresh' %}{% endif %}
+
+<main class="gpu-shell container-fluid px-3 px-md-4 pb-4">
+    <section class="gpu-page-head">
         <div>
-            <h2 class="h3 mb-1"><i class="fas fa-microchip me-2"></i><span data-i18n="gpu.title">{{ t('gpu.title') }}</span></h2>
-            <div class="small">
-                <span id="agent-status" class="badge bg-secondary" data-i18n="gpu.checking">{{ t('gpu.checking') }}</span>
-                <span class="text-muted ms-2"><span data-i18n="gpu.lastUpdate">{{ t('gpu.lastUpdate') }}</span>: <span id="last-update">--</span></span>
+            <h1 class="gpu-title">
+                <span class="gpu-title-icon"><i class="fas fa-microchip"></i></span>
+                <span data-i18n="gpu.title">{{ gpu_page_title }}</span>
+            </h1>
+            <div class="gpu-subline">
+                <span id="agent-status" class="gpu-status-pill text-secondary" data-i18n="gpu.checking">{{ gpu_checking_label }}</span>
+                <span><span data-i18n="gpu.lastUpdate">{{ gpu_last_update_label }}</span>: <span id="last-update" class="font-monospace">--</span></span>
             </div>
         </div>
-        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#gpuConfigModal">
-            <i class="fas fa-cog me-1"></i><span data-i18n="gpu.configure">{{ t('gpu.configure') }}</span>
-        </button>
-    </div>
+        <div class="gpu-actions">
+            <button id="btn-refresh-gpu" class="btn btn-outline-secondary" type="button" data-i18n-title="logs.refresh" title="{{ gpu_refresh_label }}">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#gpuConfigModal">
+                <i class="fas fa-cog me-1"></i><span data-i18n="gpu.configure">{{ gpu_configure_label }}</span>
+            </button>
+        </div>
+    </section>
 
     <div id="offline-msg" class="offline-overlay">
-        <i class="fas fa-exclamation-triangle me-2"></i><span data-i18n="gpu.agentOffline">{{ t('gpu.agentOffline') }}</span>
+        <i class="fas fa-exclamation-triangle me-2"></i><span data-i18n="gpu.agentOffline">{{ gpu_agent_offline_label }}</span>
     </div>
 
-    <div id="gpu-container" class="row g-4 flex-grow-1">
+    <section class="gpu-summary-grid" aria-label="GPU summary">
+        <div class="gpu-stat">
+            <div class="gpu-stat-label"><i class="fas fa-layer-group"></i> <span data-i18n="gpu.devices">GPUs</span></div>
+            <div class="gpu-stat-value" id="gpu-stat-count">--</div>
+        </div>
+        <div class="gpu-stat">
+            <div class="gpu-stat-label"><i class="fas fa-gauge-high"></i> <span data-i18n="metrics.avgLoad">Avg Load</span></div>
+            <div class="gpu-stat-value" id="gpu-stat-load">--%</div>
+        </div>
+        <div class="gpu-stat">
+            <div class="gpu-stat-label"><i class="fas fa-temperature-half"></i> <span data-i18n="gpu.peakTemp">Peak Temp</span></div>
+            <div class="gpu-stat-value" id="gpu-stat-temp">--°C</div>
+        </div>
+        <div class="gpu-stat">
+            <div class="gpu-stat-label"><i class="fas fa-bolt"></i> <span data-i18n="gpu.power">Power</span></div>
+            <div class="gpu-stat-value" id="gpu-stat-power">--W</div>
+        </div>
+    </section>
+
+    <section id="gpu-container" class="gpu-grid row g-4 flex-grow-1">
         <!-- GPU 卡片将由 JavaScript 动态生成 -->
-    </div>
-</div>
+    </section>
+</main>
+
+{% set gpu_config_error_title = t('gpu.configErrorTitle') %}
+{% if gpu_config_error_title == 'gpu.configErrorTitle' %}{% set gpu_config_error_title = 'Configuration not saved' %}{% endif %}
+{% set gpu_agent_config_label = t('gpu.agentConfig') %}
+{% if gpu_agent_config_label == 'gpu.agentConfig' %}{% set gpu_agent_config_label = 'GPU Agent Configuration' %}{% endif %}
+{% set gpu_host_label = t('gpu.host') %}
+{% if gpu_host_label == 'gpu.host' %}{% set gpu_host_label = 'Agent host' %}{% endif %}
+{% set gpu_port_label = t('gpu.port') %}
+{% if gpu_port_label == 'gpu.port' %}{% set gpu_port_label = 'Agent port' %}{% endif %}
+{% set gpu_enabled_label = t('gpu.enabled') %}
+{% if gpu_enabled_label == 'gpu.enabled' %}{% set gpu_enabled_label = 'Enable GPU monitoring' %}{% endif %}
+{% set gpu_cancel_label = t('app.cancel') %}
+{% if gpu_cancel_label == 'app.cancel' %}{% set gpu_cancel_label = 'Cancel' %}{% endif %}
+{% set gpu_save_label = t('app.save') %}
+{% if gpu_save_label == 'app.save' %}{% set gpu_save_label = 'Save' %}{% endif %}
+{% set gpu_got_it_label = t('update.gotIt') %}
+{% if gpu_got_it_label == 'update.gotIt' %}{% set gpu_got_it_label = 'Got it' %}{% endif %}
 
 <!-- GPU 配置模态框 -->
-<div class="modal fade" id="gpuConfigModal" tabindex="-1">
+<div class="modal fade" id="gpuConfigModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="gpuConfigModalTitle">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="background-color: #1c2128; border: 1px solid #444;">
+        <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
-                <h5 class="modal-title"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ t('gpu.agentConfig') }}</span></h5>
+                <h5 class="modal-title" id="gpuConfigModalTitle"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ gpu_agent_config_label }}</span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
             </div>
             <div class="modal-body">
                 <form id="gpuConfigForm">
                     <div class="mb-3">
-                        <label class="form-label text-muted" data-i18n="gpu.host">{{ t('gpu.host') }}</label>
-                        <input type="text" class="form-control bg-dark text-white border-secondary" id="config-host" placeholder="127.0.0.1">
+                        <label class="form-label text-muted" data-i18n="gpu.host">{{ gpu_host_label }}</label>
+                        <input type="text" class="form-control" id="config-host" placeholder="127.0.0.1">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted" data-i18n="gpu.port">{{ t('gpu.port') }}</label>
-                        <input type="number" class="form-control bg-dark text-white border-secondary" id="config-port" placeholder="9999">
+                        <label class="form-label text-muted" data-i18n="gpu.port">{{ gpu_port_label }}</label>
+                        <input type="number" class="form-control" id="config-port" placeholder="9999">
                     </div>
                     <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="config-enabled">
-                        <label class="form-check-label" for="config-enabled" data-i18n="gpu.enabled">{{ t('gpu.enabled') }}</label>
+                        <label class="form-check-label" for="config-enabled" data-i18n="gpu.enabled">{{ gpu_enabled_label }}</label>
                     </div>
                 </form>
             </div>
             <div class="modal-footer border-top border-secondary">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.cancel">{{ t('app.cancel') }}</button>
-                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()" data-i18n="app.save">{{ t('app.save') }}</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="app.cancel">{{ gpu_cancel_label }}</button>
+                <button type="button" class="btn btn-primary" onclick="saveGpuConfig()" data-i18n="app.save">{{ gpu_save_label }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GPU notice modal -->
+<div class="modal fade" id="gpuNoticeModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="gpu-notice-title" aria-describedby="gpu-notice-message">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="ipmi-modal-symbol danger mx-auto">
+                    <i class="fas fa-triangle-exclamation fs-4"></i>
+                </div>
+                <h5 id="gpu-notice-title" class="modal-title mb-2 fw-bold" data-i18n="gpu.configErrorTitle">{{ gpu_config_error_title }}</h5>
+                <p id="gpu-notice-message" class="ipmi-modal-copy small mb-4"></p>
+                <div class="ipmi-modal-actions">
+                    <button type="button" class="btn btn-primary fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ gpu_got_it_label }}</button>
+                </div>
             </div>
         </div>
     </div>
@@ -127,271 +404,8 @@
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-<script>
-    function loadGpuConfig() {
-        fetch('/api/config/gpu')
-            .then(r => r.json())
-            .then(d => {
-                document.getElementById('config-host').value = d.gpu_agent_host || '';
-                document.getElementById('config-port').value = d.gpu_agent_port || '';
-                document.getElementById('config-enabled').checked = d.gpu_agent_enabled === 'true';
-            });
-    }
-
-    function saveGpuConfig() {
-        const payload = {
-            gpu_agent_host: document.getElementById('config-host').value,
-            gpu_agent_port: parseInt(document.getElementById('config-port').value),
-            gpu_agent_enabled: document.getElementById('config-enabled').checked
-        };
-
-        fetch('/api/config/gpu', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).then(r => r.json()).then(d => {
-            if (d.status === 'success') {
-                const modal = bootstrap.Modal.getInstance(document.getElementById('gpuConfigModal'));
-                modal.hide();
-                refreshGpuData();
-            } else {
-                alert(t('gpu.saveFailed', { message: d.message || t('logs.unknown') }));
-            }
-        });
-    }
-
-    let lastGpuCount = -1;
-
-    function refreshGpuData() {
-        fetch('/api/status_gpu')
-            .then(r => r.json())
-            .then(data => {
-                const container = document.getElementById('gpu-container');
-                const statusBadge = document.getElementById('agent-status');
-                const offlineMsg = document.getElementById('offline-msg');
-                const lastUpdate = document.getElementById('last-update');
-
-                lastUpdate.innerText = new Date().toLocaleTimeString();
-
-                if (!data.online) {
-                    statusBadge.innerText = t('gpu.offline');
-                    statusBadge.className = 'badge bg-danger';
-                    container.classList.add('agent-offline');
-                    offlineMsg.style.display = 'block';
-                    return;
-                }
-
-                statusBadge.innerText = t('gpu.online');
-                statusBadge.className = 'badge bg-success';
-                container.classList.remove('agent-offline');
-                offlineMsg.style.display = 'none';
-
-                if (!data.gpus || data.gpus.length === 0) {
-                    container.innerHTML = `<div class="col-12 text-center text-muted py-5">${t('gpu.notFound')}</div>`;
-                    lastGpuCount = 0;
-                    return;
-                }
-
-                // 如果 GPU 数量变了，重构整个容器
-                if (data.gpus.length !== lastGpuCount) {
-                    let html = '';
-                    data.gpus.forEach((gpu, index) => {
-                        html += `
-                        <div class="col-12 col-md-6 col-xl-4">
-                            <div class="card h-100">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-microchip me-2 text-primary"></i>GPU #${index}: <span id="gpu-${index}-name">${gpu.name}</span></span>
-                                    <span class="badge temp-badge" id="gpu-${index}-temp-badge">--°C</span>
-                                </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <div class="d-flex justify-content-between gpu-label">
-                                            <span>${t('gpu.load')}</span>
-                                            <span class="gpu-value" id="gpu-${index}-util-val">--%</span>
-                                        </div>
-                                        <div class="progress">
-                                            <div class="progress-bar bg-primary" id="gpu-${index}-util-bar" style="width: 0%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <div class="d-flex justify-content-between gpu-label">
-                                            <span>${t('gpu.memoryActivity')}</span>
-                                            <span class="gpu-value" id="gpu-${index}-mem-util-val">--%</span>
-                                        </div>
-                                        <div class="progress">
-                                            <div class="progress-bar bg-info" id="gpu-${index}-mem-util-bar" style="width: 0%"></div>
-                                        </div>
-                                        <div class="text-end mt-1 text-muted font-monospace fw-bold" style="font-size: 0.95rem;" id="gpu-${index}-mem-text">
-                                            -- / -- MB
-                                        </div>
-                                    </div>
-                                    <div class="mb-0">
-                                        <div class="d-flex justify-content-between gpu-label">
-                                            <span>${t('gpu.power')}</span>
-                                            <span class="gpu-value" id="gpu-${index}-pwr-val">--W</span>
-                                        </div>
-                                        <div class="progress">
-                                            <div class="progress-bar bg-warning" id="gpu-${index}-pwr-bar" style="width: 0%"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="info-grid">
-                                    <div class="info-item"><span class="info-label">${t('gpu.coreClock')}</span><span class="info-value" id="gpu-${index}-core-clock">-- MHz</span></div>
-                                    <div class="info-item"><span class="info-label">${t('gpu.memoryClock')}</span><span class="info-value" id="gpu-${index}-mem-clock">-- MHz</span></div>
-                                    <div class="info-item"><span class="info-label">${t('gpu.fanSpeed')}</span><span class="info-value" id="gpu-${index}-fan">--%</span></div>
-                                    <div class="info-item"><span class="info-label">${t('gpu.eccErrors')}</span><span class="info-value" id="gpu-${index}-ecc">0</span></div>
-                                </div>
-                                <div class="p-3 border-top border-secondary" style="height: 150px;">
-                                    <canvas id="gpu-chart-${index}"></canvas>
-                                </div>
-                            </div>
-                        </div>`;
-                    });
-                    container.innerHTML = html;
-                    lastGpuCount = data.gpus.length;
-                    
-                    // 首次渲染图表
-                    data.gpus.forEach((gpu, index) => renderGpuTrend(index));
-                }
-
-                // 局部更新数值
-                data.gpus.forEach((gpu, index) => {
-                    const fanSpeed = gpu.fan_speed !== null ? gpu.fan_speed : 'N/A';
-                    
-                    // 温度与颜色
-                    const tempEl = document.getElementById(`gpu-${index}-temp-badge`);
-                    if(tempEl) {
-                        tempEl.innerText = `${gpu.temp}°C`;
-                        tempEl.className = 'badge temp-badge ' + (gpu.temp >= 70 ? 'bg-danger' : (gpu.temp >= 50 ? 'bg-warning' : 'bg-success'));
-                    }
-
-                    document.getElementById(`gpu-${index}-util-val`).innerText = `${gpu.util_gpu}%`;
-                    document.getElementById(`gpu-${index}-util-bar`).style.width = `${gpu.util_gpu}%`;
-                    
-                    document.getElementById(`gpu-${index}-mem-util-val`).innerText = `${gpu.util_mem}%`;
-                    document.getElementById(`gpu-${index}-mem-util-bar`).style.width = `${gpu.util_mem}%`;
-                    document.getElementById(`gpu-${index}-mem-text`).innerText = `${gpu.memory_used} / ${gpu.memory_total} MB`;
-                    
-                    document.getElementById(`gpu-${index}-pwr-val`).innerText = `${gpu.power_draw}W / ${gpu.power_limit}W`;
-                    const pwrPct = Math.min(100, (gpu.power_draw / gpu.power_limit * 100)).toFixed(1);
-                    document.getElementById(`gpu-${index}-pwr-bar`).style.width = `${pwrPct}%`;
-
-                    document.getElementById(`gpu-${index}-core-clock`).innerText = `${gpu.clock_core} MHz`;
-                    document.getElementById(`gpu-${index}-mem-clock`).innerText = `${gpu.clock_mem} MHz`;
-                    document.getElementById(`gpu-${index}-fan`).innerText = `${fanSpeed}${gpu.fan_speed !== null ? '%' : ''}`;
-                    
-                    const eccEl = document.getElementById(`gpu-${index}-ecc`);
-                    eccEl.innerText = gpu.ecc_errors;
-                    eccEl.className = 'info-value ' + (gpu.ecc_errors > 0 ? 'text-danger' : '');
-                });
-            })
-            .catch(err => {
-                console.error('GPU Status Error:', err);
-                document.getElementById('agent-status').innerText = t('gpu.error');
-                document.getElementById('agent-status').className = 'badge bg-warning';
-            });
-    }
-
-    let gpuCharts = {};
-
-    function renderGpuTrend(index) {
-        fetch(`/api/history_gpu?hours=1&index=${index}`)
-            .then(r => r.json())
-            .then(data => {
-                const canvas = document.getElementById(`gpu-chart-${index}`);
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                
-                const datasets = [
-                    {
-                        label: 'GPU Load %',
-                        data: data.util_gpu,
-                        borderColor: '#58a6ff',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        fill: true,
-                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Mem Util %',
-                        data: data.util_mem,
-                        borderColor: '#bc8cff',
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Temp °C',
-                        data: data.temp,
-                        borderColor: '#ff7b72',
-                        borderWidth: 1,
-                        pointRadius: 0,
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Core Clock MHz',
-                        data: data.clock_core,
-                        borderColor: '#2ea043',
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        tension: 0.4,
-                        yAxisID: 'yClock'
-                    }
-                ];
-
-                if (gpuCharts[index]) {
-                    gpuCharts[index].data.labels = data.times;
-                    gpuCharts[index].data.datasets = datasets;
-                    gpuCharts[index].update('none'); // 静默更新数据，防止闪烁
-                } else {
-                    gpuCharts[index] = new Chart(ctx, {
-                        type: 'line',
-                        data: { labels: data.times, datasets: datasets },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            animation: {
-                                duration: 800,
-                                easing: 'easeOutQuart'
-                            },
-                            plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
-                            scales: {
-                                x: { display: false },
-                                y: { display: true, min: 0, max: 100, grid: { color: '#30363d' }, ticks: { display: false } },
-                                yClock: { display: false, position: 'right', min: 0, grid: { drawOnChartArea: false } }
-                            }
-                        }
-                    });
-                }
-            });
-    }
-
-    function checkLogStatus() {
-        fetch('/api/log_status').then(r => r.json()).then(d => {
-            const dot = document.getElementById('log-dot');
-            if (d.unread) dot.classList.remove('d-none');
-            else dot.classList.add('d-none');
-        });
-    }
-
-    // 初始化加载配置并启动轮询
-    document.addEventListener('DOMContentLoaded', () => {
-        checkLogStatus();
-        setInterval(checkLogStatus, 5000);
-        loadGpuConfig();
-        refreshGpuData();
-        setInterval(refreshGpuData, 1000); 
-        setInterval(() => {
-            // 每分钟刷新一次趋势图
-            Object.keys(gpuCharts).forEach(index => renderGpuTrend(index));
-        }, 60000);
-    });
-</script>
-<footer class="text-center w-100 mb-2" style="position: absolute; bottom: 10px; left: 0; pointer-events: none;">
-    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
-        <i class="fab fa-github me-1"></i>GitHub @stlin256
-    </a>
-</footer>
+<script src="{{ url_for('static', filename='js/pages/gpu.js') }}"></script>
+{% set footer_class = 'mb-2 mt-auto' %}
+{% include 'partials/footer.html' %}
 </body>
 </html>

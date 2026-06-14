@@ -1,0 +1,26 @@
+{% set active_page = active_page|default('') %}
+<nav class="navbar navbar-expand navbar-light sticky-top">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="/logs">
+            <i class="fas fa-server me-2 text-primary"></i>
+            <span class="navbar-brand-label">
+                <span class="fw-bold fs-4">{{ server_name }}</span>
+                <span id="log-dot" class="bg-danger border border-light rounded-circle d-none">
+                    <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
+                </span>
+            </span>
+        </a>
+        <div class="navbar-nav flex-row me-auto ms-4">
+            <a class="nav-link {% if active_page == 'hardware' %}active {% endif %}me-3" href="/hardware">HW</a>
+            <a class="nav-link {% if active_page == 'resources' %}active {% endif %}me-3" href="/resources">RES</a>
+            <a class="nav-link {% if active_page == 'gpu' %}active {% endif %}me-3" href="/gpu">GPU</a>
+            <a class="nav-link {% if active_page == 'history' %}active{% endif %}" href="/history">HIST</a>
+        </div>
+        <div class="navbar-actions d-inline-flex align-items-center gap-2 ms-auto">
+            <button type="button" class="btn btn-outline-secondary ipmi-theme-toggle" aria-label="Switch theme" title="Switch theme">
+                <i class="fas fa-moon" aria-hidden="true"></i>
+            </button>
+            <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
+        </div>
+    </div>
+</nav>

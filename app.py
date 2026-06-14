@@ -54,7 +54,7 @@ SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
 SECRET_KEY = os.urandom(24)
 
-VERSION = '1.4.6'
+VERSION = '1.5.0'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
   /  _// _ \\ /  |/  //  _/ | | /| / // __// _ )
  _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
@@ -166,6 +166,10 @@ SENSITIVE_PLACEHOLDER = '********'
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 i18n = I18n(os.path.join(app.root_path, 'static', 'i18n', 'messages.json'))
+
+@app.route('/favicon.ico')
+def favicon():
+    return redirect(url_for('static', filename='favicon.ico'), code=302)
 
 def get_saved_locale():
     try:
@@ -1885,7 +1889,7 @@ def write_audit(level, module, action, message, details=None, operator=None, for
 cache_lock = threading.Lock()
 sys_cache = {
     'env': {'ipmitool': True, 'sensors': True},
-    'hw': {'temp': 0, 'power': 0, 'fan_rpm': 0, 'mode': 'auto', 'sensors': [], 'max_rpm': 0, 'min_rpm': 0},
+    'hw': {'temp': 0, 'power': 0, 'fan_rpm': 0, 'mode': 'auto', 'sensors': [], 'max_rpm': 0, 'min_rpm': 0, 'last_update': 0},
     'res': {'cpu': 0, 'mem_percent': 0, 'mem_used': 0, 'mem_total': 0, 
             'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0,
             'cpu_power_w': 0, 'cpu_pkg_power': {}},
@@ -1906,6 +1910,93 @@ latest_hw_data = {
     'last_update': 0
 }
 hw_data_lock = threading.Lock()
+
+HARDWARE_HOME_READY_TIMEOUT = 6.0
+HARDWARE_HOME_READY_POLL_INTERVAL = 0.1
+
+def hardware_home_snapshot():
+    with cache_lock:
+        hw = dict(sys_cache.get('hw') or {})
+        hw['sensors'] = list(hw.get('sensors') or [])
+        hw['env'] = dict(sys_cache.get('env') or {})
+    return hw
+
+def hardware_home_has_first_sample(hw=None):
+    hw = hw if isinstance(hw, dict) else hardware_home_snapshot()
+    env = hw.get('env') or {}
+    if env and (not env.get('ipmitool', True) or not env.get('sensors', True)):
+        return True
+    try:
+        return float(hw.get('last_update') or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+def wait_for_hardware_home_ready(timeout=HARDWARE_HOME_READY_TIMEOUT):
+    deadline = time.monotonic() + timeout
+    snapshot = hardware_home_snapshot()
+    while not hardware_home_has_first_sample(snapshot) and time.monotonic() < deadline:
+        time.sleep(HARDWARE_HOME_READY_POLL_INTERVAL)
+        snapshot = hardware_home_snapshot()
+    return snapshot
+
+def format_stable_metric(value, digits=1, integer=False):
+    if value in (None, ''):
+        return '--'
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if not math.isfinite(number):
+        return '--'
+    if integer or abs(number - round(number)) < (0.5 * (10 ** -digits)):
+        return str(int(round(number)))
+    return f"{number:.{digits}f}".rstrip('0').rstrip('.')
+
+def hardware_home_display_snapshot(hw):
+    return {
+        'temp': format_stable_metric(hw.get('temp'), 1),
+        'power': format_stable_metric(hw.get('power'), 0, integer=True),
+        'fan_rpm': format_stable_metric(hw.get('fan_rpm'), 0, integer=True),
+        'min_rpm': format_stable_metric(hw.get('min_rpm'), 0, integer=True),
+        'max_rpm': format_stable_metric(hw.get('max_rpm'), 0, integer=True),
+    }
+
+def hardware_control_snapshot():
+    defaults = {
+        'ready': False,
+        'curve': {},
+        'fixed_fan_speed_enabled': False,
+        'fixed_fan_speed_target': 30,
+        'target_temp_mode_enabled': False,
+        'target_temp_target': 65,
+        'calibration_ready': False,
+    }
+    conn = None
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        res_curve = c.execute("SELECT value FROM config WHERE key='curve'").fetchone()
+        res_fixed_enabled = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_enabled'").fetchone()
+        res_fixed_target = c.execute("SELECT value FROM config WHERE key='fixed_fan_speed_target'").fetchone()
+        res_target_temp_enabled = c.execute("SELECT value FROM config WHERE key='target_temp_mode_enabled'").fetchone()
+        res_target_temp_target = c.execute("SELECT value FROM config WHERE key='target_temp_target'").fetchone()
+
+        calibration_ready = is_calibration_ready()
+        target_temp_enabled_raw = parse_bool(res_target_temp_enabled[0] if res_target_temp_enabled else False)
+        return {
+            'ready': True,
+            'curve': json.loads(res_curve[0]) if res_curve and res_curve[0] else {},
+            'fixed_fan_speed_enabled': parse_bool(res_fixed_enabled[0] if res_fixed_enabled else False),
+            'fixed_fan_speed_target': clamp_int(res_fixed_target[0] if res_fixed_target else 30, 30, 10, 100),
+            'target_temp_mode_enabled': target_temp_enabled_raw and calibration_ready,
+            'target_temp_target': clamp_int(res_target_temp_target[0] if res_target_temp_target else 65, 65, 20, 85),
+            'calibration_ready': calibration_ready,
+        }
+    except Exception:
+        return defaults
+    finally:
+        if conn:
+            conn.close()
 
 # --- 数据库 (关键优化：开启WAL模式) ---
 def get_db_connection():
@@ -4031,7 +4122,8 @@ def background_worker():
             with cache_lock:
                 sys_cache['hw'] = {
                     'temp': cpu_temp, 'power': power, 'fan_rpm': fan_rpm, 'mode': mode, 
-                    'sensors': sensors_list, 'max_rpm': max_rpm, 'min_rpm': min_rpm
+                    'sensors': sensors_list, 'max_rpm': max_rpm, 'min_rpm': min_rpm,
+                    'last_update': now
                 }
                 sys_cache['res'] = {
                     'cpu': round(cpu_u, 1), 
@@ -4526,6 +4618,7 @@ def login():
             session.permanent = True
             
             write_audit('INFO', 'AUTH', 'LOGIN_SUCCESS', '用户登录成功', details={'domain': domain}, operator=ip)
+            wait_for_hardware_home_ready()
             return redirect(url_for('hardware_page'))
         else:
             if cooling_down:
@@ -4572,7 +4665,16 @@ def logout(): session.pop('logged_in', None); return redirect(url_for('login'))
 def root(): return redirect(url_for('hardware_page'))
 @app.route('/hardware')
 @login_required
-def hardware_page(): return render_template('hardware.html', server_name=SERVER_NAME)
+def hardware_page():
+    initial_hw = hardware_home_snapshot()
+    return render_template(
+        'hardware.html',
+        server_name=SERVER_NAME,
+        initial_hw=initial_hw,
+        initial_hw_display=hardware_home_display_snapshot(initial_hw),
+        initial_hw_ready=hardware_home_has_first_sample(initial_hw),
+        initial_config=hardware_control_snapshot()
+    )
 @app.route('/resources')
 @login_required
 def resources_page(): return render_template('resources.html', server_name=SERVER_NAME)
@@ -5688,7 +5790,9 @@ def api_config_import():
 @app.route('/api/status_hardware')
 @login_required
 def api_status_hardware():
-    with cache_lock: return jsonify(sys_cache['hw'])
+    payload = hardware_home_snapshot()
+    payload['ready'] = hardware_home_has_first_sample(payload)
+    return jsonify(payload)
 
 @app.route('/api/status_resources')
 @login_required

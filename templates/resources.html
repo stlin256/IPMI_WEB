@@ -1,373 +1,480 @@
 <!DOCTYPE html>
-<html lang="{{ locale }}" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="light">
+{% set resources_page_title = t('resources.title') %}
+{% if resources_page_title == 'resources.title' %}{% set resources_page_title = 'Resources' %}{% endif %}
+{% set resources_system_history = t('resources.systemHistory') %}
+{% if resources_system_history == 'resources.systemHistory' %}{% set resources_system_history = 'System History' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('resources.title') }} - {{ server_name }} Ops</title>
+    <title>{{ resources_page_title }} - {{ server_name }} Ops</title>
+   {% include 'partials/favicon.html' %}
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+   <link href="{{ url_for('static', filename='css/app-modern.css') }}?v=20260614-motion" rel="stylesheet">
+   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/app-core.js') }}?v=20260614-motion"></script>
+   <script src="{{ url_for('static', filename='js/pjax.js') }}?v=20260614-pjax"></script>
     
     <style>
         :root {
-            --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d;
-            --text-main: #e6edf3; --text-muted: #8b949e;
-            --accent-cpu: #1f6feb; --accent-mem: #a371f7; 
-            /* 定义更鲜明的颜色变量 */
-            --color-net-in: #2ea043;   /* 绿色 */
-            --color-net-out: #388bfd;  /* 蓝色 */
-            --color-disk-r: #d29922;   /* 黄色 */
-            --color-disk-w: #f85149;   /* 红色 */
+            --accent-cpu: var(--accent-blue);
+            --accent-mem: var(--accent-magenta);
+            --color-net-in: var(--accent-green);
+            --color-net-out: var(--accent-cyan);
+            --color-disk-r: var(--accent-yellow);
+            --color-disk-w: var(--accent-red);
         }
-        body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
-        .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
-
-        @media (max-width: 576px) {
-            .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
-            .navbar-nav.me-auto { margin-left: 0.5rem !important; }
-            .nav-link { font-size: 0.9rem !important; margin-right: 0.5rem !important; padding-left: 0.2rem !important; padding-right: 0.2rem !important; }
-            .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
+        body { min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
+        .res-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .res-page-head {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 1.25rem;
+            padding: 1.75rem 0 1.25rem;
+            border-bottom: 1px solid var(--border-color);
         }
-        
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden; }
-        .card-header { background-color: transparent; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; padding: 1rem 1.25rem; }
-        
-        /* 仪表盘区域优化 */
+        .res-title {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            margin: 0;
+            font-size: clamp(1.65rem, 2.8vw, 2.8rem);
+            font-weight: 850;
+            letter-spacing: 0;
+        }
+        .res-title-icon {
+            display: inline-grid;
+            place-items: center;
+            flex: 0 0 auto;
+            width: 2.6rem;
+            height: 2.6rem;
+            border-radius: 8px;
+            color: #fff7e8;
+            background: var(--accent-red);
+            border: 1px solid color-mix(in srgb, var(--accent-red) 72%, var(--border-color));
+            box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-red) 16%, transparent);
+            line-height: 1;
+            overflow: hidden;
+        }
+        .res-title-icon i {
+            font-size: 1.35rem;
+            line-height: 1;
+        }
+        .res-subline {
+            margin-top: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+        .res-live-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            border: 1px solid color-mix(in srgb, var(--accent-green) 46%, var(--border-color));
+            border-radius: 999px;
+            padding: 0.4rem 0.8rem;
+            color: color-mix(in srgb, var(--accent-green) 88%, var(--text-main));
+            font-weight: 850;
+            background: color-mix(in srgb, var(--accent-green) 15%, transparent);
+        }
+        .res-live-pill::before {
+            content: "";
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 20%, transparent);
+        }
+        .res-signal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1px;
+            margin: 1.25rem 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--border-color);
+            box-shadow: var(--shadow-soft);
+        }
+        .res-signal {
+            position: relative;
+            --signal-visual-offset: -3.35rem;
+            --signal-flow-width: 21.5rem;
+            min-height: 13rem;
+            padding: 1.1rem 1.2rem;
+            overflow: hidden;
+            background:
+                var(--surface-sheen),
+                var(--bg-card);
+        }
+        .res-signal::after {
+            content: "";
+            position: absolute;
+            left: 1rem;
+            right: 1rem;
+            bottom: 0.75rem;
+            height: 2px;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: 0.36;
+        }
+        .res-signal-main {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            width: min(100%, 42rem);
+            margin: 0 auto;
+            grid-template-columns: minmax(12rem, 1fr) minmax(8.25rem, 10.75rem);
+            gap: clamp(1rem, 3vw, 2.25rem);
+            align-items: center;
+            justify-content: center;
+            min-height: 10.8rem;
+        }
+        .res-signal-copy {
+            min-width: 0;
+            align-self: center;
+        }
+        .res-signal-label {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .res-signal-value {
+            margin-top: 1rem;
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: clamp(2rem, 3.4vw, 3.2rem);
+            font-weight: 950;
+            color: var(--text-main);
+            overflow-wrap: anywhere;
+            line-height: 1;
+        }
+        .res-signal-stack {
+            display: grid;
+            gap: 0.55rem;
+            margin-top: 1rem;
+            width: min(100%, var(--signal-flow-width));
+            font-family: 'SF Mono', Consolas, monospace;
+            font-weight: 900;
+        }
+        .res-flow-line {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 0.85rem;
+            min-width: 0;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+        .res-flow-line strong {
+            min-width: 0;
+            color: var(--text-main);
+            font-size: clamp(1.45rem, 2.55vw, 2.2rem);
+            overflow-wrap: anywhere;
+        }
+        .res-signal-note {
+            margin-top: 0.45rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 800;
+        }
+        .res-signal-visual {
+            min-width: 0;
+            width: min(9rem, 100%);
+            height: 10rem;
+            position: relative;
+            align-self: stretch;
+            justify-self: center;
+            display: grid;
+            place-items: center;
+            transform: translateX(var(--signal-visual-offset));
+        }
+        .res-mini-gauge {
+            width: min(8.85rem, 100%);
+            max-width: 8.85rem;
+            aspect-ratio: 1;
+            height: min(8.85rem, 100%);
+            margin: 0 auto;
+        }
+        .res-mini-gauge .gauge-overlay {
+            width: 78%;
+        }
+        .res-mini-gauge .gauge-value {
+            font-size: clamp(1.55rem, 2.6vw, 2.15rem);
+        }
+        .res-mini-gauge .gauge-label {
+            font-size: 0.78rem;
+        }
+        .res-sparkline {
+            height: 8.85rem;
+        }
+        .res-sparkline canvas,
+        .res-mini-gauge canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .signal-cpu { color: var(--accent-cpu); }
+        .signal-mem { color: var(--accent-mem); }
+        .signal-net {
+            --signal-visual-offset: -1.7rem;
+            color: var(--color-net-in);
+        }
+        .signal-disk {
+            --signal-visual-offset: -1.7rem;
+            --signal-flow-width: 22rem;
+            color: var(--color-disk-r);
+        }
+        .resource-card {
+            border-radius: 8px !important;
+            overflow: hidden;
+            transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        }
+        .resource-card::before {
+            content: "";
+            display: block;
+            height: 3px;
+            background: var(--accent-yellow);
+            opacity: 0.68;
+        }
+        .resource-card:hover {
+            transform: translateY(-2px);
+            border-color: color-mix(in srgb, var(--accent-blue) 48%, var(--border-color)) !important;
+        }
+        .card-header {
+            background-color: color-mix(in srgb, var(--bg-elevated) 34%, transparent);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 850;
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0;
+            padding: 0.95rem 1.1rem;
+        }
+        .split-panel {
+            border-color: var(--border-color) !important;
+            background: color-mix(in srgb, var(--bg-card) 94%, transparent);
+        }
         .gauge-container { width: 100%; max-width: 140px; height: 140px; position: relative; margin: 0 auto; }
-        .gauge-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
-        .gauge-value { font-family: 'SF Mono', monospace; font-size: 2.2rem; font-weight: 800; color: #fff; line-height: 1; }
-        .gauge-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 700; }
-        .res-sub-text { font-size: 0.95rem; font-family: 'SF Mono', monospace; color: var(--text-muted); margin-top: 10px; text-align: center; font-weight: 600; }
-
-        /* IO 区域优化 */
-        .io-section { padding: 1.5rem 1rem; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-        .io-value { font-family: 'SF Mono', monospace; font-size: 1.7rem; font-weight: 800; color: #fff; margin-top: 6px; word-break: break-all; }
-        .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 4px; }
-        .io-badge { font-size: 0.7rem; padding: 3px 6px; border-radius: 4px; font-weight: 700; vertical-align: middle; }
-        
-        /* 分割线 */
-        .divider-vertical { border-right: 1px solid var(--border-color); }
-        /* 移动端调整 */
-        @media (max-width: 768px) {
-            .gauge-container { max-width: 110px; height: 110px; }
-            .gauge-value { font-size: 1.4rem; }
-            .io-value { font-size: 1.1rem; }
+        .res-signal .res-mini-gauge {
+            max-width: 8.85rem;
+            height: 8.85rem;
         }
-
-        .chart-card-body { height: 350px; padding: 1rem; position: relative; }
+        .gauge-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+        .gauge-value { font-family: 'SF Mono', Consolas, monospace; font-size: 2.2rem; font-weight: 900; color: var(--text-main); line-height: 1; }
+        .gauge-label { font-size: 0.82rem; color: var(--text-muted); font-weight: 850; }
+        .res-sub-text { font-size: 0.92rem; font-family: 'SF Mono', Consolas, monospace; color: var(--text-muted); margin-top: 10px; text-align: center; font-weight: 750; }
+        .io-section { min-height: 12.5rem; padding: 1.35rem 1rem; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .io-value { font-family: 'SF Mono', Consolas, monospace; font-size: clamp(1.15rem, 2.1vw, 1.65rem); font-weight: 900; color: var(--text-main); margin-top: 6px; word-break: break-word; }
+        .io-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0; color: var(--text-muted); margin-bottom: 4px; font-weight: 850; }
+        .io-badge { font-size: 0.68rem; padding: 0.2rem 0.45rem; border-radius: 999px; font-weight: 850; vertical-align: middle; }
+        .chart-card-body { height: 360px; padding: 1rem; position: relative; }
+        @media (max-width: 768px) {
+            .res-page-head {
+                align-items: flex-start;
+                flex-direction: row;
+                padding-top: 1.05rem;
+                gap: 0.75rem;
+            }
+            .res-title {
+                font-size: clamp(1.45rem, 7vw, 2rem);
+                gap: 0.6rem;
+            }
+            .res-title-icon {
+                width: 2.25rem;
+                height: 2.25rem;
+            }
+            .res-title-icon i {
+                font-size: 1.2rem;
+            }
+            .res-subline {
+                margin-top: 0.35rem;
+                font-size: 0.92rem;
+            }
+            .res-live-pill {
+                flex: 0 0 auto;
+                padding: 0.34rem 0.62rem;
+                font-size: 0.88rem;
+                margin-top: 0.22rem;
+            }
+            .res-signal { min-height: 11.25rem; padding: 1rem; }
+            .res-signal-main {
+                width: 100%;
+                grid-template-columns: minmax(0, 1fr) minmax(6.6rem, 7.35rem);
+                gap: 0.85rem;
+                min-height: 9.2rem;
+            }
+            .res-signal {
+                --signal-visual-offset: 0;
+                --signal-flow-width: 100%;
+            }
+            .res-signal-visual { width: min(7.25rem, 100%); height: 7.5rem; }
+            .res-signal .res-mini-gauge { max-width: 7.25rem; height: 7.25rem; }
+            .res-signal-value { font-size: clamp(1.55rem, 5vw, 2.25rem); }
+            .res-flow-line strong { font-size: clamp(1.12rem, 4vw, 1.55rem); }
+            .gauge-container { max-width: 112px; height: 112px; }
+            .gauge-value { font-size: 1.45rem; }
+            .io-section { min-height: 10rem; }
+        }
+        @media (max-width: 480px) {
+            .res-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .res-signal { min-height: 12.4rem; padding: 0.85rem; }
+            .res-signal-main {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 0.55rem;
+                min-height: 10.5rem;
+                align-content: space-between;
+            }
+            .res-signal-label {
+                font-size: 0.68rem;
+            }
+            .res-signal-value {
+                margin-top: 0.55rem;
+                font-size: clamp(1.6rem, 8vw, 2.05rem);
+            }
+            .res-signal-note {
+                font-size: 0.72rem;
+            }
+            .res-flow-line {
+                gap: 0.45rem;
+                font-size: 0.68rem;
+            }
+            .res-flow-line strong {
+                font-size: clamp(1rem, 5.4vw, 1.3rem);
+            }
+            .res-signal-visual {
+                width: 100%;
+                height: 4.9rem;
+            }
+            .res-signal .res-mini-gauge {
+                max-width: 4.9rem;
+                height: 4.9rem;
+            }
+        }
+        @media (max-width: 380px) {
+            .res-title {
+                font-size: 1.32rem;
+            }
+            .res-title-icon {
+                width: 2rem;
+                height: 2rem;
+            }
+            .res-title-icon i {
+                font-size: 1.08rem;
+            }
+            .res-live-pill {
+                padding: 0.3rem 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+        @media (max-width: 340px) {
+            .res-signal-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand navbar-dark sticky-top">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
-            </span>
-        </a>
-        <div class="navbar-nav flex-row me-auto ms-4">
-            <a class="nav-link me-3" href="/hardware">HW</a>
-            <a class="nav-link active me-3" href="/resources">RES</a>
-            <a class="nav-link me-3" href="/gpu">GPU</a>
-            <a class="nav-link" href="/history">HIST</a>
-        </div>
-        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
-    </div>
-</nav>
+{% set active_page = 'resources' %}
+{% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
-    <!-- 顶部概览：合并为2个大卡片 -->
-    <div class="row g-3 mb-4">
-        
-        <!-- 卡片1：计算资源 (CPU + Memory) -->
-        <div class="col-12 col-lg-6">
-            <div class="card h-100">
-                <div class="row g-0 h-100">
-                    <!-- CPU -->
-                    <div class="col-6 border-end border-secondary" style="border-color: #30363d !important;">
-                        <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
-                            <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-microchip me-1 text-primary"></i> CPU</div>
-                            <div class="gauge-container">
-                                <canvas id="gaugeCpu"></canvas>
-                                <div class="gauge-overlay">
-                                    <div class="gauge-value" id="val-cpu">--</div>
-                                    <div class="gauge-label">%</div>
-                                </div>
-                            </div>
-                            <div class="res-sub-text">
-                                <span id="val-cpu-power">--</span> W
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Memory -->
-                    <div class="col-6">
-                        <div class="p-3 text-center d-flex flex-column justify-content-center h-100">
-                            <div class="text-uppercase small text-muted fw-bold mb-2"><i class="fas fa-memory me-1" style="color: var(--accent-mem)"></i> RAM</div>
-                            <div class="gauge-container">
-                                <canvas id="gaugeMem"></canvas>
-                                <div class="gauge-overlay">
-                                    <div class="gauge-value" id="val-mem">--</div>
-                                    <div class="gauge-label">%</div>
-                                </div>
-                            </div>
-                            <div class="res-sub-text">
-                                <span id="val-mem-used">--</span> / <span id="val-mem-total">--</span> GB
-                            </div>
-                        </div>
+<main class="res-shell container-fluid px-3 px-md-4 pb-4">
+    <section class="res-page-head">
+        <div>
+            <h1 class="res-title">
+                <span class="res-title-icon"><i class="fas fa-chart-line"></i></span>
+                <span data-i18n="resources.title">{{ resources_page_title }}</span>
+            </h1>
+            <div class="res-subline">{{ server_name }}</div>
+        </div>
+        <div class="res-live-pill" data-i18n="resources.live">Live</div>
+    </section>
+
+    <section class="res-signal-grid" aria-label="Resource signals">
+        <div class="res-signal signal-cpu">
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-microchip"></i> <span data-i18n="resources.cpuLoad">CPU Load</span></div>
+                    <div class="res-signal-value" id="res-chip-cpu">--%</div>
+                    <div class="res-signal-note"><span id="res-chip-cpu-power">--</span> <span data-i18n="resources.cpuPackage">W package</span></div>
+                </div>
+                <div class="res-signal-visual res-mini-gauge gauge-container">
+                    <canvas id="gaugeCpu"></canvas>
+                    <div class="gauge-overlay">
+                        <div class="gauge-value" id="val-cpu">--</div>
+                        <div class="gauge-label">%</div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- 卡片2：I/O 资源 (Network + Disk) -->
-        <div class="col-12 col-lg-6">
-            <div class="card h-100">
-                <div class="row g-0 h-100">
-                    <!-- Network -->
-                    <div class="col-6 border-end border-secondary" style="border-color: #30363d !important;">
-                        <div class="io-section">
-                            <div class="io-label"><i class="fas fa-network-wired me-1" style="color: var(--color-net-in)"></i> Network</div>
-                            <div class="mb-3">
-                                <!-- IN: Green -->
-                                <span class="badge bg-success bg-opacity-25 text-success io-badge">IN</span>
-                                <div class="io-value" id="str-net-in" style="color: var(--color-net-in)">--</div>
-                            </div>
-                            <div>
-                                <!-- OUT: Blue (Modified from Gray) -->
-                                <span class="badge bg-primary bg-opacity-25 text-primary io-badge">OUT</span>
-                                <div class="io-value" id="str-net-out" style="color: var(--color-net-out)">--</div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Disk -->
-                    <div class="col-6">
-                        <div class="io-section">
-                            <div class="io-label"><i class="fas fa-hdd me-1" style="color: var(--color-disk-r)"></i> Disk I/O</div>
-                            <div class="mb-3">
-                                <!-- READ: Yellow -->
-                                <span class="badge bg-warning bg-opacity-25 text-warning io-badge">READ</span>
-                                <div class="io-value" id="str-disk-r" style="color: var(--color-disk-r)">--</div>
-                            </div>
-                            <div>
-                                <!-- WRITE: Red (Modified from Gray) -->
-                                <span class="badge bg-danger bg-opacity-25 text-danger io-badge">WRITE</span>
-                                <div class="io-value" id="str-disk-w" style="color: var(--color-disk-w)">--</div>
-                            </div>
-                        </div>
+        <div class="res-signal signal-mem">
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-memory"></i> <span data-i18n="resources.memoryField">Memory</span></div>
+                    <div class="res-signal-value" id="res-chip-mem">--%</div>
+                    <div class="res-signal-note"><span id="res-chip-mem-used">--</span> / <span id="res-chip-mem-total">--</span> GB</div>
+                </div>
+                <div class="res-signal-visual res-mini-gauge gauge-container">
+                    <canvas id="gaugeMem"></canvas>
+                    <div class="gauge-overlay">
+                        <div class="gauge-value" id="val-mem">--</div>
+                        <div class="gauge-label">%</div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+        <div class="res-signal signal-net">
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-wave-square"></i> <span data-i18n="resources.networkFlow">Network</span></div>
+                    <div class="res-signal-stack">
+                        <div class="res-flow-line"><span data-i18n="resources.in">IN</span><strong id="str-net-in">--</strong></div>
+                        <div class="res-flow-line"><span data-i18n="resources.out">OUT</span><strong id="str-net-out">--</strong></div>
+                    </div>
+                </div>
+                <div class="res-signal-visual res-sparkline">
+                    <canvas id="netChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="res-signal signal-disk">
+            <div class="res-signal-main">
+                <div class="res-signal-copy">
+                    <div class="res-signal-label"><i class="fas fa-hdd"></i> <span data-i18n="resources.diskPulse">Disk</span></div>
+                    <div class="res-signal-stack">
+                        <div class="res-flow-line"><span data-i18n="resources.read">READ</span><strong id="str-disk-r">--</strong></div>
+                        <div class="res-flow-line"><span data-i18n="resources.write">WRITE</span><strong id="str-disk-w">--</strong></div>
+                    </div>
+                </div>
+                <div class="res-signal-visual res-sparkline">
+                    <canvas id="diskChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </section>
 
-    <!-- 图表区域 -->
     <div class="row g-4">
-        <!-- 左侧：System Load -->
-        <div class="col-xl-8 col-lg-7">
-            <div class="card h-100">
+        <div class="col-12">
+            <div class="card resource-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-chart-area me-2"></i><span data-i18n="resources.systemHistory">{{ t('resources.systemHistory') }}</span></span>
+                    <span><i class="fas fa-chart-area me-2"></i><span data-i18n="resources.systemHistory">{{ resources_system_history }}</span></span>
                 </div>
                 <div class="chart-card-body">
                     <canvas id="cpuMemChart"></canvas>
                 </div>
             </div>
         </div>
-
-        <!-- 右侧：IO Charts (Stacked) -->
-        <div class="col-xl-4 col-lg-5 d-flex flex-column gap-4">
-            <!-- Network -->
-            <div class="card flex-grow-1">
-                <div class="card-header py-2 fs-6"><i class="fas fa-exchange-alt me-2"></i><span data-i18n="resources.networkTraffic">{{ t('resources.networkTraffic') }}</span></div>
-                <div class="p-2 flex-grow-1" style="min-height: 160px; position: relative;">
-                    <canvas id="netChart"></canvas>
-                </div>
-            </div>
-            
-            <!-- Disk -->
-            <div class="card flex-grow-1">
-                <div class="card-header py-2 fs-6"><i class="fas fa-server me-2"></i><span data-i18n="resources.diskOperations">{{ t('resources.diskOperations') }}</span></div>
-                <div class="p-2 flex-grow-1" style="min-height: 160px; position: relative;">
-                    <canvas id="diskChart"></canvas>
-                </div>
-            </div>
-        </div>
     </div>
-</div>
+</main>
 
 <script>
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-<script>
-    let cpuMemChart, netChart, diskChart;
-    let gaugeCpuChart, gaugeMemChart;
-
-    const commonOptions = {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        spanGaps: false, // 显式禁用跨越断点，使其在 null 处断开
-        elements: { 
-            point: { radius: 0, hitRadius: 10, hoverRadius: 4 },
-            line: { borderWidth: 2.5, tension: 0.4 }
-        },
-        interaction: { mode: 'index', intersect: false },
-        plugins: { 
-            legend: { 
-                position: 'top',
-                align: 'end',
-                labels: { color: '#e6edf3', font: { size: 12, weight: 'bold' }, boxWidth: 10, padding: 15, usePointStyle: true } 
-            },
-            tooltip: { 
-                backgroundColor: 'rgba(22, 27, 34, 0.98)', 
-                titleColor: '#fff', 
-                bodyColor: '#e6edf3', 
-                borderColor: '#444c56', 
-                borderWidth: 1,
-                titleFont: { weight: 'bold' },
-                bodyFont: { family: "'SF Mono', monospace" }
-            }
-        },
-        scales: {
-            x: { grid: { color: 'rgba(48, 54, 61, 0.5)', drawBorder: false }, ticks: { color: '#8b949e', maxTicksLimit: 6 } },
-            y: { 
-                grid: { color: 'rgba(48, 54, 61, 0.5)', drawBorder: false }, 
-                ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace" } }, 
-                beginAtZero: true 
-            }
-        }
-    };
-
-    function formatBytes(bytes, decimals = 1) {
-        if (!+bytes) return '0 B/s';
-        const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-    }
-
-    function initGauges() {
-        const gaugeConfig = (color) => ({
-            type: 'doughnut',
-            data: {
-                labels: ['Used', 'Free'],
-                datasets: [{
-                    data: [0, 100],
-                    backgroundColor: [color, '#21262d'],
-                    borderWidth: 0,
-                    circumference: 360,
-                    cutout: '85%',
-                    borderRadius: 20
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false, animation: { animateRotate: false, animateScale: false },
-                plugins: { legend: { display: false }, tooltip: { enabled: false } }
-            }
-        });
-
-        gaugeCpuChart = new Chart(document.getElementById('gaugeCpu'), gaugeConfig('#1f6feb'));
-        gaugeMemChart = new Chart(document.getElementById('gaugeMem'), gaugeConfig('#a371f7'));
-    }
-
-    function updateGauge(chart, value) {
-        chart.data.datasets[0].data = [value, 100 - value];
-        chart.update();
-    }
-
-    function init() {
-        initGauges();
-
-        const ctxCpu = document.getElementById('cpuMemChart').getContext('2d');
-        const gradientCpu = ctxCpu.createLinearGradient(0, 0, 0, 300);
-        gradientCpu.addColorStop(0, 'rgba(31, 111, 235, 0.25)');
-        gradientCpu.addColorStop(1, 'rgba(31, 111, 235, 0.0)');
-        
-        cpuMemChart = new Chart(ctxCpu, {
-            type: 'line', data: { labels: [], datasets: [] },
-            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100, ticks: { ...commonOptions.scales.y.ticks, callback: v => v+'%' } } } }
-        });
-
-        netChart = new Chart(document.getElementById('netChart'), {
-            type: 'line', data: { labels: [], datasets: [] },
-            options: { ...commonOptions, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ...commonOptions.scales.y, ticks: { maxTicksLimit: 4 } } } }
-        });
-
-        diskChart = new Chart(document.getElementById('diskChart'), {
-            type: 'bar', data: { labels: [], datasets: [] },
-            options: { ...commonOptions, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ...commonOptions.scales.y, ticks: { maxTicksLimit: 4 } } } }
-        });
-        
-        refreshData(); 
-        loadHistory(); 
-        setInterval(refreshData, 1000); 
-        setInterval(loadHistory, 60000);
-    }
-
-    function refreshData() {
-        fetch('/api/status_resources?t=' + Date.now()).then(r => r.json()).then(d => {
-            if (d.cpu === undefined) return;
-            document.getElementById('val-cpu').innerText = d.cpu;
-            document.getElementById('val-mem').innerText = d.mem_percent;
-            document.getElementById('val-cpu-power').innerText = (d.cpu_power_w !== undefined ? d.cpu_power_w : '--');
-            document.getElementById('val-mem-used').innerText = d.mem_used;
-            document.getElementById('val-mem-total').innerText = d.mem_total;
-            document.getElementById('str-disk-r').innerText = formatBytes(d.disk_r);
-            document.getElementById('str-disk-w').innerText = formatBytes(d.disk_w);
-            document.getElementById('str-net-in').innerText = formatBytes(d.net_in);
-            document.getElementById('str-net-out').innerText = formatBytes(d.net_out);
-            
-            updateGauge(gaugeCpuChart, d.cpu);
-            updateGauge(gaugeMemChart, d.mem_percent);
-        }).catch(e => console.error(e));
-    }
-
-    function checkLogStatus() {
-        fetch('/api/log_status').then(r => r.json()).then(d => {
-            const dot = document.getElementById('log-dot');
-            if (d.unread) dot.classList.remove('d-none');
-            else dot.classList.add('d-none');
-        });
-    }
-
-    function loadHistory() {
-        fetch('/api/history').then(r => r.json()).then(d => {
-            cpuMemChart.data.labels = d.times;
-            cpuMemChart.data.datasets = [
-                { label: 'CPU %', data: d.res.cpu, borderColor: '#1f6feb', backgroundColor: 'rgba(31, 111, 235, 0.1)', borderWidth: 2, fill: true, tension: 0.3 },
-                { label: 'RAM %', data: d.res.mem, borderColor: '#a371f7', backgroundColor: 'rgba(163, 113, 247, 0.05)', borderWidth: 2, fill: true, tension: 0.3 }
-            ];
-            cpuMemChart.update('none');
-
-            // Network Chart
-            netChart.data.labels = d.times;
-            netChart.data.datasets = [
-                { label: 'In', data: d.res.net_in, borderColor: '#2ea043', borderWidth: 1.5, tension: 0.3, pointRadius: 0 },
-                { label: 'Out', data: d.res.net_out, borderColor: '#388bfd', borderWidth: 1.5, borderDash: [3,3], tension: 0.3, pointRadius: 0 }
-            ];
-            netChart.update('none');
-
-            // Disk Chart
-            diskChart.data.labels = d.times;
-            diskChart.data.datasets = [
-                { label: 'Read', data: d.res.disk_r, backgroundColor: '#d29922', barPercentage: 0.7 },
-                { label: 'Write', data: d.res.disk_w, backgroundColor: '#f85149', barPercentage: 0.7 } 
-            ];
-            diskChart.update('none');
-        });
-    }
-    init();
-    checkLogStatus();
-    setInterval(checkLogStatus, 5000);
-</script>
-<footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
-    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
-        <i class="fab fa-github me-1"></i>GitHub @stlin256
-    </a>
-</footer>
+<script src="{{ url_for('static', filename='js/pages/resources.js') }}"></script>
+{% include 'partials/footer.html' %}
 </body>
 </html>

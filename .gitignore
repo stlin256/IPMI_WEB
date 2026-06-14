@@ -1,0 +1,10 @@
+cpu_power_probe.py
+hardware_info_probe.py
+__pycache__
+.venv/
+.claude/
+app.log
+config.json
+data.db*
+cert/server.crt
+cert/server.key

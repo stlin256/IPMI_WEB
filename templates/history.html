@@ -1,19 +1,26 @@
 <!DOCTYPE html>
-<html lang="{{ locale }}" data-bs-theme="dark">
+<html lang="{{ locale }}" data-bs-theme="light">
+{% set history_page_title = t('history.title') %}
+{% if history_page_title == 'history.title' %}{% set history_page_title = 'History' %}{% endif %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{{ t('history.title') }} - {{ server_name }} Ops</title>
+    <title>{{ history_page_title }} - {{ server_name }} Ops</title>
+   {% include 'partials/favicon.html' %}
    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+   <link href="{{ url_for('static', filename='css/app-modern.css') }}?v=20260614-motion" rel="stylesheet">
+   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
    <script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+   <script src="{{ url_for('static', filename='js/app-core.js') }}?v=20260614-motion"></script>
+   <script src="{{ url_for('static', filename='js/pjax.js') }}?v=20260614-pjax"></script>
     <style>
-        :root { --bg-body: #0d1117; --bg-card: #161b22; --border-color: #30363d; --text-main: #e6edf3; --text-muted: #8b949e; }
         body { background-color: var(--bg-body); color: var(--text-main); font-family: "Segoe UI", system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; margin: 0; }
-        .navbar { background-color: rgba(22, 27, 34, 0.95) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
+        .navbar { background-color: color-mix(in srgb, var(--bg-card) 92%, transparent) !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-color); }
         .nav-link { color: var(--text-muted) !important; font-weight: 500; font-size: 1.1rem; }
-        .nav-link:hover, .nav-link.active { color: #fff !important; }
+        .nav-link:hover, .nav-link.active { color: var(--text-main) !important; }
 
         @media (max-width: 576px) {
             .navbar-brand { font-size: 1.2rem !important; margin-right: 0.5rem !important; }
@@ -22,38 +29,102 @@
             .btn-outline-danger { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }
         }
         
-        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 8px 24px rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; }
-        .card-header { background-color: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-color); padding: 1.25rem; }
-        
-        .form-select { background-color: #21262d; border-color: #30363d; color: #c9d1d9; border-radius: 6px; padding: 0.4rem 0.8rem; }
-        .form-select:focus { border-color: #58a6ff; box-shadow: none; }
-        
-        /* 横向滚动容器 */
-        .scrollable-tabs-container {
+        .history-shell { width: min(100%, 1680px); margin: 0 auto; }
+        .history-page-head {
             display: flex;
-            overflow-x: auto;
-            white-space: nowrap;
-            -webkit-overflow-scrolling: touch;
-            padding: 10px 0;
-            gap: 10px;
-            scrollbar-width: none; /* Firefox */
+            justify-content: space-between;
+            align-items: end;
+            gap: 1rem;
+            padding: 1.45rem 0 1rem;
+            border-bottom: 1px solid var(--border-color);
         }
-        .scrollable-tabs-container::-webkit-scrollbar { display: none; }
-        @media (hover: hover) and (pointer: fine) {
-            .scrollable-tabs-container { cursor: grab; }
-            .scrollable-tabs-container.is-dragging {
-                cursor: grabbing;
-                user-select: none;
-            }
+        .history-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0;
+            font-size: clamp(1.55rem, 2.6vw, 2.55rem);
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+        .history-title-icon {
+            display: inline-grid;
+            place-items: center;
+            flex: 0 0 auto;
+            width: 2.45rem;
+            height: 2.45rem;
+            border-radius: 8px;
+            color: #fff7e8;
+            background: var(--accent-yellow);
+            border: 1px solid color-mix(in srgb, var(--accent-yellow) 72%, var(--border-color));
+            line-height: 1;
+            overflow: hidden;
+        }
+        .history-title-icon i {
+            font-size: 1.3rem;
+            line-height: 1;
+        }
+        .history-live-mark {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 0.4rem 0.7rem;
+            color: var(--accent-green);
+            font-weight: 850;
+            background: color-mix(in srgb, var(--bg-card) 82%, transparent);
+            white-space: nowrap;
+        }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-soft); border-radius: 8px; overflow: hidden; }
+        .card-header { background: var(--surface-sheen), color-mix(in srgb, var(--bg-card) 88%, transparent); border-bottom: 1px solid var(--border-color); padding: 1.05rem; }
+        
+        .form-select { background-color: color-mix(in srgb, var(--bg-elevated) 84%, transparent); border-color: var(--border-color); color: var(--text-main); border-radius: 6px; padding: 0.4rem 0.8rem; }
+        .form-select:focus { border-color: var(--accent-blue); box-shadow: var(--focus-ring); }
+        
+        /* Metric tag cloud */
+        .history-tag-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            overflow: visible;
+            white-space: normal;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px 0 4px;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .history-tag-cloud #cpu-pkg-toggle-container {
+            display: contents;
+        }
+
+        .history-tag-cloud .btn-check-custom + .btn,
+        .history-tag-cloud #cpu-pkg-toggle-container .btn-check-custom + .btn {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: min(12rem, 100%);
+            min-height: 2rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.28rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-tag-cloud .btn i {
+            flex: 0 0 auto;
+            margin-right: 0 !important;
         }
         
         /* 胶囊样式优化 */
-        .btn-check-custom + .btn { 
-            border-color: #444c56; color: var(--text-muted); background: #21262d; 
-            border-radius: 8px; padding: 0.5rem 1.25rem; font-size: 0.95rem; font-weight: 600;
+        .btn-check-custom + .btn {
+            border-color: var(--border-color); color: var(--text-muted); background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+            border-radius: 8px; padding: 0.42rem 0.72rem; font-size: 0.88rem; font-weight: 720;
             white-space: nowrap; transition: all 0.2s;
         }
-        .btn-check-custom:hover + .btn { background: #30363d; color: #fff; border-color: #57606a; }
+        .btn-check-custom:hover + .btn { background: color-mix(in srgb, var(--accent-yellow) 10%, transparent); color: var(--text-main); border-color: var(--accent-yellow); }
 
         /* Insights Mobile Adjustments */
         @media (max-width: 768px) {
@@ -63,97 +134,125 @@
         }
 
         /* 骨架屏动画 */
-        .skeleton { background: linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; }
+        .skeleton { background: linear-gradient(90deg, color-mix(in srgb, var(--bg-card) 95%, transparent) 25%, color-mix(in srgb, var(--bg-elevated) 80%, transparent) 50%, color-mix(in srgb, var(--bg-card) 95%, transparent) 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; }
         @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .skeleton-text { height: 1.5rem; margin-bottom: 0.5rem; border-radius: 4px; }
         .skeleton-chart { height: 300px; border-radius: 12px; }
 
-        /* CPU Temp - Blue (#1f6feb) */
-        #chk-temp:checked + .btn { background-color: rgba(31, 111, 235, 0.15); color: #79c0ff; border-color: #1f6feb; }
-        /* Fan - Green (#3fb950) */
-        #chk-fan:checked + .btn { background-color: rgba(63, 185, 80, 0.15); color: #3fb950; border-color: #238636; }
-        /* Sys Power - Gold (#d29922) */
-        #chk-pwr:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
-        /* CPU Power Total - Orange (#f0883e) */
-        #chk-cpu-pwr:checked + .btn { background-color: rgba(240, 136, 62, 0.15); color: #f0883e; border-color: #f0883e; }
-        
-        /* CPU Util - Light Blue (#79c0ff) */
-        #chk-cpu:checked + .btn { background-color: rgba(121, 192, 255, 0.15); color: #79c0ff; border-color: #58a6ff; }
-        /* RAM Util - Purple (#bc8cff) */
-        #chk-ram:checked + .btn { background-color: rgba(188, 140, 255, 0.15); color: #bc8cff; border-color: #a371f7; }
-
-        /* Net In - Deep Green (#2ea043) */
-        #chk-net-in:checked + .btn { background-color: rgba(46, 160, 67, 0.15); color: #3fb950; border-color: #2ea043; }
-        /* Net Out - Blue (#388bfd) */
-        #chk-net-out:checked + .btn { background-color: rgba(56, 139, 253, 0.15); color: #79c0ff; border-color: #388bfd; }
-        /* Disk Read - Yellow (#d29922) */
-        #chk-disk-r:checked + .btn { background-color: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #d29922; }
-        /* Disk Write - Red (#f85149) */
-        #chk-disk-w:checked + .btn { background-color: rgba(248, 81, 73, 0.15); color: #ff7b72; border-color: #f85149; }
-
-        /* GPU Temp - Cyan (#39c5bb) */
-        #chk-gpu-temp:checked + .btn { background-color: rgba(57, 197, 187, 0.15); color: #39c5bb; border-color: #39c5bb; }
-        /* GPU Util - Coral Red (#ff7b72) */
-        #chk-gpu-util:checked + .btn { background-color: rgba(255, 123, 114, 0.15); color: #ff7b72; border-color: #ff7b72; }
-        /* GPU Power - Red (#f85149) */
-        #chk-gpu-pwr:checked + .btn { background-color: rgba(248, 81, 73, 0.15); color: #f85149; border-color: #f85149; }
-        /* GPU Memory - Pink (#da367f) */
-        #chk-gpu-mem:checked + .btn { background-color: rgba(218, 54, 127, 0.15); color: #da367f; border-color: #da367f; }
+        #chk-temp:checked + .btn,
+        #chk-cpu:checked + .btn,
+        #chk-net-out:checked + .btn { background-color: color-mix(in srgb, var(--accent-blue) 14%, transparent); color: var(--accent-blue); border-color: var(--accent-blue); }
+        #chk-fan:checked + .btn,
+        #chk-net-in:checked + .btn { background-color: color-mix(in srgb, var(--accent-green) 14%, transparent); color: var(--accent-green); border-color: var(--accent-green); }
+        #chk-pwr:checked + .btn,
+        #chk-disk-r:checked + .btn { background-color: color-mix(in srgb, var(--accent-yellow) 14%, transparent); color: var(--accent-yellow); border-color: var(--accent-yellow); }
+        #chk-cpu-pwr:checked + .btn,
+        #chk-disk-w:checked + .btn,
+        #chk-gpu-util:checked + .btn,
+        #chk-gpu-pwr:checked + .btn { background-color: color-mix(in srgb, var(--accent-red) 14%, transparent); color: var(--accent-red); border-color: var(--accent-red); }
+        #chk-ram:checked + .btn,
+        #chk-gpu-mem:checked + .btn { background-color: color-mix(in srgb, var(--accent-magenta) 14%, transparent); color: var(--accent-magenta); border-color: var(--accent-magenta); }
+        #chk-gpu-temp:checked + .btn { background-color: color-mix(in srgb, var(--accent-cyan) 14%, transparent); color: var(--accent-cyan); border-color: var(--accent-cyan); }
+        .history-stat-value {
+            max-width: 100%;
+            overflow-wrap: normal;
+            word-break: normal;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            font-size: clamp(1.05rem, 2vw, 1.5rem);
+        }
+        @media (max-width: 576px) {
+            .history-shell { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
+            .history-page-head { align-items: start; flex-direction: column; padding-top: 1.1rem; }
+            .history-tag-cloud { gap: 0.42rem; padding: 0.45rem 0 0.2rem; }
+            .history-tag-cloud .btn-check-custom + .btn,
+            .history-tag-cloud #cpu-pkg-toggle-container .btn-check-custom + .btn {
+                max-width: calc(50vw - 1.35rem);
+            }
+            .btn-check-custom + .btn { padding: 0.38rem 0.58rem; font-size: 0.78rem; }
+        }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center position-relative" href="/logs">
-            <i class="fas fa-server me-2 text-primary"></i> <span class="fw-bold fs-4">{{ server_name }}</span>
-            <span id="log-dot" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" style="margin-left: -5px; margin-top: 5px">
-                <span class="visually-hidden" data-i18n="app.newLogs">{{ t('app.newLogs') }}</span>
-            </span>
-        </a>
-        <div class="navbar-nav flex-row me-auto ms-4">
-            <a class="nav-link me-3" href="/hardware">HW</a>
-            <a class="nav-link me-3" href="/resources">RES</a>
-            <a class="nav-link me-3" href="/gpu">GPU</a>
-            <a class="nav-link active" href="/history">HIST</a>
-        </div>
-        <a href="/logout" class="btn btn-outline-danger" data-i18n-title="app.logout" title="{{ t('app.logout') }}"><i class="fas fa-sign-out-alt"></i></a>
-    </div>
-</nav>
+{% set active_page = 'history' %}
+{% include 'partials/main_nav.html' %}
 
-<div class="container-fluid mt-4 px-3 px-md-4">
+<main class="history-shell container-fluid px-3 px-md-4 pb-4">
+    {% set history_energy_start_title = t('history.energyStartTitle') %}
+    {% if history_energy_start_title == 'history.energyStartTitle' %}{% set history_energy_start_title = t('history.setEnergyStartDate') %}{% endif %}
+    {% if history_energy_start_title == 'history.setEnergyStartDate' %}{% set history_energy_start_title = 'Set Energy Start Date' %}{% endif %}
+    {% set history_energy_start_help = t('history.energyStartHelp') %}
+    {% if history_energy_start_help == 'history.energyStartHelp' %}{% set history_energy_start_help = t('history.energyDateHelp') %}{% endif %}
+    {% if history_energy_start_help == 'history.energyDateHelp' %}{% set history_energy_start_help = 'Calculate cumulative energy consumption from this date:' %}{% endif %}
+    {% set history_apply_label = t('app.apply') %}
+    {% if history_apply_label == 'app.apply' %}{% set history_apply_label = 'Apply' %}{% endif %}
+    {% set history_reset_label = t('app.reset') %}
+    {% if history_reset_label == 'app.reset' %}{% set history_reset_label = 'Reset' %}{% endif %}
+    {% set history_export_error_title = t('history.exportErrorTitle') %}
+    {% if history_export_error_title == 'history.exportErrorTitle' %}{% set history_export_error_title = 'Export failed' %}{% endif %}
+    {% set history_got_it_label = t('update.gotIt') %}
+    {% if history_got_it_label == 'update.gotIt' %}{% set history_got_it_label = 'Got it' %}{% endif %}
     <!-- Energy Date Modal -->
-    <div class="modal fade" id="energyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="energyModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="energyModalTitle" aria-describedby="energyModalHelp">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-secondary shadow-lg bg-dark text-light">
+            <div class="modal-content shadow-lg">
                 <div class="modal-header border-secondary">
-                    <h5 class="modal-title">Set Energy Start Date</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title" id="energyModalTitle" data-i18n="history.energyStartTitle">{{ history_energy_start_title }}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="app.close" aria-label="{{ t('app.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <p class="text-muted small mb-3">Calculate cumulative energy consumption from this date:</p>
-                    <input type="date" id="energyInput" class="form-control bg-dark text-light border-secondary mb-3">
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-primary flex-grow-1" onclick="saveEnergyDate()">Apply</button>
-                        <button class="btn btn-outline-secondary" onclick="resetEnergyDate()">Reset</button>
+                    <p class="ipmi-modal-copy small mb-3 mx-0" id="energyModalHelp" data-i18n="history.energyStartHelp">{{ history_energy_start_help }}</p>
+                    <input type="date" id="energyInput" class="form-control mb-3">
+                    <div class="ipmi-modal-actions">
+                        <button class="btn btn-primary" onclick="saveEnergyDate()" data-i18n="app.apply">{{ history_apply_label }}</button>
+                        <button class="btn btn-outline-secondary" onclick="resetEnergyDate()" data-i18n="app.reset">{{ history_reset_label }}</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card h-100">
+    <!-- History notice Modal -->
+    <div class="modal fade" id="historyNoticeModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="history-notice-title" aria-describedby="history-notice-message">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content shadow-lg">
+                <div class="modal-body p-4 text-center">
+                    <div class="ipmi-modal-symbol danger mx-auto">
+                        <i class="fas fa-triangle-exclamation fs-4"></i>
+                    </div>
+                    <h5 id="history-notice-title" class="modal-title mb-2 fw-bold" data-i18n="history.exportErrorTitle">{{ history_export_error_title }}</h5>
+                    <p id="history-notice-message" class="ipmi-modal-copy small mb-4"></p>
+                    <div class="ipmi-modal-actions">
+                        <button type="button" class="btn btn-primary fw-bold" data-bs-dismiss="modal" data-i18n="update.gotIt">{{ history_got_it_label }}</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <section class="history-page-head">
+        <div>
+            <h1 class="history-title">
+                <span class="history-title-icon"><i class="fas fa-chart-line"></i></span>
+                <span data-i18n="history.title">{{ history_page_title }}</span>
+            </h1>
+        </div>
+        <div class="history-live-mark"><i class="fas fa-layer-group"></i> <span data-i18n="history.multiSignalView">multi-signal view</span></div>
+    </section>
+
+    <div class="card h-100 mt-4">
         <div class="card-header d-flex justify-content-between align-items-center py-3 flex-wrap gap-3">
             <div class="d-flex align-items-center gap-2">
-                <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i>History Explorer</span>
-                <button class="btn btn-sm btn-outline-secondary px-2 border-0" onclick="exportData()" title="Export CSV Data">
+                <span class="fw-bold fs-5"><i class="fas fa-database me-2"></i><span data-i18n="history.explorer">History Explorer</span></span>
+                <button class="btn btn-sm btn-outline-secondary px-2 border-0" onclick="exportData()" data-i18n-title="history.exportCsv" title="Export CSV Data">
                     <i class="fas fa-file-export"></i>
                 </button>
             </div>
             
             <div class="d-flex gap-1 gap-md-3 align-items-center ms-auto flex-wrap justify-content-end">
                 <button class="btn btn-sm btn-outline-info px-2 px-md-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInsights">
-                    <i id="btn-insights-icon" class="fas fa-lightbulb me-1"></i> <span id="btn-insights-text">Insights</span>
+                    <i id="btn-insights-icon" class="fas fa-lightbulb me-1"></i> <span id="btn-insights-text" data-i18n="history.insights">Insights</span>
                 </button>
                 <div class="btn-group btn-group-sm" role="group" id="tr-container">
                     <input type="radio" class="btn-check" name="timeRange" id="tr1" value="1" checked onchange="loadData()">
@@ -170,13 +269,13 @@
             <div class="collapse mb-4" id="collapseInsights">
                 <div id="deep-analysis-section" class="bg-dark bg-opacity-25 rounded-3 p-4 border border-info border-opacity-10">
                     <div class="d-flex align-items-center mb-4">
-                        <div class="h4 mb-0 fw-bold text-info"><i class="fas fa-lightbulb me-2"></i>Insights</div>
+                        <div class="h4 mb-0 fw-bold text-info"><i class="fas fa-lightbulb me-2"></i><span data-i18n="history.insights">Insights</span></div>
                     </div>
                     
                     <div class="row g-4">
                         <div class="col-12 col-xl-4">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">Power Contribution</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.powerContribution">Power Contribution</div>
                                 <div class="insights-chart-container" style="height: 250px">
                                     <canvas id="chartPowerDist"></canvas>
                                 </div>
@@ -185,7 +284,7 @@
                         
                         <div class="col-12 col-xl-8">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">Load Intensity</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.loadIntensity">Load Intensity</div>
                                 <div class="insights-chart-container" style="height: 250px">
                                     <canvas id="chartLoadDist"></canvas>
                                 </div>
@@ -194,7 +293,7 @@
 
                         <div class="col-12 col-xl-6">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">VRAM Efficiency</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.vramEfficiency">VRAM Efficiency</div>
                                 <div class="insights-chart-container" style="height: 300px">
                                     <canvas id="chartVRAMEff"></canvas>
                                 </div>
@@ -203,7 +302,7 @@
 
                         <div class="col-12 col-xl-6">
                             <div class="card bg-dark bg-opacity-25 h-100 p-3">
-                                <div class="small text-muted mb-3 text-uppercase fw-bold">Thermal Stability</div>
+                                <div class="small text-muted mb-3 text-uppercase fw-bold" data-i18n="history.thermalStability">Thermal Stability</div>
                                 <div class="insights-chart-container" style="height: 300px">
                                     <canvas id="chartTempDist"></canvas>
                                 </div>
@@ -217,86 +316,86 @@
             <div class="row g-3 mb-4 row-cols-2 row-cols-md-3 row-cols-xl-6">
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Max Temp</div>
-                        <div class="h4 mb-0 font-monospace text-primary" id="stat-temp">--°C</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.maxTemp">Max Temp</div>
+                        <div class="h4 mb-0 font-monospace text-primary history-stat-value" id="stat-temp">--°C</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Avg Load</div>
-                        <div class="h4 mb-0 font-monospace text-success" id="stat-load">--%</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.avgLoad">Avg Load</div>
+                        <div class="h4 mb-0 font-monospace text-success history-stat-value" id="stat-load">--%</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Peak Net</div>
-                        <div class="h4 mb-0 font-monospace text-warning" id="stat-net">-- KB/s</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.peakNet">Peak Net</div>
+                        <div class="h4 mb-0 font-monospace text-warning history-stat-value" id="stat-net">-- KB/s</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Peak Disk</div>
-                        <div class="h4 mb-0 font-monospace text-info" id="stat-disk">-- MB/s</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.peakDisk">Peak Disk</div>
+                        <div class="h4 mb-0 font-monospace text-info history-stat-value" id="stat-disk">-- MB/s</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100">
-                        <div class="text-uppercase small text-muted fw-bold mb-1">Interval</div>
-                        <div class="h4 mb-0 font-monospace text-warning" id="stat-energy-interval">-- kWh</div>
+                        <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.interval">Interval</div>
+                        <div class="h4 mb-0 font-monospace text-warning history-stat-value" id="stat-energy-interval">-- kWh</div>
                     </div>
                 </div>
                 <div class="col">
-                    <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100" style="cursor: pointer" onclick="changeEnergyStartDate()" title="Click to change start date">
-                        <div class="text-uppercase small text-muted fw-bold mb-1" id="energy-total-title">Energy</div>
-                        <div class="h4 mb-0 font-monospace text-danger" id="stat-energy-total">-- kWh</div>
+                    <div class="p-3 rounded-3 border border-secondary bg-dark bg-opacity-25 text-center h-100" style="cursor: pointer" onclick="changeEnergyStartDate()" data-i18n-title="history.clickEnergyDate" title="Click to change start date">
+                        <div class="text-uppercase small text-muted fw-bold mb-1" id="energy-total-title" data-i18n="metrics.energy">Energy</div>
+                        <div class="h4 mb-0 font-monospace text-danger history-stat-value" id="stat-energy-total">-- kWh</div>
                         <div class="small text-muted mt-1" id="stat-energy-date" style="font-size: 0.65rem; white-space: nowrap">since --</div>
                     </div>
                 </div>
             </div>
 
             <!-- 维度选择器 - 可横向滑动 -->
-            <div class="mb-4 scrollable-tabs-container">
+            <div class="mb-4 history-tag-cloud">
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-temp" checked onchange="handleTagChange()">
-                <label class="btn" for="chk-temp"><i class="fas fa-thermometer-half me-1"></i> Temp</label>
+                <label class="btn" for="chk-temp"><i class="fas fa-thermometer-half me-1"></i> <span data-i18n="metrics.temp">Temp</span></label>
 
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-fan" onchange="handleTagChange()">
-                <label class="btn" for="chk-fan"><i class="fas fa-fan me-1"></i> Fan</label>
+                <label class="btn" for="chk-fan"><i class="fas fa-fan me-1"></i> <span data-i18n="metrics.fan">Fan</span></label>
 
                 <input type="checkbox" class="btn-check btn-check-custom" id="chk-pwr" onchange="handleTagChange()">
-                <label class="btn" for="chk-pwr"><i class="fas fa-bolt me-1"></i> Power</label>
+                <label class="btn" for="chk-pwr"><i class="fas fa-bolt me-1"></i> <span data-i18n="metrics.power">Power</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu-pwr" checked onchange="handleTagChange()">
-               <label class="btn" for="chk-cpu-pwr"><i class="fas fa-microchip me-1"></i> CPU Power</label>
+               <label class="btn" for="chk-cpu-pwr"><i class="fas fa-microchip me-1"></i> <span data-i18n="history.cpuPower">CPU Power</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-cpu" checked onchange="handleTagChange()">
-               <label class="btn" for="chk-cpu"><i class="fas fa-microchip me-1"></i> CPU</label>
+               <label class="btn" for="chk-cpu"><i class="fas fa-microchip me-1"></i> <span data-i18n="history.cpuUtil">CPU</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-ram" onchange="handleTagChange()">
-               <label class="btn" for="chk-ram"><i class="fas fa-memory me-1"></i> RAM</label>
+               <label class="btn" for="chk-ram"><i class="fas fa-memory me-1"></i> <span data-i18n="history.ramUtil">RAM</span></label>
                
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-net-in" onchange="handleTagChange()">
-               <label class="btn" for="chk-net-in"><i class="fas fa-download me-1"></i> Net In</label>
+               <label class="btn" for="chk-net-in"><i class="fas fa-download me-1"></i> <span data-i18n="history.netIn">Net In</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-net-out" onchange="handleTagChange()">
-               <label class="btn" for="chk-net-out"><i class="fas fa-upload me-1"></i> Net Out</label>
+               <label class="btn" for="chk-net-out"><i class="fas fa-upload me-1"></i> <span data-i18n="history.netOut">Net Out</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-disk-r" onchange="handleTagChange()">
-               <label class="btn" for="chk-disk-r"><i class="fas fa-hdd me-1"></i> Disk R</label>
+               <label class="btn" for="chk-disk-r"><i class="fas fa-hdd me-1"></i> <span data-i18n="history.diskRead">Disk R</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-disk-w" onchange="handleTagChange()">
-               <label class="btn" for="chk-disk-w"><i class="fas fa-save me-1"></i> Disk W</label>
+               <label class="btn" for="chk-disk-w"><i class="fas fa-save me-1"></i> <span data-i18n="history.diskWrite">Disk W</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-temp" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-temp"><i class="fas fa-microchip me-1"></i> GPU Temp</label>
+               <label class="btn" for="chk-gpu-temp"><i class="fas fa-microchip me-1"></i> <span data-i18n="history.gpuTemp">GPU Temp</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-util" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-util"><i class="fas fa-percentage me-1"></i> GPU Util</label>
+               <label class="btn" for="chk-gpu-util"><i class="fas fa-percentage me-1"></i> <span data-i18n="history.gpuUtil">GPU Util</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom" id="chk-gpu-pwr" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-pwr"><i class="fas fa-bolt me-1"></i> GPU Power</label>
+               <label class="btn" for="chk-gpu-pwr"><i class="fas fa-bolt me-1"></i> <span data-i18n="history.gpuPower">GPU Power</span></label>
 
                <input type="checkbox" class="btn-check btn-check-custom chk-io" id="chk-gpu-mem" onchange="handleTagChange()">
-               <label class="btn" for="chk-gpu-mem"><i class="fas fa-memory me-1"></i> GPU Memory</label>
+               <label class="btn" for="chk-gpu-mem"><i class="fas fa-memory me-1"></i> <span data-i18n="history.gpuMemory">GPU Memory</span></label>
 
                <span id="cpu-pkg-toggle-container"></span>
             </div>
@@ -310,31 +409,31 @@
             <div class="d-flex flex-column gap-5 mt-2" id="charts-wrapper">
                 <!-- 原始历史图表 -->
                 <div class="pt-3">
-                    <div class="h4 mb-3 fw-bold text-muted"><i class="fas fa-chart-line me-2"></i>History</div>
+                    <div class="h4 mb-3 fw-bold text-muted"><i class="fas fa-chart-line me-2"></i><span data-i18n="metrics.history">History</span></div>
                     <div class="d-flex flex-column gap-5">
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-thermometer-half me-1"></i> Thermal Status</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-thermometer-half me-1"></i> <span data-i18n="metrics.thermalStatus">Thermal Status</span></div>
                             <canvas id="chartTemp"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-bolt me-1"></i> Power Board</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-bolt me-1"></i> <span data-i18n="metrics.powerBoard">Power Board</span></div>
                             <canvas id="chartPower"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-microchip me-1"></i> Compute Loads</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-microchip me-1"></i> <span data-i18n="metrics.computeLoads">Compute Loads</span></div>
                             <canvas id="chartLoad"></canvas>
                         </div>
                         <div style="height: 300px; width: 100%">
-                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-exchange-alt me-1"></i> I/O Performance</div>
+                            <div class="small text-muted mb-2 text-uppercase fw-bold"><i class="fas fa-exchange-alt me-1"></i> <span data-i18n="metrics.ioPerformance">I/O Performance</span></div>
                             <canvas id="chartIO"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
-            <div id="loading" class="text-center text-muted mt-3" style="display:none"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>
+            <div id="loading" class="text-center text-muted mt-3" style="display:none"><i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="app.loading">Loading...</span></div>
         </div>
     </div>
-</div>
+</main>
 
 <script>
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};
@@ -346,6 +445,55 @@
     let isBaseDataLoading = false;
     let baseAbortController = null;
     let insightsAbortController = null;
+
+    function cssVar(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+
+    function chartInk() {
+        return {
+            text: cssVar('--text-main', '#f2ead8'),
+            muted: cssVar('--text-muted', '#a8a092'),
+            grid: cssVar('--border-color', '#3a3328'),
+            panel: cssVar('--bg-card', '#1e1c17'),
+            blue: cssVar('--accent-blue', '#6f8fa5'),
+            cyan: cssVar('--accent-cyan', '#7f9c91'),
+            green: cssVar('--accent-green', '#8a9b6f'),
+            yellow: cssVar('--accent-yellow', '#c6a15b'),
+            red: cssVar('--accent-red', '#c35f4b'),
+            magenta: cssVar('--accent-magenta', '#9b6b74'),
+            ember: cssVar('--accent-ember', '#b8784d')
+        };
+    }
+
+    function colorWithAlpha(hexColor, alpha) {
+        const hex = String(hexColor || '').trim().replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return `rgba(127, 127, 127, ${alpha})`;
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function historyPalette() {
+        const ink = chartInk();
+        return {
+            temp: ink.blue,
+            gpuTemp: ink.cyan,
+            fan: ink.green,
+            power: ink.yellow,
+            gpuPower: ink.red,
+            cpuPower: ink.ember,
+            cpu: ink.blue,
+            ram: ink.magenta,
+            gpuUtil: ink.red,
+            gpuMem: ink.magenta,
+            netIn: ink.green,
+            netOut: ink.cyan,
+            diskRead: ink.yellow,
+            diskWrite: ink.red
+        };
+    }
 
     // 准星同步插件 (增加 group_id 隔离逻辑)
     const crosshairPlugin = {
@@ -363,7 +511,7 @@
                 ctx.moveTo(x, top);
                 ctx.lineTo(x, bottom);
                 ctx.lineWidth = 1;
-                ctx.strokeStyle = '#57606a';
+                ctx.strokeStyle = chartInk().muted;
                 ctx.stroke();
                 ctx.restore();
             }
@@ -372,7 +520,7 @@
 
     const baseChartOptions = {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 1000, easing: 'easeOutQuart' },
+        animation: { duration: 260, easing: 'easeOutQuart' },
         interaction: { mode: 'index', intersect: false },
         group_id: 'history_group', // 默认组 ID
         onHover: (event, elements, chart) => {
@@ -407,18 +555,18 @@
         plugins: {
             legend: { 
                 position: 'top', align: 'end',
-                labels: { color: '#e6edf3', usePointStyle: true, boxWidth: 10, padding: 15, font: { size: 11, weight: 'bold' } } 
+                labels: { color: chartInk().text, usePointStyle: true, boxWidth: 10, padding: 15, font: { size: 11, weight: 'bold' } }
             },
             tooltip: { 
-                backgroundColor: 'rgba(22, 27, 34, 0.98)', borderColor: '#444c56', borderWidth: 1, 
-                titleColor: '#fff', bodyColor: '#e6edf3', padding: 12, bodySpacing: 8,
+                backgroundColor: chartInk().panel, borderColor: chartInk().grid, borderWidth: 1,
+                titleColor: chartInk().text, bodyColor: chartInk().text, padding: 12, bodySpacing: 8,
                 titleFont: { size: 14, weight: 'bold' }, bodyFont: { family: "'SF Mono', monospace" }
             }
         },
         scales: {
-            x: { grid: { color: 'rgba(48, 54, 61, 0.4)', drawBorder: false }, ticks: { color: '#8b949e', font: { size: 11 }, maxTicksLimit: 10 } },
-            y: { grid: { color: 'rgba(48, 54, 61, 0.4)', drawBorder: false }, ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace", size: 11 } } },
-            y1: { type: 'linear', display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#8b949e', font: { family: "'SF Mono', monospace", size: 11 } } }
+            x: { grid: { color: chartInk().grid, drawBorder: false }, ticks: { color: chartInk().muted, font: { size: 11 }, maxTicksLimit: 10 } },
+            y: { grid: { color: chartInk().grid, drawBorder: false }, ticks: { color: chartInk().muted, font: { family: "'SF Mono', monospace", size: 11 } } },
+            y1: { type: 'linear', display: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: chartInk().muted, font: { family: "'SF Mono', monospace", size: 11 } } }
         }
     };
 
@@ -593,14 +741,14 @@
                 }
             },
             plugins: {
-                legend: { position: 'top', align: 'end', labels: { color: '#8b949e', usePointStyle: true, boxWidth: 8 } },
-                tooltip: { backgroundColor: 'rgba(22, 27, 34, 0.95)', titleColor: '#fff' }
+                legend: { position: 'top', align: 'end', labels: { color: chartInk().muted, usePointStyle: true, boxWidth: 8 } },
+                tooltip: { backgroundColor: chartInk().panel, titleColor: chartInk().text }
             }
         };
         
         charts.pwrDist = new Chart(document.getElementById('chartPowerDist'), {
             type: 'doughnut',
-            data: { labels: ['CPU', 'GPU', 'Others'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#58a6ff', '#76e3ea', '#8b949e'], borderWidth: 0 }] },
+            data: { labels: ['CPU', 'GPU', 'Others'], datasets: [{ data: [0, 0, 0], backgroundColor: [chartInk().blue, chartInk().cyan, chartInk().muted], borderWidth: 0 }] },
             options: { 
                 ...deepCommonOptions, 
                 cutout: '70%', 
@@ -623,8 +771,8 @@
 
         const pctScale = { 
             min: 0, max: 100, 
-            ticks: { color: '#8b949e', callback: v => v + '%' },
-            grid: { color: 'rgba(48,54,61,0.2)', drawBorder: false }
+            ticks: { color: chartInk().muted, callback: v => v + '%' },
+            grid: { color: chartInk().grid, drawBorder: false }
         };
 
         charts.loadDist = new Chart(document.getElementById('chartLoadDist'), {
@@ -651,14 +799,14 @@
 
         charts.vramEff = new Chart(document.getElementById('chartVRAMEff'), {
             type: 'bubble',
-            data: { datasets: [{ label: 'GPU efficiency', data: [], backgroundColor: 'rgba(57, 197, 187, 0.5)', borderColor: 'rgba(57, 197, 187, 0.8)', borderWidth: 1 }] },
+            data: { datasets: [{ label: 'GPU efficiency', data: [], backgroundColor: colorWithAlpha(chartInk().cyan, 0.45), borderColor: chartInk().cyan, borderWidth: 1 }] },
             options: { 
                 ...deepCommonOptions,
                 interaction: { mode: 'nearest', intersect: true }, // 修正气泡图交互模式
                 onHover: null,
                 scales: { 
-                    x: { ...pctScale, title: { display: true, text: 'GPU Core Util %', color: '#8b949e' } },
-                    y: { ...pctScale, title: { display: true, text: 'VRAM Util %', color: '#8b949e' } }
+                    x: { ...pctScale, title: { display: true, text: 'GPU Core Util %', color: chartInk().muted } },
+                    y: { ...pctScale, title: { display: true, text: 'VRAM Util %', color: chartInk().muted } }
                 },
                 plugins: {
                     ...deepCommonOptions.plugins,
@@ -705,7 +853,7 @@
         await loadDashboardOptions();
         init();
         checkLogStatus();
-        setInterval(checkLogStatus, 5000);
+        window.IPMI.poll(checkLogStatus, 5000, { visibleOnly: true, immediate: false });
     });
 
     function handleTagChange() {
@@ -743,7 +891,8 @@
     }
 
     function cpuPkgColorByIndex(idx) {
-        const palette = ['#58a6ff', '#a371f7', '#3fb950', '#d29922', '#ff7b72', '#39c5bb'];
+        const ink = chartInk();
+        const palette = [ink.blue, ink.magenta, ink.green, ink.yellow, ink.red, ink.cyan];
         return palette[idx % palette.length];
     }
 
@@ -900,6 +1049,22 @@
     }
 
     let energyModal = null;
+    let historyNoticeModal = null;
+
+    function tx(key, fallback, params = {}) {
+        const translated = t(key, params);
+        return translated === key ? fallback : translated;
+    }
+
+    function showHistoryNotice(message, title = tx('history.exportErrorTitle', 'Export failed')) {
+        const modalEl = document.getElementById('historyNoticeModal');
+        if (!modalEl) return;
+        document.getElementById('history-notice-title').innerText = title;
+        document.getElementById('history-notice-message').innerText = message;
+        if (!historyNoticeModal) historyNoticeModal = new bootstrap.Modal(modalEl);
+        historyNoticeModal.show();
+    }
+
     function changeEnergyStartDate() {
         const current = document.getElementById('stat-energy-date').dataset.rawDate || '';
         const input = document.getElementById('energyInput');
@@ -963,7 +1128,7 @@
             const energyDate = rawData.stats.energy_start_date || '--';
             const energyDateEl = document.getElementById('stat-energy-date');
             energyDateEl.dataset.rawDate = energyDate === '--' ? '' : energyDate;
-            energyDateEl.innerText = t('metrics.since', { date: energyDate });
+            energyDateEl.innerText = tx('metrics.since', 'since {date}', { date: energyDate });
         }
 
         ensureCpuPkgToggleControls();
@@ -973,22 +1138,23 @@
         const ctxPower = document.getElementById('chartPower').getContext('2d');
         const ctxLoad = document.getElementById('chartLoad').getContext('2d');
         const ctxIO = document.getElementById('chartIO').getContext('2d');
+        const palette = historyPalette();
 
         // --- 温度图表 (Temp + Fan) ---
         if(document.getElementById('chk-temp').checked) 
-            dsTemp.push({label:t('history.cpuTemp'), data:rawData.cpu_temp, borderColor:'#1f6feb', backgroundColor: createGradient(ctxTemp, '#1f6feb'), fill: true});
+            dsTemp.push({label:t('history.cpuTemp'), data:rawData.cpu_temp, borderColor: palette.temp, backgroundColor: createGradient(ctxTemp, palette.temp), fill: true});
         if(rawData.gpu && rawData.gpu.temp && document.getElementById('chk-gpu-temp').checked)
-            dsTemp.push({label:t('history.gpuTemp'), data:rawData.gpu.temp, borderColor:'#39c5bb', backgroundColor: createGradient(ctxTemp, '#39c5bb'), fill: true});
+            dsTemp.push({label:t('history.gpuTemp'), data:rawData.gpu.temp, borderColor: palette.gpuTemp, backgroundColor: createGradient(ctxTemp, palette.gpuTemp), fill: true});
         if(document.getElementById('chk-fan').checked) 
-            dsTemp.push({label:t('metrics.fanSpeed'), data:rawData.fan_rpm, borderColor:'#3fb950', yAxisID: 'y1'});
+            dsTemp.push({label:t('metrics.fanSpeed'), data:rawData.fan_rpm, borderColor: palette.fan, yAxisID: 'y1'});
 
         // --- 功耗图表 ---
         if(document.getElementById('chk-pwr').checked) 
-            dsPower.push({label:t('history.sysPower'), data:rawData.power, borderColor:'#d29922', backgroundColor: createGradient(ctxPower, '#d29922'), fill: true});
+            dsPower.push({label:t('history.sysPower'), data:rawData.power, borderColor: palette.power, backgroundColor: createGradient(ctxPower, palette.power), fill: true});
         if(rawData.gpu && rawData.gpu.power && document.getElementById('chk-gpu-pwr').checked)
-            dsPower.push({label:t('history.gpuPower'), data:rawData.gpu.power, borderColor:'#f85149'});
+            dsPower.push({label:t('history.gpuPower'), data:rawData.gpu.power, borderColor: palette.gpuPower});
         if(rawData.cpu_power && document.getElementById('chk-cpu-pwr').checked)
-            dsPower.push({label:t('history.cpuPower'), data:rawData.cpu_power, borderColor:'#f0883e', backgroundColor: createGradient(ctxPower, '#f0883e'), fill: true});
+            dsPower.push({label:t('history.cpuPower'), data:rawData.cpu_power, borderColor: palette.cpuPower, backgroundColor: createGradient(ctxPower, palette.cpuPower), fill: true});
 
         if (rawData.cpu_pkg_power) {
             const pkgKeys = Object.keys(rawData.cpu_pkg_power).sort((a, b) => {
@@ -1014,23 +1180,23 @@
 
         // --- 负载图表 (Load + GPU Mem) ---
         if(document.getElementById('chk-cpu').checked)
-            dsLoad.push({label:t('history.cpuUtil'), data:rawData.cpu_load, borderColor:'#79c0ff', backgroundColor: createGradient(ctxLoad, '#79c0ff'), fill: true});
+            dsLoad.push({label:t('history.cpuUtil'), data:rawData.cpu_load, borderColor: palette.cpu, backgroundColor: createGradient(ctxLoad, palette.cpu), fill: true});
         if(document.getElementById('chk-ram').checked)
-            dsLoad.push({label:t('history.ramUtil'), data:rawData.mem_load, borderColor:'#bc8cff', backgroundColor: createGradient(ctxLoad, '#bc8cff'), fill: true});
+            dsLoad.push({label:t('history.ramUtil'), data:rawData.mem_load, borderColor: palette.ram, backgroundColor: createGradient(ctxLoad, palette.ram), fill: true});
         if(rawData.gpu && rawData.gpu.util_gpu && document.getElementById('chk-gpu-util').checked)
-            dsLoad.push({label:t('history.gpuUtil'), data:rawData.gpu.util_gpu, borderColor:'#ff7b72', backgroundColor: createGradient(ctxLoad, '#ff7b72'), fill: true});
+            dsLoad.push({label:t('history.gpuUtil'), data:rawData.gpu.util_gpu, borderColor: palette.gpuUtil, backgroundColor: createGradient(ctxLoad, palette.gpuUtil), fill: true});
         if(rawData.gpu && rawData.gpu.mem_used && document.getElementById('chk-gpu-mem').checked)
-            dsLoad.push({label:t('history.gpuMem'), data:rawData.gpu.mem_used, borderColor:'#da367f', yAxisID: 'y1'});
+            dsLoad.push({label:t('history.gpuMem'), data:rawData.gpu.mem_used, borderColor: palette.gpuMem, yAxisID: 'y1'});
 
         // --- IO 图表 ---
         if(document.getElementById('chk-net-in').checked)
-            dsIO.push({label:t('history.netIn'), data:rawData.net_in, borderColor:'#2ea043'});
+            dsIO.push({label:t('history.netIn'), data:rawData.net_in, borderColor: palette.netIn});
         if(document.getElementById('chk-net-out').checked)
-            dsIO.push({label:t('history.netOut'), data:rawData.net_out, borderColor:'#388bfd'});
+            dsIO.push({label:t('history.netOut'), data:rawData.net_out, borderColor: palette.netOut});
         if(document.getElementById('chk-disk-r').checked)
-            dsIO.push({label:t('history.diskRead'), data:rawData.disk_r, borderColor:'#d29922'});
+            dsIO.push({label:t('history.diskRead'), data:rawData.disk_r, borderColor: palette.diskRead});
         if(document.getElementById('chk-disk-w').checked)
-            dsIO.push({label:t('history.diskWrite'), data:rawData.disk_w, borderColor:'#f85149'});
+            dsIO.push({label:t('history.diskWrite'), data:rawData.disk_w, borderColor: palette.diskWrite});
 
         // 更新四个图表
         const updateSingleChart = (chart, ds) => {
@@ -1068,8 +1234,8 @@
 
             // 2. 负载分布
             charts.loadDist.data.datasets = [
-                { label: 'CPU', data: ana.cpu_load_dist, backgroundColor: 'rgba(31, 111, 235, 0.7)' },
-                { label: 'GPU', data: ana.gpu_load_dist, backgroundColor: 'rgba(57, 197, 187, 0.7)' }
+                { label: 'CPU', data: ana.cpu_load_dist, backgroundColor: colorWithAlpha(historyPalette().cpu, 0.7) },
+                { label: 'GPU', data: ana.gpu_load_dist, backgroundColor: colorWithAlpha(historyPalette().gpuTemp, 0.7) }
             ];
             charts.loadDist.update();
 
@@ -1080,8 +1246,8 @@
             // 4. 温度分布 (高精度 1度步长)
             charts.tempDist.data.labels = ana.cpu_temp_labels;
             charts.tempDist.data.datasets = [
-                { label: 'CPU', data: ana.cpu_temp_dist, borderColor: '#1f6feb', backgroundColor: 'rgba(31, 111, 235, 0.1)', fill: true, pointRadius: 0 },
-                { label: 'GPU', data: ana.gpu_temp_dist, borderColor: '#39c5bb', backgroundColor: 'rgba(57, 197, 187, 0.1)', fill: true, pointRadius: 0 }
+                { label: 'CPU', data: ana.cpu_temp_dist, borderColor: historyPalette().temp, backgroundColor: colorWithAlpha(historyPalette().temp, 0.1), fill: true, pointRadius: 0 },
+                { label: 'GPU', data: ana.gpu_temp_dist, borderColor: historyPalette().gpuTemp, backgroundColor: colorWithAlpha(historyPalette().gpuTemp, 0.1), fill: true, pointRadius: 0 }
             ];
             charts.tempDist.update();
         }
@@ -1118,7 +1284,7 @@
             document.body.removeChild(a);
         } catch (e) {
             console.error(e);
-            alert(t('history.exportFailed', { message: e.message }));
+            showHistoryNotice(t('history.exportFailed', { message: e.message }));
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalHtml;
@@ -1126,10 +1292,6 @@
     }
 
 </script>
-<footer class="text-center w-100 mb-2 mt-auto" style="pointer-events: none;">
-    <a href="https://github.com/stlin256/IPMI_WEB" target="_blank" class="text-muted text-decoration-none small opacity-50 hover-opacity-100 transition-all" style="pointer-events: auto;">
-        <i class="fab fa-github me-1"></i>GitHub @stlin256
-    </a>
-</footer>
+{% include 'partials/footer.html' %}
 </body>
 </html>
