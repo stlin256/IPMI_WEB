@@ -275,6 +275,14 @@
             z-index: 2190;
         }
 
+        #discardModal {
+            z-index: 2310 !important;
+        }
+
+        body:has(#discardModal.show) .modal-backdrop {
+            z-index: 2300;
+        }
+
         #settingsModal .modal-dialog {
             width: min(1040px, calc(100vw - 2rem));
             max-width: min(1040px, calc(100vw - 2rem));
@@ -3012,6 +3020,9 @@
     function showDiscardModal(options = {}) {
         const modalEl = document.getElementById('discardModal');
         if (!modalEl) return;
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
         if (!discardModal) discardModal = new bootstrap.Modal(modalEl);
         resetDiscardModalState();
 
@@ -4118,7 +4129,7 @@
 
             // 拦截关闭
             settingsModalEl.addEventListener('hide.bs.modal', (e) => {
-                if (checkChanges() && !bypassModalCheck) {
+                if (hasPendingChanges && checkChanges() && !bypassModalCheck) {
                     e.preventDefault(); 
                     showDiscardModal({
                         onConfirm: () => {
