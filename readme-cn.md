@@ -1,23 +1,12 @@
 # IPMI_WEB 中文文档
 
-<p align="center">
-  <a href="https://deepwiki.com/stlin256/IPMI_WEB">
-    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
-  </a>
-</p>
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/IPMI_WEB)
 
-```text
-   ____ ___   __  ___ ____  _      __ ____ ___
-  /  _// _ \ /  |/  //  _/ | | /| / // __// _ )
- _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
-/___//_/   /_/  /_//___/   |__/|__//___//____/
-```
+![IPMI_WEB ASCII 徽标](img/ipmi-web-ascii-logo.png)
 
 IPMI_WEB 是一个轻量自托管服务器运维面板，用于把 IPMI 硬件监控、风扇策略控制、系统资源图表、可选 NVIDIA GPU 监控、历史分析、审计日志、存储生命周期、证书管理、告警和邮件报告整合到一个浏览器界面中。
 
-[English README](README.md) | [更新日志](CHANGELOG.md) | [前端重构说明](docs/frontend-modernization-plan.md)
-
-> 旧版说明截图已经从 README 中移除，因为它们无法代表当前界面。DeepWiki 项目徽标会继续保留。
+[English](README.md) | [更新日志](CHANGELOG.md) | [前端重构说明](docs/frontend-modernization-plan.md)
 
 ## 当前状态
 
@@ -367,4 +356,3 @@ http://agent-host:9999/metrics
 风扇控制会使用 IPMI raw 命令，可能直接影响硬件散热。请先在自己的硬件上验证温度和风扇行为，并保留 BMC/iDRAC/iLO 或物理访问作为回退路径，不要把此面板作为唯一散热保护机制。
 
 这个项目有意保持小而可读，但它仍然是一个有权限的运维入口。请使用强登录密码，尽量部署在可信网络或反向代理后，远程访问时启用 HTTPS，并确保宿主机系统本身安全。
-

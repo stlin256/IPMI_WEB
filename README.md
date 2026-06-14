@@ -1,23 +1,12 @@
 # IPMI_WEB
 
-<p align="center">
-  <a href="https://deepwiki.com/stlin256/IPMI_WEB">
-    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
-  </a>
-</p>
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/IPMI_WEB)
 
-```text
-   ____ ___   __  ___ ____  _      __ ____ ___
-  /  _// _ \ /  |/  //  _/ | | /| / // __// _ )
- _/ / / ___// /|_/ /_/ /   | |/ |/ // _/ / _  |
-/___//_/   /_/  /_//___/   |__/|__//___//____/
-```
+![IPMI_WEB ASCII logo](img/ipmi-web-ascii-logo.png)
 
 IPMI_WEB is a lightweight self-hosted operations panel for IPMI-capable servers. It brings hardware telemetry, fan policy control, system resource charts, optional NVIDIA GPU telemetry, historical analysis, audit logs, storage lifecycle management, certificate handling, alerting, and summary emails into one browser interface.
 
-[Chinese README](readme-cn.md) | [Changelog](CHANGELOG.md) | [Frontend modernization notes](docs/frontend-modernization-plan.md)
-
-> Historical screenshots have been removed from the README because they no longer represent the current interface. The DeepWiki badge is intentionally kept.
+[中文文档](readme-cn.md) | [Changelog](CHANGELOG.md) | [Frontend modernization notes](docs/frontend-modernization-plan.md)
 
 ## Current Status
 
@@ -367,4 +356,3 @@ Summary reports can be scheduled daily, weekly, or at a custom interval. Reports
 Fan control uses IPMI raw commands and can affect hardware cooling. Validate behavior on your own hardware, keep a fallback path through BMC/iDRAC/iLO or physical access, and do not rely on this panel as the only thermal safety mechanism.
 
 This project is intentionally small and inspectable, but it is still a privileged operations surface. Use a strong login password, run it behind a trusted network or proxy, enable HTTPS for remote access, and keep the host OS secured.
-
