@@ -34,95 +34,6 @@
             clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%);
             opacity: 0.55;
         }
-        @keyframes login-corner-breathe {
-            0%, 100% {
-                transform: translate3d(0, 0, 0);
-                filter: saturate(1.05);
-            }
-            48% {
-                transform: translate3d(0, -2px, 0);
-                filter: saturate(1.18);
-            }
-        }
-        .login-stage::after {
-            content: "";
-            position: absolute;
-            top: clamp(3.2rem, 8vh, 5.25rem);
-            left: clamp(3.5rem, 7.5vw, 5.75rem);
-            width: min(36rem, 58vw);
-            height: min(21rem, 46vh);
-            pointer-events: none;
-            border-top: 1px solid color-mix(in srgb, var(--accent-yellow) 36%, transparent);
-            border-left: 1px solid color-mix(in srgb, var(--accent-yellow) 34%, transparent);
-            background:
-                linear-gradient(90deg, color-mix(in srgb, var(--accent-red) 82%, transparent) 0 4.35rem, transparent 4.35rem),
-                linear-gradient(180deg, color-mix(in srgb, var(--accent-yellow) 48%, transparent) 0 1px, transparent 1px),
-                linear-gradient(90deg, color-mix(in srgb, var(--accent-yellow) 44%, transparent) 0 1px, transparent 1px),
-                repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent-yellow) 18%, transparent) 0 1px, transparent 1px 4.5rem),
-                repeating-linear-gradient(0deg, color-mix(in srgb, var(--accent-yellow) 14%, transparent) 0 1px, transparent 1px 4.5rem),
-                linear-gradient(135deg, color-mix(in srgb, var(--accent-yellow) 22%, transparent), transparent 58%);
-            background-size:
-                6rem 2px,
-                100% 1px,
-                1px 100%,
-                100% 100%,
-                100% 100%,
-                100% 100%;
-            background-position:
-                0 45%,
-                0 0,
-                0 0,
-                0 0,
-                0 0,
-                0 0;
-            background-repeat: no-repeat;
-            opacity: 0.72;
-            box-shadow:
-                inset 1px 1px 0 color-mix(in srgb, #fff 24%, transparent),
-                -10px -10px 30px color-mix(in srgb, var(--accent-yellow) 7%, transparent);
-            animation: login-corner-breathe 5.5s ease-in-out infinite;
-        }
-        html[data-bs-theme="light"] .login-stage::before {
-            border-color: color-mix(in srgb, var(--accent-yellow) 38%, transparent);
-            opacity: 0.72;
-            box-shadow:
-                inset 0 1px 0 color-mix(in srgb, #fff 46%, transparent),
-                0 0 0 1px color-mix(in srgb, var(--accent-yellow) 8%, transparent);
-        }
-        html[data-bs-theme="light"] .login-stage::after {
-            opacity: 1;
-            border-top-width: 2px;
-            border-left-width: 2px;
-            border-top-color: rgba(165, 121, 46, 0.5);
-            border-left-color: rgba(165, 121, 46, 0.46);
-            background:
-                linear-gradient(90deg, rgba(169, 78, 63, 0.98) 0 5.4rem, transparent 5.4rem),
-                linear-gradient(180deg, rgba(165, 121, 46, 0.48) 0 2px, transparent 2px),
-                linear-gradient(90deg, rgba(165, 121, 46, 0.42) 0 2px, transparent 2px),
-                repeating-linear-gradient(90deg, rgba(165, 121, 46, 0.16) 0 1px, transparent 1px 4.5rem),
-                repeating-linear-gradient(0deg, rgba(165, 121, 46, 0.13) 0 1px, transparent 1px 4.5rem),
-                linear-gradient(135deg, rgba(165, 121, 46, 0.24), transparent 58%);
-            background-size:
-                7.2rem 4px,
-                100% 2px,
-                2px 100%,
-                100% 100%,
-                100% 100%,
-                100% 100%;
-            background-position:
-                0 40%,
-                0 0,
-                0 0,
-                0 0,
-                0 0,
-                0 0;
-            background-repeat: no-repeat;
-            box-shadow:
-                inset 1px 1px 0 rgba(255, 255, 255, 0.62),
-                inset 22px 22px 80px rgba(165, 121, 46, 0.09),
-                -10px -10px 34px rgba(165, 121, 46, 0.12),
-                0 0 0 1px rgba(165, 121, 46, 0.08);
-        }
         .login-shell {
             width: min(100% - 2rem, 980px);
             display: grid;
@@ -195,14 +106,6 @@
             .login-identity { padding-left: 0.75rem; }
             .login-wordmark { font-size: 3.1rem; }
             .login-card { padding: 1.35rem; }
-            .login-stage::after {
-                left: 1.5rem;
-                width: calc(100vw - 3rem);
-                height: 18rem;
-            }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .login-stage::after { animation: none; }
         }
     </style>
 </head>
