@@ -91,6 +91,7 @@
         get: () => root.getAttribute('data-bs-theme') || 'light',
         set: setTheme,
         toggle: () => setTheme((root.getAttribute('data-bs-theme') || 'light') === 'dark' ? 'light' : 'dark'),
+        mountToggle: mountThemeToggle,
         chart: () => {
             const styles = getComputedStyle(root);
             return {

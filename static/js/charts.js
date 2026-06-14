@@ -66,11 +66,18 @@
         allCharts().forEach(tuneChart);
     }
 
+    function destroyAll() {
+        allCharts().forEach((chart) => {
+            try { chart.destroy(); } catch (_) {}
+        });
+    }
+
     window.IPMICharts = {
         colors,
         applyDefaults,
         tuneChart,
-        refreshAll
+        refreshAll,
+        destroyAll
     };
 
     applyDefaults();

@@ -55,6 +55,159 @@
         return error && error.name === 'AbortError';
     }
 
+    const pageCleanups = [];
+    const pageTimers = new Set();
+    const pageListeners = [];
+    let trackingDepth = 0;
+
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const nativeClearTimeout = window.clearTimeout.bind(window);
+    const nativeSetInterval = window.setInterval.bind(window);
+    const nativeClearInterval = window.clearInterval.bind(window);
+    const nativeAddEventListener = EventTarget.prototype.addEventListener;
+    const nativeRemoveEventListener = EventTarget.prototype.removeEventListener;
+    const nativeDocumentAddEventListener = document.addEventListener.bind(document);
+
+    function isTrackingPageResources() {
+        return trackingDepth > 0;
+    }
+
+    function runWithPageTracking(task) {
+        trackingDepth += 1;
+        try {
+            return task();
+        } finally {
+            trackingDepth -= 1;
+        }
+    }
+
+    function startPageTracking() {
+        trackingDepth += 1;
+        let stopped = false;
+        return () => {
+            if (stopped) return;
+            stopped = true;
+            trackingDepth -= 1;
+        };
+    }
+
+    function addPageTimer(timer) {
+        if (isTrackingPageResources()) pageTimers.add(timer);
+    }
+
+    window.setTimeout = function trackedSetTimeout(handler, timeout, ...args) {
+        const timer = nativeSetTimeout(handler, timeout, ...args);
+        addPageTimer({ type: 'timeout', id: timer });
+        return timer;
+    };
+
+    window.clearTimeout = function trackedClearTimeout(timerId) {
+        pageTimers.forEach((timer) => {
+            if (timer.id === timerId) pageTimers.delete(timer);
+        });
+        return nativeClearTimeout(timerId);
+    };
+
+    window.setInterval = function trackedSetInterval(handler, timeout, ...args) {
+        const timer = nativeSetInterval(handler, timeout, ...args);
+        addPageTimer({ type: 'interval', id: timer });
+        return timer;
+    };
+
+    window.clearInterval = function trackedClearInterval(timerId) {
+        pageTimers.forEach((timer) => {
+            if (timer.id === timerId) pageTimers.delete(timer);
+        });
+        return nativeClearInterval(timerId);
+    };
+
+    EventTarget.prototype.addEventListener = function trackedAddEventListener(type, listener, options) {
+        if (isTrackingPageResources() && listener) {
+            pageListeners.push({ target: this, type, listener, options });
+        }
+        return nativeAddEventListener.call(this, type, listener, options);
+    };
+
+    EventTarget.prototype.removeEventListener = function trackedRemoveEventListener(type, listener, options) {
+        for (let i = pageListeners.length - 1; i >= 0; i -= 1) {
+            const item = pageListeners[i];
+            if (item.target === this && item.type === type && item.listener === listener) {
+                pageListeners.splice(i, 1);
+            }
+        }
+        return nativeRemoveEventListener.call(this, type, listener, options);
+    };
+
+    document.addEventListener = function trackedDocumentAddEventListener(type, listener, options) {
+        if (type === 'DOMContentLoaded' && document.readyState !== 'loading' && typeof listener === 'function') {
+            const timer = nativeSetTimeout(() => runWithPageTracking(() => listener.call(document, new Event('DOMContentLoaded'))), 0);
+            addPageTimer({ type: 'timeout', id: timer });
+            return undefined;
+        }
+        if (type === 'DOMContentLoaded' && typeof listener === 'function') {
+            const wrapped = function wrappedDOMContentLoaded(event) {
+                return runWithPageTracking(() => listener.call(this, event));
+            };
+            return nativeDocumentAddEventListener(type, wrapped, options);
+        }
+        return nativeDocumentAddEventListener(type, listener, options);
+    };
+
+    function addCleanup(cleanup) {
+        if (typeof cleanup !== 'function') return cleanup;
+        pageCleanups.push(cleanup);
+        return cleanup;
+    }
+
+    function disposeBootstrap(root = document) {
+        if (!window.bootstrap || !root.querySelectorAll) return;
+        const componentMap = [
+            ['Modal', '.modal'],
+            ['Offcanvas', '.offcanvas'],
+            ['Toast', '.toast'],
+            ['Tooltip', '[data-bs-toggle="tooltip"]'],
+            ['Popover', '[data-bs-toggle="popover"]'],
+            ['Collapse', '.collapse']
+        ];
+        componentMap.forEach(([name, selector]) => {
+            const Component = window.bootstrap[name];
+            if (!Component || typeof Component.getInstance !== 'function') return;
+            root.querySelectorAll(selector).forEach((node) => {
+                const instance = Component.getInstance(node);
+                if (instance && typeof instance.dispose === 'function') {
+                    try { instance.dispose(); } catch (_) {}
+                }
+            });
+        });
+        document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop').forEach((node) => node.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+    }
+
+    function destroyPage() {
+        while (pageCleanups.length) {
+            const cleanup = pageCleanups.pop();
+            try { cleanup(); } catch (error) { console.debug('Page cleanup failed:', error); }
+        }
+
+        pageTimers.forEach((timer) => {
+            if (timer.type === 'interval') nativeClearInterval(timer.id);
+            else nativeClearTimeout(timer.id);
+        });
+        pageTimers.clear();
+
+        while (pageListeners.length) {
+            const { target, type, listener, options } = pageListeners.pop();
+            try { nativeRemoveEventListener.call(target, type, listener, options); } catch (_) {}
+        }
+
+        if (window.IPMICharts && typeof window.IPMICharts.destroyAll === 'function') {
+            window.IPMICharts.destroyAll();
+        }
+        disposeBootstrap(document);
+    }
+
     async function fetchJson(url, options = {}) {
         const timeoutMs = options.timeoutMs || 15000;
         const controller = options.signal ? null : new AbortController();
@@ -62,7 +215,7 @@
         let timer = null;
 
         if (controller && timeoutMs > 0) {
-            timer = window.setTimeout(() => controller.abort(), timeoutMs);
+            timer = nativeSetTimeout(() => controller.abort(), timeoutMs);
         }
 
         try {
@@ -79,7 +232,7 @@
             }
             return await response.json();
         } finally {
-            if (timer) window.clearTimeout(timer);
+            if (timer) nativeClearTimeout(timer);
         }
     }
 
@@ -105,7 +258,7 @@
         };
 
         const startTimer = () => {
-            timerId = window.setInterval(run, intervalMs);
+            timerId = nativeSetInterval(run, intervalMs);
         };
 
         const handleVisibility = () => {
@@ -118,9 +271,12 @@
 
         return () => {
             stopped = true;
-            if (timerId) window.clearInterval(timerId);
+            if (timerId) nativeClearInterval(timerId);
             if (visibleOnly) document.removeEventListener('visibilitychange', handleVisibility);
         };
+
+        addCleanup(stop);
+        return stop;
     }
 
     function createAbortableLoader(task) {
@@ -195,7 +351,12 @@
         updateLogDot,
         cssVar,
         isAbort,
-        prefersReducedMotion
+        prefersReducedMotion,
+        addCleanup,
+        destroyPage,
+        disposeBootstrap,
+        runWithPageTracking,
+        startPageTracking
     };
 
     initPageMotion();
