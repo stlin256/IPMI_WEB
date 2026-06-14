@@ -24,6 +24,8 @@ The front-end refactor currently includes:
 - Extracted navigation and footer partials.
 - Page-level scripts already split for Resources and GPU, while larger Hardware, History, and Logs/Settings pages still contain more inline code and remain migration targets.
 
+![IPMI_WEB login screen](img/login_en.png)
+
 ## Project Background
 
 IPMI_WEB started as a practical control panel for the author's **DELL PowerEdge R730xd**. Used enterprise servers are reliable, expandable, and affordable, but their default BMC fan behavior can be loud in a home lab, office, NAS shelf, or quiet rack. Usually the goal is not to replace iDRAC, iLO, IPMI, or the BMC. The goal is to make daily operation less painful: open one browser page, check temperatures and power, adjust fan policy when needed, review long-range charts, and keep an audit trail of important actions.
