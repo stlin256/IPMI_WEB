@@ -167,6 +167,10 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 i18n = I18n(os.path.join(app.root_path, 'static', 'i18n', 'messages.json'))
 
+@app.route('/favicon.ico')
+def favicon():
+    return redirect(url_for('static', filename='favicon.ico'), code=302)
+
 def get_saved_locale():
     try:
         conn = get_db_connection()
