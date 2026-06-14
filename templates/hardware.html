@@ -34,8 +34,10 @@
         
         .metric-box { min-width: 0; padding: 1.5rem; text-align: center; position: relative; overflow: hidden; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
         .metric-box:hover { border-color: color-mix(in srgb, var(--metric-accent) 55%, var(--border-color)); transform: translateY(-2px); }
-        .metric-value { display: flex; max-width: 100%; align-items: baseline; justify-content: center; gap: 0.35rem; font-family: 'SF Mono', Consolas, monospace; font-size: clamp(2rem, 3.8vw, 2.8rem); font-weight: 700; letter-spacing: 0; margin-bottom: 5px; line-height: 1.05; white-space: nowrap; }
+        .metric-value { display: flex; max-width: 100%; align-items: baseline; justify-content: center; gap: 0.35rem; font-family: Consolas, "Courier New", monospace; font-size: clamp(2rem, 3.8vw, 2.8rem); font-weight: 700; letter-spacing: 0; margin-bottom: 5px; line-height: 1.05; white-space: nowrap; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
         .metric-value > span:first-child { min-width: 0; overflow: hidden; text-overflow: clip; }
+        .metric-number { display: inline-block; min-width: 4.25ch; text-align: right; }
+        #val-fan { min-width: 5.4ch; }
         .metric-unit { flex: 0 0 auto; font-size: clamp(0.78rem, 1.2vw, 1rem); color: var(--text-muted); font-weight: normal; }
         .metric-icon { position: absolute; top: 15px; right: 15px; font-size: 3.5rem; opacity: 0.05; transform: rotate(-15deg); }
         
@@ -197,10 +199,39 @@
         }
         .hw-health-value {
             margin-top: 0.35rem;
-            font-family: 'SF Mono', Consolas, monospace;
+            font-family: Consolas, "Courier New", monospace;
             font-size: 1.25rem;
             font-weight: 950;
             color: var(--text-main);
+            min-height: 1.5rem;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "lnum" 1;
+        }
+        #hw-strip-temp,
+        #hw-strip-power {
+            display: inline-block;
+            min-width: 3.5ch;
+            text-align: right;
+        }
+        #hw-strip-fan {
+            display: inline-block;
+            min-width: 8ch;
+        }
+        #sensor-count,
+        #fixedFanValuePct,
+        #fixedFanValueRpm,
+        #targetTempValue,
+        #rpm-range-display {
+            display: inline-block;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "lnum" 1;
+        }
+        #sensor-count { min-width: 2.5ch; text-align: center; }
+        #fixedFanValuePct,
+        #fixedFanValueRpm,
+        #targetTempValue {
+            min-width: 5.5ch;
+            min-height: 1.5rem;
         }
         .hw-section-card {
             position: relative;
@@ -260,6 +291,10 @@
         }
         .hw-mode-card #mode-display {
             max-width: 100%;
+            min-height: 2.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: clamp(1rem, 1.2vw, 1.32rem);
             line-height: 1.12;
             letter-spacing: 0;
@@ -269,6 +304,10 @@
         }
         .hw-mode-card .btn {
             max-width: 100%;
+            min-height: 2.85rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             white-space: normal;
             overflow-wrap: anywhere;
             word-break: break-word;
@@ -276,6 +315,7 @@
             padding-left: 0.75rem;
             padding-right: 0.75rem;
         }
+        #fixed-mode-warning { min-height: 1.2rem; }
         .hw-chart-body {
             height: clamp(280px, 34vh, 380px);
         }
@@ -359,6 +399,65 @@
 </head>
 <body>
 
+{% set initial_hw = initial_hw|default({}) %}
+{% set initial_hw_display = initial_hw_display|default({}) %}
+{% set initial_hw_ready = initial_hw_ready|default(false) %}
+{% set initial_config = initial_config|default({}) %}
+{% set initial_config_ready = initial_config.get('ready', false) %}
+{% set hw_temp_initial = initial_hw_display.get('temp', '--') if initial_hw_ready else '--' %}
+{% set hw_power_initial = initial_hw_display.get('power', '--') if initial_hw_ready else '--' %}
+{% set hw_fan_initial = initial_hw_display.get('fan_rpm', '--') if initial_hw_ready else '--' %}
+{% set hw_sensor_count_initial = (initial_hw.get('sensors', [])|length) if initial_hw_ready else 0 %}
+{% set hw_rpm_range_initial = (initial_hw_display.get('min_rpm', 0) ~ ' - ' ~ initial_hw_display.get('max_rpm', 0) ~ ' RPM') if initial_hw_ready and initial_hw.get('max_rpm', 0) else '--' %}
+{% set fixed_enabled_initial = initial_config.get('fixed_fan_speed_enabled', false) if initial_config_ready else false %}
+{% set fixed_target_initial = initial_config.get('fixed_fan_speed_target', 30) if initial_config_ready else 30 %}
+{% set target_enabled_initial = initial_config.get('target_temp_mode_enabled', false) if initial_config_ready else false %}
+{% set target_temp_initial = initial_config.get('target_temp_target', 65) if initial_config_ready else 65 %}
+{% set calibration_ready_initial = initial_config.get('calibration_ready', false) if initial_config_ready else false %}
+{% set fixed_rpm_initial = '--' %}
+{% if initial_hw_ready and initial_hw.get('max_rpm', 0) %}
+{% set fixed_rpm_initial = ((initial_hw.get('max_rpm', 0)|int * fixed_target_initial / 100)|round(0, 'common')|int) %}
+{% endif %}
+{% set label_auto = t('hardware.modeAutomatic') %}{% if label_auto == 'hardware.modeAutomatic' %}{% set label_auto = 'Automatic' %}{% endif %}
+{% set label_manual = t('hardware.modeManual') %}{% if label_manual == 'hardware.modeManual' %}{% set label_manual = 'Manual' %}{% endif %}
+{% set label_fixed = t('hardware.modeFixed') %}{% if label_fixed == 'hardware.modeFixed' %}{% set label_fixed = 'Fixed Speed' %}{% endif %}
+{% set label_target = t('hardware.modeTargetTemp') %}{% if label_target == 'hardware.modeTargetTemp' %}{% set label_target = 'Target Temp' %}{% endif %}
+{% set label_locked = t('hardware.modeLocked') %}{% if label_locked == 'hardware.modeLocked' %}{% set label_locked = 'Mode Locked' %}{% endif %}
+{% set label_switch_manual = t('hardware.switchToManual') %}{% if label_switch_manual == 'hardware.switchToManual' %}{% set label_switch_manual = 'Switch to Manual' %}{% endif %}
+{% set label_switch_auto = t('hardware.switchToAuto') %}{% if label_switch_auto == 'hardware.switchToAuto' %}{% set label_switch_auto = 'Switch to Auto' %}{% endif %}
+{% set label_switch_mode = t('hardware.switchMode') %}{% if label_switch_mode == 'hardware.switchMode' %}{% set label_switch_mode = 'Switch Mode' %}{% endif %}
+{% set hw_mode_initial = initial_hw.get('mode', '') if initial_hw_ready else '' %}
+{% set hw_mode_display_initial = '--' %}
+{% set hw_mode_text_class_initial = 'text-muted' %}
+{% set hw_mode_button_class_initial = 'btn-outline-primary' %}
+{% set hw_mode_button_icon_initial = 'fa-exchange-alt' %}
+{% set hw_mode_button_text_initial = label_switch_mode %}
+{% set hw_mode_locked_initial = hw_mode_initial in ['fixed', 'target_temp'] %}
+{% if hw_mode_initial == 'fixed' %}
+{% set hw_mode_display_initial = label_fixed|upper %}
+{% set hw_mode_text_class_initial = 'text-warning' %}
+{% set hw_mode_button_class_initial = 'btn-secondary disabled' %}
+{% set hw_mode_button_icon_initial = 'fa-ban' %}
+{% set hw_mode_button_text_initial = label_locked %}
+{% elif hw_mode_initial == 'target_temp' %}
+{% set hw_mode_display_initial = label_target|upper %}
+{% set hw_mode_text_class_initial = 'text-info' %}
+{% set hw_mode_button_class_initial = 'btn-secondary disabled' %}
+{% set hw_mode_button_icon_initial = 'fa-ban' %}
+{% set hw_mode_button_text_initial = label_locked %}
+{% elif hw_mode_initial == 'auto' %}
+{% set hw_mode_display_initial = label_auto|upper %}
+{% set hw_mode_text_class_initial = 'text-success' %}
+{% set hw_mode_button_class_initial = 'btn-outline-success' %}
+{% set hw_mode_button_icon_initial = 'fa-hand-paper' %}
+{% set hw_mode_button_text_initial = label_switch_manual %}
+{% elif initial_hw_ready %}
+{% set hw_mode_display_initial = label_manual|upper %}
+{% set hw_mode_text_class_initial = 'text-primary' %}
+{% set hw_mode_button_class_initial = 'btn-outline-primary' %}
+{% set hw_mode_button_icon_initial = 'fa-robot' %}
+{% set hw_mode_button_text_initial = label_switch_auto %}
+{% endif %}
 {% set active_page = 'hardware' %}
 {% include 'partials/main_nav.html' %}
 
@@ -374,15 +473,15 @@
         <div class="hw-health-strip" aria-label="Hardware live summary">
             <div class="hw-health-item">
                 <div class="hw-health-label" data-i18n="metrics.temp">Thermal</div>
-                <div class="hw-health-value"><span id="hw-strip-temp">--</span>°C</div>
+                <div class="hw-health-value"><span id="hw-strip-temp">{{ hw_temp_initial }}</span>°C</div>
             </div>
             <div class="hw-health-item">
                 <div class="hw-health-label" data-i18n="metrics.power">Power</div>
-                <div class="hw-health-value"><span id="hw-strip-power">--</span>W</div>
+                <div class="hw-health-value"><span id="hw-strip-power">{{ hw_power_initial }}</span>W</div>
             </div>
             <div class="hw-health-item">
                 <div class="hw-health-label" data-i18n="metrics.fan">Airflow</div>
-                <div class="hw-health-value"><span id="hw-strip-fan">--</span></div>
+                <div class="hw-health-value"><span id="hw-strip-fan">{{ hw_fan_initial ~ ' RPM' if initial_hw_ready else '--' }}</span></div>
             </div>
         </div>
     </section>
@@ -404,29 +503,31 @@
             <div class="card metric-box" data-accent="thermal">
                 <i class="fas fa-thermometer-half metric-icon text-primary"></i>
                 <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.cpuMaxTemp">CPU Max Temp</div>
-                <div class="metric-value text-primary"><span id="val-temp">--</span> <span class="metric-unit">°C</span></div>
+                <div class="metric-value text-primary"><span id="val-temp" class="metric-number">{{ hw_temp_initial }}</span> <span class="metric-unit">°C</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="card metric-box" data-accent="power">
                 <i class="fas fa-bolt metric-icon text-warning"></i>
                 <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.powerDraw">Power Draw</div>
-                <div class="metric-value text-warning"><span id="val-power">--</span> <span class="metric-unit">W</span></div>
+                <div class="metric-value text-warning"><span id="val-power" class="metric-number">{{ hw_power_initial }}</span> <span class="metric-unit">W</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="card metric-box" data-accent="airflow">
                 <i class="fas fa-fan metric-icon text-success"></i>
                 <div class="text-uppercase small text-muted fw-bold mb-1" data-i18n="metrics.fanSpeed">Fan Speed</div>
-                <div class="metric-value text-success"><span id="val-fan">--</span> <span class="metric-unit">RPM</span></div>
+                <div class="metric-value text-success"><span id="val-fan" class="metric-number">{{ hw_fan_initial }}</span> <span class="metric-unit">RPM</span></div>
             </div>
         </div>
         <div class="col-6 col-md-3">
             <div class="card hw-mode-card h-100 p-4 d-flex flex-column justify-content-center align-items-center text-center">
                 <div class="text-uppercase small text-muted fw-bold mb-2" data-i18n="metrics.fanControlMode">Fan Control Mode</div>
-                <div id="mode-display" class="h3 fw-bold mb-3">--</div>
-                <button id="btn-mode" class="btn w-100 fw-bold btn-outline-primary" onclick="toggleMode()" data-i18n="hardware.switchMode">Switch Mode</button>
-                <div id="fixed-mode-warning" class="text-warning small mt-2 d-none"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="hardware.disableOverrideMode">Disable override mode to switch</span></div>
+                <div id="mode-display" class="h3 fw-bold mb-3 {{ hw_mode_text_class_initial }}">{{ hw_mode_display_initial }}</div>
+                <button id="btn-mode" class="btn w-100 py-2 fw-bold {{ hw_mode_button_class_initial }}" onclick="toggleMode()">
+                    <i class="fas {{ hw_mode_button_icon_initial }} me-2"></i>{{ hw_mode_button_text_initial }}
+                </button>
+                <div id="fixed-mode-warning" class="text-warning small mt-2{% if not hw_mode_locked_initial %} d-none{% endif %}"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="hardware.disableOverrideMode">Disable override mode to switch</span></div>
             </div>
         </div>
     </div>
@@ -465,12 +566,26 @@
             <div class="card hw-section-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="fas fa-list-ul me-2"></i><span data-i18n="metrics.sensorsList">Sensors List</span></span>
-                    <span class="badge bg-secondary" id="sensor-count">0</span>
+                    <span class="badge bg-secondary" id="sensor-count">{{ hw_sensor_count_initial }}</span>
                 </div>
                 <div class="card-body p-0 scroll-container">
                     <table class="table table-dark table-striped table-hover table-custom mb-0">
                         <thead class="sticky-top bg-dark"><tr><th data-i18n="metrics.source">SOURCE</th><th data-i18n="metrics.name">NAME</th><th class="text-end" data-i18n="metrics.value">VALUE</th><th class="text-center hide-mobile" data-i18n="metrics.status">STATUS</th></tr></thead>
-                        <tbody id="sensor-list"></tbody>
+                        <tbody id="sensor-list">
+                            {% if initial_hw_ready %}
+                            {% for sensor in initial_hw.get('sensors', []) %}
+                            {% set sensor_status = sensor.get('status', '') %}
+                            <tr data-name="{{ sensor.get('name', '') }}">
+                                <td class="text-muted small">{{ sensor.get('source', '') }}</td>
+                                <td><span class="sensor-name-link fw-bold" onclick='showSensorDetail({{ sensor.get("name", "") | tojson }})'>{{ sensor.get('name', '') }}</span></td>
+                                <td class="text-end font-monospace text-info sensor-value-cell">{{ sensor.get('value', '') }} <span class="text-muted small">{{ sensor.get('unit', '') }}</span></td>
+                                <td class="text-center hide-mobile sensor-status-cell">
+                                    <i class="fas fa-circle small {{ 'text-success' if sensor_status == 'ok' else 'text-warning' }}"></i> <span class="small text-muted">{{ sensor_status }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% endif %}
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -490,7 +605,7 @@
                         <i class="fas fa-edit me-1"></i> <span data-i18n="metrics.editFanCurve">Edit Fan Curve</span>
                     </button>
                     <div class="text-muted small text-center mb-3" id="calibration-info">
-                        <span data-i18n="hardware.calibratedRange">Calibrated Range</span>: <span id="rpm-range-display" class="text-info font-monospace fw-bold">--</span>
+                        <span data-i18n="hardware.calibratedRange">Calibrated Range</span>: <span id="rpm-range-display" class="text-info font-monospace fw-bold">{{ hw_rpm_range_initial }}</span>
                     </div>
 
                     <div class="border-top border-secondary pt-3 mt-1">
@@ -503,20 +618,22 @@
                                         </label>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" role="switch" id="fixedFanSwitch" 
-                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleFixedSwitch(this)">
+                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleFixedSwitch(this)"
+                                                   {% if fixed_enabled_initial %}checked{% endif %}>
                                         </div>
                                     </div>
-                                    <div id="fixed-controls-wrapper" class="fixed-control-group disabled-visual">
-                                        <input type="range" class="form-range" min="10" max="100" id="fixedFanSlider" 
+                                    <div id="fixed-controls-wrapper" class="fixed-control-group{% if not fixed_enabled_initial %} disabled-visual{% endif %}">
+                                        <input type="range" class="form-range" min="10" max="100" id="fixedFanSlider"
+                                               value="{{ fixed_target_initial }}"
                                                oninput="handleFixedSliderInput(this.value)" 
-                                               onchange="handleFixedSliderChange(this.value)" disabled>
+                                               onchange="handleFixedSliderChange(this.value)" {% if not fixed_enabled_initial %}disabled{% endif %}>
                                         <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
                                             <div class="w-50 border-end border-secondary">
-                                                <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-6">--%</div>
+                                                <div id="fixedFanValuePct" class="font-monospace text-info fw-bold fs-6">{{ fixed_target_initial }}%</div>
                                                 <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="metrics.target">TARGET</div>
                                             </div>
                                             <div class="w-50">
-                                                <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-6">--</div>
+                                                <div id="fixedFanValueRpm" class="font-monospace text-success fw-bold fs-6">{{ fixed_rpm_initial }}</div>
                                                 <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="metrics.estimatedRpm">EST. RPM</div>
                                             </div>
                                         </div>
@@ -531,16 +648,18 @@
                                         </label>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" role="switch" id="targetTempSwitch" 
-                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleTargetTempSwitch(this)">
+                                                   style="transform: scale(1.25); cursor: pointer;" onchange="toggleTargetTempSwitch(this)"
+                                                   {% if target_enabled_initial %}checked{% endif %} {% if not calibration_ready_initial %}disabled{% endif %}>
                                         </div>
                                     </div>
-                                    <div id="target-temp-controls-wrapper" class="fixed-control-group disabled-visual">
-                                        <input type="range" class="form-range" min="20" max="85" id="targetTempSlider" 
+                                    <div id="target-temp-controls-wrapper" class="fixed-control-group{% if not target_enabled_initial %} disabled-visual{% endif %}">
+                                        <input type="range" class="form-range" min="20" max="85" id="targetTempSlider"
+                                               value="{{ target_temp_initial }}"
                                                oninput="handleTargetTempSliderInput(this.value)" 
-                                               onchange="handleTargetTempSliderChange(this.value)" disabled>
+                                               onchange="handleTargetTempSliderChange(this.value)" {% if not target_enabled_initial %}disabled{% endif %}>
                                         <div class="d-flex justify-content-between text-center mt-2 bg-dark rounded p-2 border border-secondary">
                                             <div class="w-100">
-                                                <div id="targetTempValue" class="font-monospace text-info fw-bold fs-6">--°C</div>
+                                                <div id="targetTempValue" class="font-monospace text-info fw-bold fs-6">{{ target_temp_initial }}°C</div>
                                                 <div class="text-muted small" style="font-size: 0.72rem;" data-i18n="hardware.cpuTarget">CPU TARGET</div>
                                             </div>
                                         </div>
@@ -743,6 +862,10 @@
 
 <script>
     window.I18N_MESSAGES = {{ i18n_messages | tojson }};
+    window.IPMI_INITIAL_HW = {{ initial_hw | tojson }};
+    window.IPMI_INITIAL_HW_READY = {{ initial_hw_ready | tojson }};
+    window.IPMI_INITIAL_CONFIG = {{ initial_config | tojson }};
+    window.IPMI_INITIAL_CONFIG_READY = {{ initial_config_ready | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script>
@@ -766,6 +889,31 @@
     function tx(key, fallback, params = {}) {
         const translated = t(key, params);
         return translated === key ? fallback : translated;
+    }
+
+    function formatStableMetric(value, { digits = 1, integer = false } = {}) {
+        if (value === null || value === undefined || value === '') return '--';
+        const number = Number(value);
+        if (!Number.isFinite(number)) return String(value);
+        if (integer || Math.abs(number - Math.round(number)) < (0.5 * Math.pow(10, -digits))) {
+            return String(Math.round(number));
+        }
+        return number.toFixed(digits).replace(/\.?0+$/, '');
+    }
+
+    function setTextIfChanged(id, value) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const next = String(value);
+        if (el.textContent !== next) el.textContent = next;
+    }
+
+    function setClassNameIfChanged(el, value) {
+        if (el && el.className !== value) el.className = value;
+    }
+
+    function setHtmlIfChanged(el, value) {
+        if (el && el.innerHTML !== value) el.innerHTML = value;
     }
 
     function cssVar(name, fallback) {
@@ -821,8 +969,13 @@
         // 初始化加载顺序
         loadPrefs();
         loadHistRangePrefs();
-        loadInitialConfig(); 
-        refreshData(); 
+        if (!(window.IPMI_INITIAL_HW_READY && applyHardwareData(window.IPMI_INITIAL_HW))) {
+            refreshData();
+        }
+        if (window.IPMI_INITIAL_CONFIG_READY) {
+            applyControlConfig(window.IPMI_INITIAL_CONFIG);
+        }
+        loadInitialConfig();
         loadHistory(false); 
         
         window.IPMI.poll(refreshData, 1000, { visibleOnly: true, immediate: false });
@@ -846,48 +999,52 @@
         return body;
     }
 
+    function applyControlConfig(d) {
+        if(!d) return false;
+
+        if(d.curve) {
+            currentCurve = d.curve || {};
+            const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
+            const data = labels.map(k=>currentCurve[k]);
+            miniCurveChart.data.labels = labels;
+            miniCurveChart.data.datasets = [{data: data, borderColor: chartInk().temp, borderWidth: 2, fill: true, backgroundColor: colorWithAlpha(chartInk().temp, 0.14), tension: 0.3}];
+            miniCurveChart.update('none');
+        }
+
+        const isFixed = isTruthy(d.fixed_fan_speed_enabled);
+        const fixedTarget = d.fixed_fan_speed_target || 30;
+        const isTargetTemp = isTruthy(d.target_temp_mode_enabled);
+        const targetTemp = d.target_temp_target || 65;
+        const calibrationReady = isTruthy(d.calibration_ready);
+
+        const fixedSwitch = document.getElementById('fixedFanSwitch');
+        const fixedSlider = document.getElementById('fixedFanSlider');
+        if (fixedSwitch.checked !== isFixed) fixedSwitch.checked = isFixed;
+        if (fixedSlider.value !== String(fixedTarget)) fixedSlider.value = fixedTarget;
+        lastSavedFixedTarget = parseInt(fixedTarget);
+        updateFixedUIState(isFixed);
+        updateFixedValuesDisplay(fixedTarget);
+
+        const targetSwitch = document.getElementById('targetTempSwitch');
+        const targetSlider = document.getElementById('targetTempSlider');
+        if (targetSlider.value !== String(targetTemp)) targetSlider.value = targetTemp;
+        lastSavedTargetTemp = parseInt(targetTemp);
+        updateTargetTempValuesDisplay(targetTemp);
+        updateTargetTempCalibrationState(calibrationReady);
+
+        const targetEnabled = isTargetTemp && calibrationReady;
+        if (targetSwitch.checked !== targetEnabled) targetSwitch.checked = targetEnabled;
+        updateTargetTempUIState(targetEnabled);
+
+        if (isFixed) {
+            if (targetSwitch.checked) targetSwitch.checked = false;
+            updateTargetTempUIState(false);
+        }
+        return true;
+    }
+
     function loadInitialConfig() {
-        fetch('/api/config').then(r => r.json()).then(d => {
-            if(!d) return;
-
-            if(d.curve) {
-                const labels = Object.keys(d.curve).sort((a,b)=>a-b);
-                const data = labels.map(k=>d.curve[k]);
-                miniCurveChart.data.labels = labels;
-                miniCurveChart.data.datasets = [{data: data, borderColor: chartInk().temp, borderWidth: 2, fill: true, backgroundColor: colorWithAlpha(chartInk().temp, 0.14), tension: 0.3}];
-                miniCurveChart.update();
-            }
-
-            const isFixed = isTruthy(d.fixed_fan_speed_enabled);
-            const fixedTarget = d.fixed_fan_speed_target || 30;
-            const isTargetTemp = isTruthy(d.target_temp_mode_enabled);
-            const targetTemp = d.target_temp_target || 65;
-            const calibrationReady = isTruthy(d.calibration_ready);
-
-            const fixedSwitch = document.getElementById('fixedFanSwitch');
-            const fixedSlider = document.getElementById('fixedFanSlider');
-            fixedSwitch.checked = isFixed;
-            fixedSlider.value = fixedTarget;
-            lastSavedFixedTarget = parseInt(fixedTarget);
-            updateFixedUIState(isFixed);
-            updateFixedValuesDisplay(fixedTarget);
-
-            const targetSwitch = document.getElementById('targetTempSwitch');
-            const targetSlider = document.getElementById('targetTempSlider');
-            targetSlider.value = targetTemp;
-            lastSavedTargetTemp = parseInt(targetTemp);
-            updateTargetTempValuesDisplay(targetTemp);
-            updateTargetTempCalibrationState(calibrationReady);
-
-            const targetEnabled = isTargetTemp && calibrationReady;
-            targetSwitch.checked = targetEnabled;
-            updateTargetTempUIState(targetEnabled);
-
-            if (isFixed) {
-                targetSwitch.checked = false;
-                updateTargetTempUIState(false);
-            }
-        });
+        fetch('/api/config').then(r => r.json()).then(applyControlConfig);
     }
 
     function toggleFixedSwitch(el) {
@@ -1030,13 +1187,13 @@
     }
 
     function updateFixedValuesDisplay(pct) {
-        document.getElementById('fixedFanValuePct').innerText = pct + '%';
+        setTextIfChanged('fixedFanValuePct', `${formatStableMetric(pct, { digits: 0, integer: true })}%`);
         const estRpm = maxRPM > 0 ? Math.round(maxRPM * (pct/100)) : '--';
-        document.getElementById('fixedFanValueRpm').innerText = estRpm;
+        setTextIfChanged('fixedFanValueRpm', formatStableMetric(estRpm, { digits: 0, integer: true }));
     }
 
     function updateTargetTempValuesDisplay(temp) {
-        document.getElementById('targetTempValue').innerText = temp + '°C';
+        setTextIfChanged('targetTempValue', `${formatStableMetric(temp, { digits: 0, integer: true })}°C`);
     }
 
     // --- Fan Override Controls End ---
@@ -1153,148 +1310,157 @@
         }
     }
 
-    function refreshData() {
-        fetch('/api/status_hardware').then(r => r.json()).then(d => {
-            if(!d || !d.sensors) return;
+    function applyHardwareData(d) {
+        if(!d || !d.sensors) return false;
 
-            // 环境检测
-            const envWarn = document.getElementById('env-warning');
-            const envMsg = document.getElementById('env-warning-msg');
-            if (d.env && (!d.env.ipmitool || !d.env.sensors)) {
-                let missing = [];
-                if (!d.env.ipmitool) missing.push('<strong>ipmitool</strong>');
-                if (!d.env.sensors) missing.push('<strong>lm-sensors</strong>');
-                envMsg.innerHTML = t('hardware.envMissingMessage', { components: missing.join(' / ') });
-                envWarn.classList.remove('d-none');
-            } else {
-                envWarn.classList.add('d-none');
-            }
-            document.getElementById('val-temp').innerText = d.temp;
-            document.getElementById('val-power').innerText = d.power;
-            document.getElementById('val-fan').innerText = d.fan_rpm;
-            document.getElementById('hw-strip-temp').innerText = d.temp;
-            document.getElementById('hw-strip-power').innerText = d.power;
-            document.getElementById('hw-strip-fan').innerText = `${d.fan_rpm} RPM`;
-            
-            // 更新全局 RPM 数据
-            maxRPM = d.max_rpm || 0;
-            minRPM = d.min_rpm || 0;
-            const calibrated = maxRPM > 0;
-            const rangeText = calibrated ? `${minRPM} - ${maxRPM} RPM` : t('hardware.notCalibrated');
-            document.getElementById('rpm-range-display').innerText = rangeText;
-            updateTargetTempCalibrationState(calibrated);
+        // 环境检测
+        const envWarn = document.getElementById('env-warning');
+        const envMsg = document.getElementById('env-warning-msg');
+        if (d.env && (!d.env.ipmitool || !d.env.sensors)) {
+            let missing = [];
+            if (!d.env.ipmitool) missing.push('<strong>ipmitool</strong>');
+            if (!d.env.sensors) missing.push('<strong>lm-sensors</strong>');
+            envMsg.innerHTML = t('hardware.envMissingMessage', { components: missing.join(' / ') });
+            envWarn.classList.remove('d-none');
+        } else {
+            envWarn.classList.add('d-none');
+        }
+        const tempText = formatStableMetric(d.temp, { digits: 1 });
+        const powerText = formatStableMetric(d.power, { digits: 0, integer: true });
+        const fanText = formatStableMetric(d.fan_rpm, { digits: 0, integer: true });
+        setTextIfChanged('val-temp', tempText);
+        setTextIfChanged('val-power', powerText);
+        setTextIfChanged('val-fan', fanText);
+        setTextIfChanged('hw-strip-temp', tempText);
+        setTextIfChanged('hw-strip-power', powerText);
+        setTextIfChanged('hw-strip-fan', `${fanText} RPM`);
 
-            if (!isDraggingFixedSlider) {
-                const currentSliderVal = document.getElementById('fixedFanSlider').value;
-                updateFixedValuesDisplay(currentSliderVal);
-            }
-            if (!isDraggingTargetTempSlider) {
-                const currentTargetTemp = document.getElementById('targetTempSlider').value;
-                updateTargetTempValuesDisplay(currentTargetTemp);
-            }
+        // 更新全局 RPM 数据
+        maxRPM = d.max_rpm || 0;
+        minRPM = d.min_rpm || 0;
+        const calibrated = maxRPM > 0;
+        const minRpmText = formatStableMetric(minRPM, { digits: 0, integer: true });
+        const maxRpmText = formatStableMetric(maxRPM, { digits: 0, integer: true });
+        const rangeText = calibrated ? `${minRpmText} - ${maxRpmText} RPM` : t('hardware.notCalibrated');
+        setTextIfChanged('rpm-range-display', rangeText);
+        updateTargetTempCalibrationState(calibrated);
 
-            const modeText = document.getElementById('mode-display');
-            const btn = document.getElementById('btn-mode');
-            const warnMsg = document.getElementById('fixed-mode-warning');
-            const fixedSwitch = document.getElementById('fixedFanSwitch');
-            const targetSwitch = document.getElementById('targetTempSwitch');
+        if (!isDraggingFixedSlider) {
+            const currentSliderVal = document.getElementById('fixedFanSlider').value;
+            updateFixedValuesDisplay(currentSliderVal);
+        }
+        if (!isDraggingTargetTempSlider) {
+            const currentTargetTemp = document.getElementById('targetTempSlider').value;
+            updateTargetTempValuesDisplay(currentTargetTemp);
+        }
 
-            if (d.mode === 'fixed' || d.mode === 'target_temp') {
-                const isFixedMode = d.mode === 'fixed';
-                const fixedLabel = tx('hardware.modeFixed', 'Fixed Speed');
-                const targetTempLabel = tx('hardware.modeTargetTemp', 'Target Temp');
-                modeText.innerText = (isFixedMode ? fixedLabel : targetTempLabel).toUpperCase();
-                modeText.className = `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`;
-                btn.className = 'btn w-100 py-2 fw-bold btn-secondary disabled';
-                btn.innerHTML = `<i class="fas fa-ban me-2"></i>${tx('hardware.modeLocked', 'Mode Locked')}`;
-                warnMsg.classList.remove('d-none');
-                warnMsg.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${tx('hardware.disableModeToSwitch', 'Disable override mode to switch', { mode: isFixedMode ? tx('metrics.fixedSpeed', 'Fixed Speed') : tx('metrics.targetTemp', 'Target Temp') })}`;
+        const modeText = document.getElementById('mode-display');
+        const btn = document.getElementById('btn-mode');
+        const warnMsg = document.getElementById('fixed-mode-warning');
+        const fixedSwitch = document.getElementById('fixedFanSwitch');
+        const targetSwitch = document.getElementById('targetTempSwitch');
 
-                if (isFixedMode) {
-                    if (!fixedSwitch.checked) {
-                        fixedSwitch.checked = true;
-                        updateFixedUIState(true);
-                    }
-                    if (targetSwitch.checked) {
-                        targetSwitch.checked = false;
-                        updateTargetTempUIState(false);
-                    }
-                } else {
-                    if (!targetSwitch.checked) {
-                        targetSwitch.checked = true;
-                        updateTargetTempUIState(true);
-                    }
-                    if (fixedSwitch.checked) {
-                        fixedSwitch.checked = false;
-                        updateFixedUIState(false);
-                    }
-                }
-            } else {
-                const isAuto = d.mode === 'auto';
-                const automaticLabel = tx('hardware.modeAutomatic', 'Automatic');
-                const manualLabel = tx('hardware.modeManual', 'Manual');
-                modeText.innerText = (isAuto ? automaticLabel : manualLabel).toUpperCase();
-                modeText.className = `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`;
-                btn.className = `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`;
-                btn.innerHTML = isAuto ? `<i class="fas fa-hand-paper me-2"></i>${tx('hardware.switchToManual', 'Switch to Manual')}` : `<i class="fas fa-robot me-2"></i>${tx('hardware.switchToAuto', 'Switch to Auto')}`;
-                btn.onclick = toggleMode;
-                warnMsg.classList.add('d-none');
+        if (d.mode === 'fixed' || d.mode === 'target_temp') {
+            const isFixedMode = d.mode === 'fixed';
+            const fixedLabel = tx('hardware.modeFixed', 'Fixed Speed');
+            const targetTempLabel = tx('hardware.modeTargetTemp', 'Target Temp');
+            setTextIfChanged('mode-display', (isFixedMode ? fixedLabel : targetTempLabel).toUpperCase());
+            setClassNameIfChanged(modeText, `h3 fw-bold mb-3 ${isFixedMode ? 'text-warning' : 'text-info'}`);
+            setClassNameIfChanged(btn, 'btn w-100 py-2 fw-bold btn-secondary disabled');
+            setHtmlIfChanged(btn, `<i class="fas fa-ban me-2"></i>${tx('hardware.modeLocked', 'Mode Locked')}`);
+            warnMsg.classList.remove('d-none');
+            setHtmlIfChanged(warnMsg, `<i class="fas fa-exclamation-triangle"></i> ${tx('hardware.disableModeToSwitch', 'Disable override mode to switch', { mode: isFixedMode ? tx('metrics.fixedSpeed', 'Fixed Speed') : tx('metrics.targetTemp', 'Target Temp') })}`);
 
-                if (fixedSwitch.checked) {
-                    fixedSwitch.checked = false;
-                    updateFixedUIState(false);
+            if (isFixedMode) {
+                if (!fixedSwitch.checked) {
+                    fixedSwitch.checked = true;
+                    updateFixedUIState(true);
                 }
                 if (targetSwitch.checked) {
                     targetSwitch.checked = false;
                     updateTargetTempUIState(false);
                 }
+            } else {
+                if (!targetSwitch.checked) {
+                    targetSwitch.checked = true;
+                    updateTargetTempUIState(true);
+                }
+                if (fixedSwitch.checked) {
+                    fixedSwitch.checked = false;
+                    updateFixedUIState(false);
+                }
             }
+        } else {
+            const isAuto = d.mode === 'auto';
+            const automaticLabel = tx('hardware.modeAutomatic', 'Automatic');
+            const manualLabel = tx('hardware.modeManual', 'Manual');
+            setTextIfChanged('mode-display', (isAuto ? automaticLabel : manualLabel).toUpperCase());
+            setClassNameIfChanged(modeText, `h3 fw-bold mb-3 ${isAuto ? 'text-success' : 'text-primary'}`);
+            setClassNameIfChanged(btn, `btn w-100 py-2 fw-bold ${isAuto ? 'btn-outline-success' : 'btn-outline-primary'}`);
+            setHtmlIfChanged(btn, isAuto ? `<i class="fas fa-hand-paper me-2"></i>${tx('hardware.switchToManual', 'Switch to Manual')}` : `<i class="fas fa-robot me-2"></i>${tx('hardware.switchToAuto', 'Switch to Auto')}`);
+            btn.onclick = toggleMode;
+            warnMsg.classList.add('d-none');
 
-            // 传感器列表渲染 (性能优化：增量更新 DOM，避免全量替换导致的卡顿)
-            const tbody = document.getElementById('sensor-list');
-            const seenNames = new Set();
+            if (fixedSwitch.checked) {
+                fixedSwitch.checked = false;
+                updateFixedUIState(false);
+            }
+            if (targetSwitch.checked) {
+                targetSwitch.checked = false;
+                updateTargetTempUIState(false);
+            }
+        }
 
-            d.sensors.forEach(s => {
-                seenNames.add(s.name);
-                // 使用名称的 Base64 编码作为 ID，避免特殊字符和空格引起的问题
-                const safeId = "snr-" + btoa(encodeURIComponent(s.name)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-                let row = document.getElementById(safeId);
-                
-                const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
-                const valueHtml = `${s.value} <span class="text-muted small">${s.unit}</span>`;
-                const statusHtml = `<i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span>`;
+        // 传感器列表渲染 (性能优化：增量更新 DOM，避免全量替换导致的卡顿)
+        const tbody = document.getElementById('sensor-list');
+        const seenNames = new Set();
 
-                if (!row) {
-                    // 创建新行
-                    const tr = document.createElement('tr');
-                    tr.id = safeId;
-                    tr.setAttribute('data-name', s.name);
-                    tr.innerHTML = `
-                        <td class="text-muted small">${s.source}</td>
-                        <td><span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span></td>
-                        <td class="text-end font-monospace text-info sensor-value-cell">${valueHtml}</td>
-                        <td class="text-center hide-mobile sensor-status-cell">${statusHtml}</td>
-                    `;
-                    tbody.appendChild(tr);
-                } else {
-                    // 更新现有行 (仅当内容变化时操作 DOM)
-                    const valCell = row.querySelector('.sensor-value-cell');
-                    const stCell = row.querySelector('.sensor-status-cell');
-                    if (valCell && valCell.innerHTML !== valueHtml) valCell.innerHTML = valueHtml;
-                    if (stCell && stCell.innerHTML !== statusHtml) stCell.innerHTML = statusHtml;
-                }
-            });
+        d.sensors.forEach(s => {
+            seenNames.add(s.name);
+            // 使用名称的 Base64 编码作为 ID，避免特殊字符和空格引起的问题
+            const safeId = "snr-" + btoa(encodeURIComponent(s.name)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+            let row = document.getElementById(safeId) || Array.from(tbody.rows).find(existing => existing.getAttribute('data-name') === s.name);
+            if (row && !row.id) row.id = safeId;
 
-            // 移除不再存在的传感器
-            Array.from(tbody.rows).forEach(row => {
-                const name = row.getAttribute('data-name');
-                if (name && !seenNames.has(name)) {
-                    row.remove();
-                }
-            });
+            const statusColor = s.status === 'ok' ? 'text-success' : 'text-warning';
+            const valueHtml = `${s.value} <span class="text-muted small">${s.unit}</span>`;
+            const statusHtml = `<i class="fas fa-circle small ${statusColor}"></i> <span class="small text-muted">${s.status}</span>`;
 
-            document.getElementById('sensor-count').innerText = d.sensors.length;
-        }).catch(e => console.log('Fetch error:', e));
+            if (!row) {
+                // 创建新行
+                const tr = document.createElement('tr');
+                tr.id = safeId;
+                tr.setAttribute('data-name', s.name);
+                tr.innerHTML = `
+                    <td class="text-muted small">${s.source}</td>
+                    <td><span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span></td>
+                    <td class="text-end font-monospace text-info sensor-value-cell">${valueHtml}</td>
+                    <td class="text-center hide-mobile sensor-status-cell">${statusHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            } else {
+                // 更新现有行 (仅当内容变化时操作 DOM)
+                const valCell = row.querySelector('.sensor-value-cell');
+                const stCell = row.querySelector('.sensor-status-cell');
+                if (valCell && valCell.innerHTML !== valueHtml) valCell.innerHTML = valueHtml;
+                if (stCell && stCell.innerHTML !== statusHtml) stCell.innerHTML = statusHtml;
+            }
+        });
+
+        // 移除不再存在的传感器
+        Array.from(tbody.rows).forEach(row => {
+            const name = row.getAttribute('data-name');
+            if (name && !seenNames.has(name)) {
+                row.remove();
+            }
+        });
+
+        setTextIfChanged('sensor-count', d.sensors.length);
+        return true;
+    }
+
+    function refreshData() {
+        fetch('/api/status_hardware').then(r => r.json()).then(applyHardwareData).catch(e => console.log('Fetch error:', e));
     }
 
     function handleTagChange() {
