@@ -10,7 +10,7 @@ IPMI_WEB is a lightweight self-hosted operations panel for IPMI-capable servers.
 
 ## Current Status
 
-Current application version: `1.4.6`.
+Current application version: `1.5.0`.
 
 The repository has already gone through a front-end modernization pass. The current UI style is a **light-first, low-saturation industrial operations console**: dense operational screens, 8px-radius panels, neutral system surfaces, restrained blue/teal/green/amber/red accents, sticky compact navigation, local Bootstrap/Font Awesome/Chart.js assets, persistent light/dark switching through `static/js/theme.js`, and prefetched PJAX navigation through `static/js/pjax.js`. The app is still Flask/Jinja server-rendered and intentionally does not use a JavaScript bundler yet.
 

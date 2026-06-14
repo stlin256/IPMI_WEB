@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.0 - 2026-06-15
+
+### 中文
+
+- 前端体验升级：IPMI_WEB 完成一次大规模界面风格重塑，核心页面统一为新的现代化运维面板设计。
+- 登录、导航、硬件、资源、GPU、历史和日志/设置页面均完成视觉、动效和移动端体验优化。
+- 新增预取式 PJAX 页面切换与页面生命周期清理，让跨页切换更快、更稳定。
+
+### English
+
+- Frontend experience upgraded: IPMI_WEB has received a large-scale visual redesign, unifying core pages under a new modern operations-panel style.
+- Login, navigation, Hardware, Resources, GPU, History, and Logs/Settings pages now have improved visuals, motion, and mobile behavior.
+- Added prefetched PJAX navigation and page lifecycle cleanup for faster and more stable route switching.
+
 ## 1.4.6 - 2026-06-01
 
 ### 中文
