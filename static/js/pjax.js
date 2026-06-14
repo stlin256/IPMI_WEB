@@ -49,6 +49,69 @@
         };
     }
 
+    function routeDataUrls(path) {
+        const hardwareHours = localStorage.getItem('hw_hist_time_range') || '24';
+        const historyHours = localStorage.getItem('hist_time_range') || '1';
+        const energyStart = localStorage.getItem('energy_start_ts') || '0';
+        const urlSets = {
+            '/hardware': [
+                '/api/status_hardware',
+                '/api/history_custom?hours=' + encodeURIComponent(hardwareHours) + '&energy=0',
+                '/api/config',
+                '/api/dashboard_options',
+                '/api/log_status',
+                '/api/update_notice'
+            ],
+            '/resources': [
+                '/api/status_resources',
+                '/api/history',
+                '/api/log_status'
+            ],
+            '/gpu': [
+                '/api/status_gpu',
+                '/api/config/gpu',
+                '/api/log_status'
+            ],
+            '/history': [
+                '/api/dashboard_options',
+                '/api/history_custom?hours=' + encodeURIComponent(historyHours) + '&energy_start=' + encodeURIComponent(energyStart),
+                '/api/log_status'
+            ],
+            '/logs': [
+                '/api/log_delay_config',
+                '/api/audit_logs?limit=100&offset=0',
+                '/api/recording_stats'
+            ]
+        };
+        return urlSets[path] || [];
+    }
+
+    async function prefetchRouteData(path, options = {}) {
+        if (!window.IPMI || typeof window.IPMI.prefetchJson !== 'function') return;
+        const urls = routeDataUrls(path);
+        if (!urls.length) return;
+        const tasks = urls.map((url) => {
+            return window.IPMI.prefetchJson(url, {
+                signal: options.signal,
+                timeoutMs: options.timeoutMs || 12000,
+                cacheTtlMs: options.cacheTtlMs || 15000
+            });
+        });
+        await Promise.allSettled(tasks);
+    }
+
+    function waitForWarmData(path, signal) {
+        const dataPromise = prefetchRouteData(path, {
+            signal,
+            timeoutMs: 8000,
+            cacheTtlMs: 15000
+        });
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(resolve, 2200);
+        });
+        return Promise.race([dataPromise, timeoutPromise]);
+    }
+
     async function fetchPage(path, options = {}) {
         const cached = prefetchCache.get(path);
         if (cached && !options.force) return cached;
@@ -162,6 +225,19 @@
         }
     }
 
+    function nextFrame() {
+        return new Promise((resolve) => {
+            window.requestAnimationFrame(() => resolve());
+        });
+    }
+
+    async function settleHydratedPage() {
+        await Promise.resolve();
+        await nextFrame();
+        await Promise.resolve();
+        await nextFrame();
+    }
+
     async function render(path, options = {}) {
         if (!routes.has(path)) {
             window.location.href = path;
@@ -174,7 +250,10 @@
         document.documentElement.classList.add('ipmi-pjax-loading');
 
         try {
-            const page = await fetchPage(path, { signal: controller.signal, force: options.force });
+            const pagePromise = fetchPage(path, { signal: controller.signal, force: options.force });
+            const dataPromise = waitForWarmData(path, controller.signal);
+            const page = await pagePromise;
+            await dataPromise;
             if (controller.signal.aborted) return;
 
             if (window.IPMI && typeof window.IPMI.destroyPage === 'function') {
@@ -186,6 +265,10 @@
             document.body.innerHTML = page.bodyHtml;
             document.title = page.title || document.title;
             updateNavigation(path);
+
+            await runPageScripts(page);
+            await settleHydratedPage();
+
             currentPath = path;
 
             if (!options.replace) {
@@ -194,7 +277,6 @@
                 window.history.replaceState({ pjax: true, path }, '', path);
             }
 
-            await runPageScripts(page);
             prefetchNeighbors(path);
             window.scrollTo({ top: 0, behavior: 'auto' });
         } catch (error) {
@@ -208,10 +290,13 @@
     }
 
     function prefetch(path) {
-        if (!routes.has(path) || prefetchCache.has(path)) return;
+        if (!routes.has(path)) return;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-        fetchPage(path, { signal: controller.signal })
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        Promise.allSettled([
+            prefetchCache.has(path) ? Promise.resolve(prefetchCache.get(path)) : fetchPage(path, { signal: controller.signal }),
+            prefetchRouteData(path, { signal: controller.signal })
+        ])
             .catch((error) => {
                 if (!window.IPMI.isAbort(error)) console.debug('PJAX prefetch failed:', path, error);
             })
