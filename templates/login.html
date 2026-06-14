@@ -182,17 +182,22 @@
             0% {
                 opacity: 0;
                 clip-path: circle(0 at var(--login-theme-x) var(--login-theme-y));
-                filter: blur(20px) saturate(0.95);
+                filter: blur(16px) saturate(0.95);
             }
-            38% {
-                opacity: 0.7;
-                clip-path: circle(58vmax at var(--login-theme-x) var(--login-theme-y));
-                filter: blur(10px) saturate(1.25);
+            32% {
+                opacity: 0.68;
+                clip-path: circle(44vmax at var(--login-theme-x) var(--login-theme-y));
+                filter: blur(8px) saturate(1.22);
+            }
+            72% {
+                opacity: 0.28;
+                clip-path: circle(112vmax at var(--login-theme-x) var(--login-theme-y));
+                filter: blur(4px) saturate(1.08);
             }
             100% {
                 opacity: 0;
                 clip-path: circle(142vmax at var(--login-theme-x) var(--login-theme-y));
-                filter: blur(4px) saturate(1);
+                filter: blur(2px) saturate(1);
             }
         }
         @keyframes login-theme-stage-shift {
@@ -211,8 +216,8 @@
                 opacity: 0;
                 transform: translateX(-38%) skewX(-12deg);
             }
-            38% {
-                opacity: 0.62;
+            46% {
+                opacity: 0.56;
             }
             100% {
                 opacity: 0;
@@ -304,11 +309,11 @@
         .input-group-text,
         .btn-primary {
             transition:
-                background-color 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                border-color 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                box-shadow 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                color 680ms cubic-bezier(0.22, 0.61, 0.36, 1),
-                filter 680ms cubic-bezier(0.22, 0.61, 0.36, 1);
+                background-color 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                border-color 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                box-shadow 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                color 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                filter 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
         }
         .form-control { padding: 0.78rem 1rem; }
         .btn-primary {
@@ -318,8 +323,8 @@
         @media (prefers-reduced-motion: no-preference) {
             .login-stage::after {
                 animation:
-                    login-grid-reveal 1.35s cubic-bezier(0.18, 0.84, 0.26, 1) both 80ms,
-                    login-stage-drift 15s ease-in-out infinite alternate 1.35s;
+                    login-grid-reveal 150ms cubic-bezier(0.18, 0.84, 0.26, 1) both 40ms,
+                    login-stage-drift 15s ease-in-out infinite alternate 150ms;
             }
             .login-stage::before {
                 animation: login-frame-reveal 1.7s cubic-bezier(0.18, 0.84, 0.26, 1) both 980ms;
@@ -353,13 +358,13 @@
                 animation: login-card-glow 2.7s cubic-bezier(0.16, 1, 0.3, 1) both 2.85s;
             }
             html.login-theme-shifting body::before {
-                animation: login-theme-wash 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
+                animation: login-theme-wash 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             html.login-theme-shifting .login-stage {
-                animation: login-theme-stage-shift 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
+                animation: login-theme-stage-shift 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             html.login-theme-shifting .login-shell::before {
-                animation: login-theme-shell-sheen 980ms cubic-bezier(0.16, 1, 0.3, 1) both 80ms;
+                animation: login-theme-shell-sheen 680ms cubic-bezier(0.16, 1, 0.3, 1) both 35ms;
             }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -442,6 +447,8 @@
         const errorMsg = document.getElementById('login-error');
         const loginForm = document.getElementById('login-form');
         let loginThemeTimer = null;
+        let loginThemeSwitchTimer = null;
+        let loginThemeClickSwitch = false;
 
         if (waitSeconds > 0) {
             startCooldown(waitSeconds);
@@ -481,22 +488,55 @@
             loginBtn.innerText = t('app.verifying');
         };
 
-        window.addEventListener('ipmi:theme-change', () => {
+        function themeTogglePoint() {
+            const toggle = document.querySelector('.ipmi-theme-toggle');
+            if (!toggle) return;
+            const rect = toggle.getBoundingClientRect();
+            document.body.style.setProperty('--login-theme-x', `${rect.left + rect.width / 2}px`);
+            document.body.style.setProperty('--login-theme-y', `${rect.top + rect.height / 2}px`);
+        }
+
+        function runLoginThemeAnimation() {
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
             const root = document.documentElement;
-            const toggle = document.querySelector('.ipmi-theme-toggle');
-            if (toggle) {
-                const rect = toggle.getBoundingClientRect();
-                document.body.style.setProperty('--login-theme-x', `${rect.left + rect.width / 2}px`);
-                document.body.style.setProperty('--login-theme-y', `${rect.top + rect.height / 2}px`);
-            }
+            themeTogglePoint();
             root.classList.remove('login-theme-shifting');
             void root.offsetWidth;
             root.classList.add('login-theme-shifting');
             clearTimeout(loginThemeTimer);
             loginThemeTimer = setTimeout(() => {
                 root.classList.remove('login-theme-shifting');
-            }, 980);
+            }, 720);
+        }
+
+        document.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target : null;
+            const toggle = target ? target.closest('.ipmi-theme-toggle') : null;
+            if (!toggle || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            const root = document.documentElement;
+            if (root.classList.contains('login-theme-shifting')) return;
+
+            const currentTheme = window.IPMITheme ? window.IPMITheme.get() : (root.getAttribute('data-bs-theme') || 'light');
+            const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            runLoginThemeAnimation();
+            clearTimeout(loginThemeSwitchTimer);
+            loginThemeSwitchTimer = setTimeout(() => {
+                loginThemeClickSwitch = true;
+                if (window.IPMITheme && typeof window.IPMITheme.set === 'function') {
+                    window.IPMITheme.set(nextTheme);
+                } else {
+                    root.setAttribute('data-bs-theme', nextTheme);
+                }
+                loginThemeClickSwitch = false;
+            }, 140);
+        }, true);
+
+        window.addEventListener('ipmi:theme-change', () => {
+            if (loginThemeClickSwitch) return;
+            runLoginThemeAnimation();
         });
     </script>
 </body>
