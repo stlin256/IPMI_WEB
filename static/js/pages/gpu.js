@@ -335,7 +335,6 @@
                         <div class="gpu-name">
                             <div class="gpu-index">${indexText}</div>
                             <div><i class="fas fa-microchip me-2 text-primary"></i><span id="gpu-${index}-name">${escapeHtml(title)}</span></div>
-                            ${endpoint ? `<div class="gpu-agent-meta">${escapeHtml(endpoint)}</div>` : ''}
                         </div>
                         <span class="badge temp-badge ${card.offline ? 'bg-secondary' : ''}" id="gpu-${index}-temp-badge">${badge}</span>
                     </div>
