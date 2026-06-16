@@ -241,7 +241,8 @@ def load_install_metadata():
         'install_root': os.path.abspath(os.getcwd()),
         'data_root': get_data_root(),
         'port': PORT,
-        'db_path': os.path.abspath(DB_FILE)
+        'db_path': os.path.abspath(DB_FILE),
+        'update_channel': 'release'
     }
     candidate_paths = []
     env_path = os.environ.get(INSTALL_METADATA_ENV)
@@ -277,6 +278,10 @@ def normalize_setup_locale(raw):
     if text.startswith('en'):
         return 'en'
     return DEFAULT_LOCALE
+
+def normalize_update_channel(raw):
+    channel = str(raw or '').strip().lower()
+    return channel if channel in ('dev', 'release') else 'release'
 
 def parse_setup_int(value, default, min_value, max_value):
     try:
@@ -2720,6 +2725,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_complete_notice_pending', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('auto_update_mode', 'notify')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('auto_update_enabled', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('update_channel', 'release')")
 
     # 兼容性升级与初始化：确保所有邮件相关配置项存在
     smtp_configs = [
@@ -5248,7 +5254,8 @@ def setup_page():
         install_root=install_root,
         data_root=data_root,
         db_path=os.path.abspath(str(metadata.get('db_path') or DB_FILE)),
-        retention_days=RETENTION_DAYS
+        retention_days=RETENTION_DAYS,
+        update_channel=normalize_update_channel(metadata.get('update_channel'))
     )
 
 @app.route('/api/setup/complete', methods=['POST'])
@@ -5276,6 +5283,7 @@ def api_setup_complete():
     update_mode = str(data.get('updateMode') or 'auto').strip().lower()
     if update_mode not in ('auto', 'notify'):
         return setup_error('Auto update mode is invalid.')
+    update_channel = normalize_update_channel(data.get('updateChannel'))
 
     has_gpu = parse_bool(data.get('hasGpu'), False)
     try:
@@ -5332,6 +5340,7 @@ def api_setup_complete():
         set_config_value(conn, 'low_disk_prune_blocked_until', 0)
         set_config_value(conn, 'auto_update_mode', update_mode)
         set_config_value(conn, 'auto_update_enabled', 'true' if update_mode == 'auto' else 'false')
+        set_config_value(conn, 'update_channel', update_channel)
         set_config_value(conn, 'last_access_domain', request.url_root.rstrip('/'))
 
         if skip_email:
@@ -5365,6 +5374,7 @@ def api_setup_complete():
             'db_path': os.path.abspath(DB_FILE),
             'port': port,
             'auto_update_mode': update_mode,
+            'update_channel': update_channel,
             'setup_completed_at': int(time.time())
         })
         atomic_write_json(os.path.join(get_data_root(), INSTALL_METADATA_FILENAME), metadata)
@@ -5392,7 +5402,8 @@ def api_setup_complete():
             'low_disk_guard': low_disk_guard,
             'gpu_enabled': has_gpu,
             'email_enabled': not skip_email,
-            'auto_update_mode': update_mode
+            'auto_update_mode': update_mode,
+            'update_channel': update_channel
         },
         operator=get_client_ip()
     )
@@ -6057,7 +6068,7 @@ def api_settings():
                 'summary_enabled', 'summary_daily_enabled', 'summary_daily_time',
                 'summary_weekly_enabled', 'summary_weekly_day', 'summary_weekly_time',
                 'summary_custom_enabled', 'summary_custom_hours', 'server_name',
-                'ui_language')
+                'ui_language', 'auto_update_mode', 'auto_update_enabled', 'update_channel')
         c.execute(f"SELECT key, value FROM config WHERE key IN {keys}")
         res = {row['key']: row['value'] for row in c.fetchall()}
         c.execute("SELECT value FROM config WHERE key='smtp_pass'")
@@ -6085,6 +6096,11 @@ def api_settings():
         res['low_disk_auto_prune_enabled'] = (
             'true' if str(res.get('low_disk_auto_prune_enabled', 'false')).lower() == 'true' else 'false'
         )
+        res['auto_update_mode'] = str(res.get('auto_update_mode') or 'notify')
+        if res['auto_update_mode'] not in ('auto', 'notify'):
+            res['auto_update_mode'] = 'notify'
+        res['auto_update_enabled'] = 'true' if res['auto_update_mode'] == 'auto' else 'false'
+        res['update_channel'] = normalize_update_channel(res.get('update_channel'))
         res['ui_language'] = normalize_locale(res.get('ui_language')) or get_current_locale()
         try:
             res['low_disk_prune_blocked_until'] = int(res.get('low_disk_prune_blocked_until', 0))
@@ -6191,13 +6207,21 @@ def api_settings():
                 'summary_custom_enabled': '自定义报告开关',
                 'summary_custom_hours': '自定义报告间隔',
                 'server_name': '服务器名称',
-                'ui_language': '界面语言'
+                'ui_language': '界面语言',
+                'auto_update_mode': '自动更新模式',
+                'update_channel': '更新通道'
             }
             for key, label in mapping.items():
                 if key in data:
                     new_v = data[key]
                     if key == 'ui_language':
                         new_v = normalize_locale(new_v) or DEFAULT_LOCALE
+                    if key == 'auto_update_mode':
+                        new_v = str(new_v or 'notify').lower()
+                        if new_v not in ('auto', 'notify'):
+                            return jsonify({'error': 'Invalid auto update mode'}), 400
+                    if key == 'update_channel':
+                        new_v = normalize_update_channel(new_v)
                     if key in SENSITIVE_CONFIG_KEYS and str(new_v) == '' and current_configs.get(key):
                         continue
                     if is_changed(key, new_v):
@@ -6210,6 +6234,11 @@ def api_settings():
                         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, db_v))
                         if key == 'low_disk_auto_prune_enabled':
                             c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('low_disk_prune_blocked_until', '0')")
+                        if key == 'auto_update_mode':
+                            c.execute(
+                                "INSERT OR REPLACE INTO config (key, value) VALUES ('auto_update_enabled', ?)",
+                                ('true' if new_v == 'auto' else 'false',)
+                            )
                         old_display = mask_config_value(key, format_val(old_v))
                         new_display = mask_config_value(key, format_val(new_v))
                         changes.append(f"{label}: {old_display} -> {new_display}")

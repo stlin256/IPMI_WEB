@@ -66,8 +66,11 @@ python3 -m venv "$INSTALL_DIR/.venv"
 
 SETUP_TOKEN="$("$INSTALL_DIR/.venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(32))")"
 BOOTSTRAP_PASSWORD="$("$INSTALL_DIR/.venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(24))")"
+REPO_URL="$(git -C "$SOURCE_DIR" config --get remote.origin.url 2>/dev/null || true)"
+REPO_BRANCH="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+CURRENT_COMMIT="$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true)"
 
-export INSTALL_DIR DATA_DIR PORT SERVICE_NAME SETUP_TOKEN BOOTSTRAP_PASSWORD
+export INSTALL_DIR DATA_DIR PORT SERVICE_NAME SETUP_TOKEN BOOTSTRAP_PASSWORD REPO_URL REPO_BRANCH CURRENT_COMMIT
 "$INSTALL_DIR/.venv/bin/python" - <<'PY'
 import json
 import os
@@ -102,7 +105,12 @@ metadata = {
     "port": port,
     "python": os.path.join(install_dir, ".venv", "bin", "python"),
     "entrypoint": os.path.join(install_dir, "app.py"),
-    "auto_update_mode": "auto"
+    "auto_update_mode": "auto",
+    "update_channel": "release",
+    "update_channels": ["release", "dev"],
+    "repo_url": os.environ.get("REPO_URL", ""),
+    "branch": os.environ.get("REPO_BRANCH", "") or "main",
+    "current_commit": os.environ.get("CURRENT_COMMIT", "")
 }
 
 with open(os.path.join(install_dir, "config.json"), "w", encoding="utf-8") as f:

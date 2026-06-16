@@ -247,8 +247,6 @@ SQLite 使用 WAL 模式，并启用增量 vacuum 支持。长期部署仍应监
 
 ## 快速开始
 
-IPMI_WEB 面向具备 IPMI 访问能力的 Linux 主机。风扇控制命令偏 Dell 服务器实现，最初围绕 PowerEdge R730xd 构建，在其他硬件上请谨慎测试。
-
 ### 交互式安装
 
 正式部署建议 clone 后直接运行安装脚本。每一步提示里的方括号内容就是默认值，直接回车会采用该默认值。
@@ -268,7 +266,7 @@ Linux 安装脚本会完成：
 - 创建并启动 systemd 服务；
 - 输出类似 `http://server-ip:90/setup?token=...` 的首次配置地址。
 
-浏览器打开这个 setup 地址后，引导界面会配置显示用服务器名称、管理员密码、数据库保留期、低磁盘空间保护、可选 GPU Agent、可选 SMTP 邮件告警和自动更新模式。完成后会自动登录并进入 `/hardware`。
+浏览器打开这个 setup 地址后，引导界面会配置显示用服务器名称、管理员密码、数据库保留期、低磁盘空间保护、可选 GPU Agent、可选 SMTP 邮件告警、自动更新模式和更新通道。默认通道是 `release`，只有需要紧跟 `main` 分支 commit 时才切到 `dev`。完成后会自动登录并进入 `/hardware`。
 
 Windows 下请使用管理员 PowerShell：
 
@@ -279,6 +277,10 @@ cd IPMI_WEB
 ```
 
 Windows 安装脚本会使用提权计划任务作为启动管理器，因为当前 Python 应用还没有打包成原生 Windows Service。它同样会生成 `config.json`、`install.json`、一次性 token，并进入同一套首次配置向导。
+
+### Release 发布包
+
+`.github/workflows/release.yml` 是给 `release` 更新通道使用的手动 GitHub Actions workflow。进入 Actions 页运行 **Release Package**，填写例如 `1.5.2` 的版本号，并选择要打包的目标 ref。workflow 会校验应用、生成 `ipmi-web-<version>.zip`、`.sha256` 校验文件和 release manifest，然后把三者发布到 `v<version>` 标签对应的 GitHub Release。
 
 ### 手动开发运行
 

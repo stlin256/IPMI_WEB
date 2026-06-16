@@ -131,6 +131,10 @@
             0% { opacity: 0; transform: translate3d(0, -0.42rem, 0); filter: blur(5px); }
             100% { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
         }
+        @keyframes setup-brand-language-in {
+            0% { opacity: 0; transform: translate3d(0, 0.48rem, 0) scale(0.985); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+        }
         @keyframes setup-wait-pulse {
             0%, 100% { transform: scale(1); opacity: 0.82; }
             50% { transform: scale(1.08); opacity: 1; }
@@ -222,6 +226,25 @@
             color: var(--text-muted);
             font-size: clamp(1.12rem, 2.25vw, 1.45rem);
             font-weight: 850;
+        }
+        .login-brand-copy {
+            transition:
+                opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+            will-change: opacity, transform;
+        }
+        .login-identity.is-brand-switching .login-brand-copy {
+            animation: none !important;
+            opacity: 0;
+            transform: translate3d(0, -0.42rem, 0) scale(0.985);
+        }
+        .login-identity.is-brand-settling .login-brand-copy {
+            animation: setup-brand-language-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both !important;
+        }
+        .login-identity.is-brand-stable:not(.is-brand-switching):not(.is-brand-settling) .login-brand-copy {
+            animation: none !important;
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
         }
         .login-card {
             width: 100%;
@@ -840,11 +863,13 @@
             .login-shell::before,
             .login-identity,
             .login-kicker::before,
+            .login-brand-copy,
             .login-wordmark,
             .login-server,
             .login-card,
             .login-card::before {
                 animation: none !important;
+                transition: none !important;
             }
             .setup-card {
                 opacity: 1;
@@ -923,9 +948,9 @@
     <div class="login-stage"></div>
     <main class="login-shell">
         <section class="login-identity">
-            <div class="login-kicker" data-l10n="brand.kicker">FIRST RUN</div>
+            <div class="login-kicker login-brand-copy" data-l10n="brand.kicker">FIRST RUN</div>
             <h1 class="login-wordmark">IPMI<br>WEB</h1>
-            <div class="login-server" data-l10n="brand.subtitle">Setup Console</div>
+            <div class="login-server login-brand-copy" data-l10n="brand.subtitle">Setup Console</div>
         </section>
 
         <section id="setup-card" class="login-card setup-card is-language position-relative" aria-label="IPMI_WEB Setup Wizard">
@@ -1124,15 +1149,31 @@
                         <h2 data-l10n="step.update.heading">自动更新</h2>
                         <p class="setup-step-copy" data-l10n="step.update.copy">用于自动获取修复、安全改进和新版本功能。</p>
                         <div class="setup-fieldset">
-                            <div class="setup-choice-grid">
-                                <label class="setup-choice">
-                                    <input type="radio" name="updateMode" value="auto" checked>
-                                    <span data-l10n="choice.auto">自动安装</span>
-                                </label>
-                                <label class="setup-choice">
-                                    <input type="radio" name="updateMode" value="notify">
-                                    <span data-l10n="choice.notify">仅提示</span>
-                                </label>
+                            <div>
+                                <label class="setup-label" data-l10n="field.updateChannel">更新通道</label>
+                                <div class="setup-choice-grid">
+                                    <label class="setup-choice">
+                                        <input type="radio" name="updateChannel" value="release" {% if update_channel != 'dev' %}checked{% endif %}>
+                                        <span data-l10n="choice.release">Release 稳定版</span>
+                                    </label>
+                                    <label class="setup-choice">
+                                        <input type="radio" name="updateChannel" value="dev" {% if update_channel == 'dev' %}checked{% endif %}>
+                                        <span data-l10n="choice.dev">Dev 开发版</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="setup-label" data-l10n="field.updateMode">更新方式</label>
+                                <div class="setup-choice-grid">
+                                    <label class="setup-choice">
+                                        <input type="radio" name="updateMode" value="auto" checked>
+                                        <span data-l10n="choice.auto">自动安装</span>
+                                    </label>
+                                    <label class="setup-choice">
+                                        <input type="radio" name="updateMode" value="notify">
+                                        <span data-l10n="choice.notify">仅提示</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -1233,6 +1274,10 @@
                 'field.smtpUser': '发件账号',
                 'field.smtpPassword': 'SMTP 密码',
                 'field.mailReceivers': '收件人',
+                'field.updateChannel': '更新通道',
+                'field.updateMode': '更新方式',
+                'choice.release': 'Release 稳定版',
+                'choice.dev': 'Dev 开发版',
                 'choice.auto': '自动安装',
                 'choice.notify': '仅提示',
                 'button.back': '上一步',
@@ -1277,6 +1322,7 @@
                 'summary.serverName': '服务器名称',
                 'summary.gpu': 'GPU 监控',
                 'summary.mail': '邮件告警',
+                'summary.channel': '更新通道',
                 'summary.update': '自动更新',
                 'status.enabled': '启用',
                 'status.disabled': '关闭',
@@ -1338,6 +1384,10 @@
                 'field.smtpUser': 'Sender Account',
                 'field.smtpPassword': 'SMTP Password',
                 'field.mailReceivers': 'Recipients',
+                'field.updateChannel': 'Update Channel',
+                'field.updateMode': 'Update Mode',
+                'choice.release': 'Release Stable',
+                'choice.dev': 'Dev',
                 'choice.auto': 'Automatic Install',
                 'choice.notify': 'Notify Only',
                 'button.back': 'Back',
@@ -1382,6 +1432,7 @@
                 'summary.serverName': 'Server Name',
                 'summary.gpu': 'GPU Monitoring',
                 'summary.mail': 'Email Alerts',
+                'summary.channel': 'Update Channel',
                 'summary.update': 'Auto Update',
                 'status.enabled': 'Enabled',
                 'status.disabled': 'Disabled',
@@ -1410,6 +1461,8 @@
         const languageTitle = document.getElementById('language-title');
         const languageZh = document.getElementById('language-zh');
         const languageEn = document.getElementById('language-en');
+        const brandIdentity = document.querySelector('.login-identity');
+        const brandCopyNodes = Array.from(document.querySelectorAll('.login-brand-copy[data-l10n]'));
         const wizard = document.getElementById('setup-wizard');
         const backBtn = document.getElementById('setup-back');
         const nextBtn = document.getElementById('setup-next');
@@ -1429,15 +1482,44 @@
         let currentLang = browserSetupLanguage();
         let currentStep = 0;
         let emailSkipped = false;
+        let brandCopySwapTimer = 0;
+        let brandCopySettleTimer = 0;
 
         function msg(key) {
             return setupMessages[currentLang][key] || setupMessages.zh[key] || key;
         }
 
-        function applyLocale() {
+        function updateBrandCopy() {
+            brandCopyNodes.forEach((node) => {
+                node.textContent = msg(node.dataset.l10n);
+            });
+        }
+
+        function animateBrandCopyChange() {
+            if (!brandIdentity || !brandCopyNodes.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                updateBrandCopy();
+                return;
+            }
+            window.clearTimeout(brandCopySwapTimer);
+            window.clearTimeout(brandCopySettleTimer);
+            brandIdentity.classList.add('is-brand-stable');
+            brandIdentity.classList.remove('is-brand-settling');
+            brandIdentity.classList.add('is-brand-switching');
+            brandCopySwapTimer = window.setTimeout(() => {
+                updateBrandCopy();
+                brandIdentity.classList.remove('is-brand-switching');
+                brandIdentity.classList.add('is-brand-settling');
+                brandCopySettleTimer = window.setTimeout(() => {
+                    brandIdentity.classList.remove('is-brand-settling');
+                }, 420);
+            }, 180);
+        }
+
+        function applyLocale(options = {}) {
             document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
             applyLanguageIntro();
             document.querySelectorAll('[data-l10n]').forEach((node) => {
+                if (options.skipBrand && node.dataset.l10n && node.dataset.l10n.startsWith('brand.')) return;
                 node.textContent = msg(node.dataset.l10n);
             });
             document.querySelectorAll('[data-placeholder-key]').forEach((node) => {
@@ -1628,11 +1710,17 @@
 
         function updateSummary() {
             const selectedUpdateMode = document.querySelector('[name="updateMode"]:checked')?.value || 'auto';
+            const selectedUpdateChannel = document.querySelector('[name="updateChannel"]:checked')?.value || 'release';
             const updateModeLabels = {
                 auto: msg('choice.auto'),
                 notify: msg('choice.notify')
             };
+            const updateChannelLabels = {
+                release: msg('choice.release'),
+                dev: msg('choice.dev')
+            };
             const updateMode = updateModeLabels[selectedUpdateMode] || msg('choice.notify');
+            const updateChannel = updateChannelLabels[selectedUpdateChannel] || msg('choice.release');
             const rows = [
                 [msg('summary.serviceName'), value('serviceName')],
                 [msg('summary.port'), value('port')],
@@ -1641,6 +1729,7 @@
                 [msg('summary.serverName'), value('serverName')],
                 [msg('summary.gpu'), hasGpu.checked ? `${msg('status.enabled')} - ${value('gpuAgent')}` : msg('status.disabled')],
                 [msg('summary.mail'), emailSkipped ? msg('status.skipped') : value('mailReceivers')],
+                [msg('summary.channel'), updateChannel],
                 [msg('summary.update'), updateMode]
             ];
             summary.innerHTML = rows.map(([label, rowValue]) => `
@@ -1674,6 +1763,7 @@
                 smtpUser: value('smtpUser'),
                 smtpPassword: value('smtpPassword'),
                 mailReceivers: value('mailReceivers'),
+                updateChannel: document.querySelector('[name="updateChannel"]:checked')?.value || 'release',
                 updateMode: document.querySelector('[name="updateMode"]:checked')?.value || 'auto'
             };
         }
@@ -1731,8 +1821,14 @@
 
         document.querySelectorAll('.setup-lang-btn').forEach((button) => {
             button.addEventListener('click', () => {
+                const previousLang = currentLang;
                 currentLang = button.dataset.lang;
-                applyLocale();
+                applyLocale({ skipBrand: true });
+                if (previousLang !== currentLang) {
+                    animateBrandCopyChange();
+                } else {
+                    updateBrandCopy();
+                }
                 languagePanel.classList.add('is-hidden');
                 card.classList.remove('is-language');
                 card.classList.add('is-wizard');
@@ -1789,7 +1885,7 @@
             });
         });
         hasGpu.addEventListener('change', updateConditionalBlocks);
-        document.querySelectorAll('[name="updateMode"]').forEach((item) => {
+        document.querySelectorAll('[name="updateMode"], [name="updateChannel"]').forEach((item) => {
             item.addEventListener('change', () => {
                 if (currentStep === steps.length - 1) updateSummary();
             });

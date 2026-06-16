@@ -85,6 +85,21 @@ $venvPython = Join-Path $venvDir "Scripts\python.exe"
 $setupToken = New-Token 32
 $bootstrapPassword = New-Token 24
 $dbPath = Join-Path $DataDir "data.db"
+$repoUrl = ""
+$repoBranch = "main"
+$currentCommit = ""
+try {
+    $repoUrl = (& git -C $sourceDir config --get remote.origin.url 2>$null)
+    $repoBranch = (& git -C $sourceDir rev-parse --abbrev-ref HEAD 2>$null)
+    $currentCommit = (& git -C $sourceDir rev-parse HEAD 2>$null)
+    if ([string]::IsNullOrWhiteSpace($repoBranch)) {
+        $repoBranch = "main"
+    }
+} catch {
+    $repoUrl = ""
+    $repoBranch = "main"
+    $currentCommit = ""
+}
 
 $config = [ordered]@{
     DATABASE = [ordered]@{
@@ -110,6 +125,11 @@ $metadata = [ordered]@{
     python = $venvPython
     entrypoint = (Join-Path $InstallDir "app.py")
     auto_update_mode = "auto"
+    update_channel = "release"
+    update_channels = @("release", "dev")
+    repo_url = $repoUrl
+    branch = $repoBranch
+    current_commit = $currentCommit
 }
 
 $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path (Join-Path $InstallDir "config.json")

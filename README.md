@@ -247,8 +247,6 @@ SQLite runs in WAL mode and uses incremental vacuum support. Long-running deploy
 
 ## Quick Start
 
-IPMI_WEB is designed for Linux hosts with IPMI access. The fan-control commands are Dell-oriented and were built around a PowerEdge R730xd, so test carefully on other hardware.
-
 ### Interactive Install
 
 For a normal deployment, clone the repository and run the interactive installer. Pressing Enter accepts the shown default value for each prompt.
@@ -268,7 +266,7 @@ The Linux installer:
 - enables and starts a systemd service;
 - prints a URL like `http://server-ip:90/setup?token=...`.
 
-Open that setup URL in a browser. The setup wizard configures the display server name, administrator password, database retention, low disk space protection, optional GPU Agent, optional SMTP alerts, and automatic update mode. After completion it signs you in automatically and enters `/hardware`.
+Open that setup URL in a browser. The setup wizard configures the display server name, administrator password, database retention, low disk space protection, optional GPU Agent, optional SMTP alerts, automatic update mode, and the update channel. The default channel is `release`; switch to `dev` only when you want updates that track commits on `main`. After completion it signs you in automatically and enters `/hardware`.
 
 On Windows, run PowerShell as Administrator:
 
@@ -279,6 +277,10 @@ cd IPMI_WEB
 ```
 
 The Windows installer uses an elevated scheduled task as the startup manager because this Python app is not yet packaged as a native Windows Service. It uses the same setup wizard and writes the same `config.json`, `install.json`, and one-time token files.
+
+### Release Packages
+
+`.github/workflows/release.yml` is a manual GitHub Actions workflow for the `release` update channel. Run **Release Package** from the Actions tab, enter a version such as `1.5.2`, and choose the target ref to package. The workflow validates the app, builds `ipmi-web-<version>.zip`, generates a `.sha256` file and a release manifest, then publishes all three files to a GitHub Release tagged `v<version>`.
 
 ### Manual Development Run
 
