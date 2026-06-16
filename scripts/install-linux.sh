@@ -64,13 +64,12 @@ python3 -m venv "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip
 "$INSTALL_DIR/.venv/bin/python" -m pip install -r "$INSTALL_DIR/requirements.txt"
 
-SETUP_TOKEN="$("$INSTALL_DIR/.venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(32))")"
 BOOTSTRAP_PASSWORD="$("$INSTALL_DIR/.venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(24))")"
 REPO_URL="$(git -C "$SOURCE_DIR" config --get remote.origin.url 2>/dev/null || true)"
 REPO_BRANCH="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 CURRENT_COMMIT="$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true)"
 
-export INSTALL_DIR DATA_DIR PORT SERVICE_NAME SETUP_TOKEN BOOTSTRAP_PASSWORD REPO_URL REPO_BRANCH CURRENT_COMMIT
+export INSTALL_DIR DATA_DIR PORT SERVICE_NAME BOOTSTRAP_PASSWORD REPO_URL REPO_BRANCH CURRENT_COMMIT
 "$INSTALL_DIR/.venv/bin/python" - <<'PY'
 import json
 import os
@@ -110,7 +109,8 @@ metadata = {
     "update_channels": ["release", "dev"],
     "repo_url": os.environ.get("REPO_URL", ""),
     "branch": os.environ.get("REPO_BRANCH", "") or "main",
-    "current_commit": os.environ.get("CURRENT_COMMIT", "")
+    "current_commit": os.environ.get("CURRENT_COMMIT", ""),
+    "setup_required": True
 }
 
 with open(os.path.join(install_dir, "config.json"), "w", encoding="utf-8") as f:
@@ -120,8 +120,6 @@ for target_dir in (install_dir, data_dir):
     with open(os.path.join(target_dir, "install.json"), "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=4)
         f.write("\n")
-with open(os.path.join(data_dir, "setup.token"), "w", encoding="utf-8") as f:
-    f.write(os.environ["SETUP_TOKEN"] + "\n")
 PY
 
 chown -R "$RUN_USER":"$RUN_USER" "$INSTALL_DIR" "$DATA_DIR"
@@ -153,7 +151,7 @@ HOST_IP="${HOST_IP:-127.0.0.1}"
 echo
 echo "IPMI_WEB is installed and starting."
 echo "Open the setup wizard:"
-echo "  http://${HOST_IP}:${PORT}/setup?token=${SETUP_TOKEN}"
+echo "  http://${HOST_IP}:${PORT}/setup"
 echo
 echo "Service commands:"
 echo "  systemctl status ${SERVICE_NAME}"

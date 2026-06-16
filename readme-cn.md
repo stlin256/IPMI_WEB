@@ -222,7 +222,7 @@ flowchart TD
 - `/api/status_*` 返回内存中的最新状态。
 - `/api/history`、`/api/history_custom`、`/api/history_gpu`、`/api/sensor_history_detail` 返回经过降采样或后端聚合的图表数据。
 - `/api/settings`、`/api/config`、`/api/config/gpu`、`/api/alert_rules` 管理运行时设置。
-- `/api/setup/complete` 保存首次配置、消费 setup token，并创建首次登录会话。
+- `/api/setup/complete` 保存首次配置，并创建首次登录会话。
 - `/api/storage_status`、`/api/export_data`、`/api/config/export`、`/api/config/import` 用于维护和迁移。
 - `/api/certificate` 校验证书并保存 HTTPS 文件。
 - `/api/update_notice` 与 `/api/release_notes` 从 `CHANGELOG.md` 暴露版本更新说明。
@@ -262,9 +262,9 @@ Linux 安装脚本会完成：
 - 检查当前是否为 root，避免在不能执行 `sudo` 的环境里跑到一半才失败；
 - 安装 Python、`ipmitool`、`lm-sensors`、Git、rsync 和 Python 依赖；
 - 交互式询问 HTTP 端口、安装目录、数据目录、systemd 服务名和运行用户；
-- 写入 `config.json`、`install.json` 和一次性 `setup.token`；
+- 写入 `config.json` 和 `install.json`，其中包含首次配置模式标记；
 - 创建并启动 systemd 服务；
-- 输出类似 `http://server-ip:90/setup?token=...` 的首次配置地址。
+- 输出类似 `http://server-ip:90/setup` 的首次配置地址。
 
 浏览器打开这个 setup 地址后，引导界面会配置显示用服务器名称、管理员密码、数据库保留期、低磁盘空间保护、可选 GPU Agent、可选 SMTP 邮件告警、自动更新模式和更新通道。默认通道是 `release`，只有需要紧跟 `main` 分支 commit 时才切到 `dev`。完成后会自动登录并进入 `/hardware`。
 

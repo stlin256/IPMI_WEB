@@ -26,7 +26,6 @@ import base64
 import concurrent.futures
 import ssl
 import sys
-import secrets
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from email.mime.text import MIMEText
@@ -171,9 +170,6 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 i18n = I18n(os.path.join(app.root_path, 'static', 'i18n', 'messages.json'))
 
-SETUP_TOKEN_ENV = 'IPMI_WEB_SETUP_TOKEN'
-SETUP_TOKEN_FILE_ENV = 'IPMI_WEB_SETUP_TOKEN_FILE'
-SETUP_TOKEN_FILENAME = 'setup.token'
 INSTALL_METADATA_ENV = 'IPMI_WEB_INSTALL_FILE'
 INSTALL_METADATA_FILENAME = 'install.json'
 
@@ -189,51 +185,6 @@ def atomic_write_json(path, payload):
 def get_data_root():
     return os.path.dirname(os.path.abspath(DB_FILE)) or os.path.abspath(os.getcwd())
 
-def setup_token_file_paths():
-    paths = []
-    env_path = os.environ.get(SETUP_TOKEN_FILE_ENV)
-    if env_path:
-        paths.append(env_path)
-    paths.append(os.path.join(get_data_root(), SETUP_TOKEN_FILENAME))
-    paths.append(os.path.join(app.root_path, SETUP_TOKEN_FILENAME))
-    seen = set()
-    unique = []
-    for path in paths:
-        abs_path = os.path.abspath(path)
-        if abs_path not in seen:
-            seen.add(abs_path)
-            unique.append(abs_path)
-    return unique
-
-def read_setup_token():
-    env_token = os.environ.get(SETUP_TOKEN_ENV, '').strip()
-    if env_token:
-        return env_token
-    for path in setup_token_file_paths():
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                token = f.read().strip()
-                if token:
-                    return token
-        except OSError:
-            continue
-    return ''
-
-def setup_token_matches(submitted_token):
-    expected = read_setup_token()
-    if not expected:
-        return True
-    return secrets.compare_digest(str(submitted_token or '').strip(), expected)
-
-def clear_setup_token_files():
-    for path in setup_token_file_paths():
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            continue
-        except OSError as e:
-            logging.warning(f"Failed to remove setup token file {path}: {e}")
-
 def load_install_metadata():
     metadata = {
         'service_name': '',
@@ -242,7 +193,8 @@ def load_install_metadata():
         'data_root': get_data_root(),
         'port': PORT,
         'db_path': os.path.abspath(DB_FILE),
-        'update_channel': 'release'
+        'update_channel': 'release',
+        'setup_required': False
     }
     candidate_paths = []
     env_path = os.environ.get(INSTALL_METADATA_ENV)
@@ -261,6 +213,11 @@ def load_install_metadata():
         except (OSError, json.JSONDecodeError):
             continue
     return metadata
+
+def metadata_requires_setup(metadata=None):
+    source = metadata if metadata is not None else load_install_metadata()
+    raw = source.get('setup_required', False) if isinstance(source, dict) else False
+    return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
 
 def is_setup_completed():
     try:
@@ -2719,7 +2676,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_hours', '24')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', 'MY_SERVER')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('ui_language', '')")
-    setup_completed_default = 'false' if read_setup_token() else 'true'
+    setup_completed_default = 'false' if metadata_requires_setup() else 'true'
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_completed', ?)", (setup_completed_default,))
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_completed_at', '0')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_complete_notice_pending', 'false')")
@@ -5138,6 +5095,7 @@ def gpu_worker():
 # --- 路由 ---
 def login_required(f):
     def wrapper(*args, **kwargs):
+        if not is_setup_completed(): return redirect(url_for('setup_page'))
         if not session.get('logged_in'): return redirect(url_for('login'))
         return f(*args, **kwargs)
     wrapper.__name__ = f.__name__
@@ -5145,6 +5103,9 @@ def login_required(f):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if not is_setup_completed():
+        return redirect(url_for('setup_page'))
+
     ip = get_client_ip()
     ua = markupsafe.escape(request.headers.get('User-Agent', 'Unknown'))
     now = int(time.time())
@@ -5239,9 +5200,6 @@ def setup_page():
             return redirect(url_for('hardware_page'))
         return redirect(url_for('login'))
 
-    if read_setup_token() and not setup_token_matches(request.args.get('token', '')):
-        return render_template('login.html', error='Invalid setup token', server_name=SERVER_NAME), 403
-
     metadata = load_install_metadata()
     install_root = os.path.abspath(str(metadata.get('install_root') or os.getcwd()))
     data_root = os.path.abspath(str(metadata.get('data_root') or get_data_root()))
@@ -5266,8 +5224,6 @@ def api_setup_complete():
         return setup_error('Setup is already completed.', 409)
 
     data = request.get_json(silent=True) or {}
-    if read_setup_token() and not setup_token_matches(data.get('token') or request.args.get('token', '')):
-        return setup_error('Invalid setup token.', 403)
 
     server_name = str(data.get('serverName') or '').strip()
     password = str(data.get('password') or '')
@@ -5375,6 +5331,7 @@ def api_setup_complete():
             'port': port,
             'auto_update_mode': update_mode,
             'update_channel': update_channel,
+            'setup_required': False,
             'setup_completed_at': int(time.time())
         })
         atomic_write_json(os.path.join(get_data_root(), INSTALL_METADATA_FILENAME), metadata)
@@ -5386,8 +5343,6 @@ def api_setup_complete():
     LOGIN_PASSWORD = password
     RETENTION_DAYS = retention_days
     PORT = port
-    clear_setup_token_files()
-
     session.permanent = True
     session['logged_in'] = True
     session['setup_completed_at'] = int(time.time())

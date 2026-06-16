@@ -222,7 +222,7 @@ Important API families:
 - `/api/status_*` returns latest in-memory status.
 - `/api/history`, `/api/history_custom`, `/api/history_gpu`, `/api/sensor_history_detail` return chart data with downsampling or backend aggregation.
 - `/api/settings`, `/api/config`, `/api/config/gpu`, `/api/alert_rules` manage runtime settings.
-- `/api/setup/complete` saves first-run setup values, consumes the setup token, and creates the first logged-in session.
+- `/api/setup/complete` saves first-run setup values and creates the first logged-in session.
 - `/api/storage_status`, `/api/export_data`, `/api/config/export`, `/api/config/import` support maintenance and portability.
 - `/api/certificate` validates and saves HTTPS certificate files.
 - `/api/update_notice` and `/api/release_notes` expose version notices from `CHANGELOG.md`.
@@ -262,9 +262,9 @@ The Linux installer:
 - checks that it is running as root, so it does not fail later on systems without usable `sudo`;
 - installs Python, `ipmitool`, `lm-sensors`, Git, rsync, and the Python requirements;
 - asks for the HTTP port, install directory, data directory, systemd service name, and service user;
-- writes `config.json`, `install.json`, and a one-time `setup.token`;
+- writes `config.json` and `install.json`, including the first-run setup mode flag;
 - enables and starts a systemd service;
-- prints a URL like `http://server-ip:90/setup?token=...`.
+- prints a URL like `http://server-ip:90/setup`.
 
 Open that setup URL in a browser. The setup wizard configures the display server name, administrator password, database retention, low disk space protection, optional GPU Agent, optional SMTP alerts, automatic update mode, and the update channel. The default channel is `release`; switch to `dev` only when you want updates that track commits on `main`. After completion it signs you in automatically and enters `/hardware`.
 

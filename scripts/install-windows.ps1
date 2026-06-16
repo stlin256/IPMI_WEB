@@ -28,7 +28,12 @@ function Read-Default {
 function New-Token {
     param([int]$Bytes = 32)
     $buffer = New-Object byte[] $Bytes
-    [Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($buffer)
+    } finally {
+        $rng.Dispose()
+    }
     return [Convert]::ToBase64String($buffer).TrimEnd("=").Replace("+", "-").Replace("/", "_")
 }
 
@@ -82,7 +87,6 @@ $venvPython = Join-Path $venvDir "Scripts\python.exe"
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r (Join-Path $InstallDir "requirements.txt")
 
-$setupToken = New-Token 32
 $bootstrapPassword = New-Token 24
 $dbPath = Join-Path $DataDir "data.db"
 $repoUrl = ""
@@ -130,12 +134,12 @@ $metadata = [ordered]@{
     repo_url = $repoUrl
     branch = $repoBranch
     current_commit = $currentCommit
+    setup_required = $true
 }
 
 $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path (Join-Path $InstallDir "config.json")
 $metadata | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path (Join-Path $InstallDir "install.json")
 $metadata | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path (Join-Path $DataDir "install.json")
-$setupToken | Set-Content -Encoding UTF8 -Path (Join-Path $DataDir "setup.token")
 
 $action = New-ScheduledTaskAction `
     -Execute $venvPython `
@@ -149,7 +153,7 @@ Start-ScheduledTask -TaskName $ServiceName
 Write-Host ""
 Write-Host "IPMI_WEB is installed and starting."
 Write-Host "Open the setup wizard:"
-Write-Host "  http://127.0.0.1:$Port/setup?token=$setupToken"
+Write-Host "  http://127.0.0.1:$Port/setup"
 Write-Host ""
 Write-Host "Startup task commands:"
 Write-Host "  Get-ScheduledTask -TaskName $ServiceName"

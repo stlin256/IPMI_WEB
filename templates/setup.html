@@ -272,11 +272,17 @@
             filter: blur(12px);
             transition:
                 width 360ms cubic-bezier(0.16, 1, 0.3, 1),
+                max-width 360ms cubic-bezier(0.16, 1, 0.3, 1),
                 min-height 360ms cubic-bezier(0.16, 1, 0.3, 1),
                 padding 360ms cubic-bezier(0.16, 1, 0.3, 1),
+                margin-right 360ms cubic-bezier(0.16, 1, 0.3, 1),
                 transform 760ms cubic-bezier(0.16, 1, 0.3, 1),
                 opacity 760ms cubic-bezier(0.22, 0.61, 0.36, 1),
                 filter 760ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .setup-card.is-mode-morphing {
+            pointer-events: none;
+            transform-origin: top center;
         }
         html.ipmi-motion-enabled .setup-card.ipmi-motion-target,
         html.ipmi-motion-enabled.ipmi-page-ready .setup-card.ipmi-motion-target {
@@ -914,7 +920,10 @@
             .login-wordmark {
                 font-size: 3.1rem;
             }
-            .setup-card.is-language,
+            .setup-card.is-language {
+                width: min(92%, 340px);
+                padding: 1.25rem;
+            }
             .setup-card.is-wizard {
                 width: 100%;
                 padding: 1.25rem;
@@ -1484,6 +1493,8 @@
         let emailSkipped = false;
         let brandCopySwapTimer = 0;
         let brandCopySettleTimer = 0;
+        let cardMorphTimer = 0;
+        let cardMorphEndHandler = null;
 
         function msg(key) {
             return setupMessages[currentLang][key] || setupMessages.zh[key] || key;
@@ -1741,9 +1752,7 @@
         }
 
         function collectSetupPayload() {
-            const params = new URLSearchParams(window.location.search);
             return {
-                token: params.get('token') || '',
                 language: currentLang,
                 serviceName: value('serviceName'),
                 port: Number(value('port')),
@@ -1819,6 +1828,71 @@
             if (currentStep === steps.length - 1) updateSummary();
         }
 
+        function clearCardMorph() {
+            window.clearTimeout(cardMorphTimer);
+            cardMorphTimer = 0;
+            if (cardMorphEndHandler) {
+                card.removeEventListener('transitionend', cardMorphEndHandler);
+                cardMorphEndHandler = null;
+            }
+            card.classList.remove('is-mode-morphing');
+            card.style.removeProperty('transition');
+            card.style.removeProperty('transform');
+            card.style.removeProperty('transform-origin');
+        }
+
+        function morphSetupCard(applyState) {
+            clearCardMorph();
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !card.classList.contains('is-intro-visible')) {
+                applyState();
+                return;
+            }
+
+            const first = card.getBoundingClientRect();
+            card.classList.add('is-mode-morphing');
+            card.style.setProperty('transition', 'none', 'important');
+            card.style.setProperty('transform-origin', 'top center', 'important');
+            applyState();
+            const last = card.getBoundingClientRect();
+            const scaleX = first.width / Math.max(last.width, 1);
+            const scaleY = first.height / Math.max(last.height, 1);
+            const deltaX = first.left - last.left;
+            const deltaY = first.top - last.top;
+
+            if (
+                Math.abs(deltaX) < 0.5 &&
+                Math.abs(deltaY) < 0.5 &&
+                Math.abs(scaleX - 1) < 0.005 &&
+                Math.abs(scaleY - 1) < 0.005
+            ) {
+                clearCardMorph();
+                return;
+            }
+
+            card.style.setProperty(
+                'transform',
+                `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`,
+                'important'
+            );
+            card.getBoundingClientRect();
+
+            window.requestAnimationFrame(() => {
+                card.style.setProperty('transition', 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1)', 'important');
+                card.style.setProperty('transform', 'translate3d(0, 0, 0) scale(1, 1)', 'important');
+            });
+
+            const finishMorph = () => {
+                clearCardMorph();
+            };
+            cardMorphEndHandler = (event) => {
+                if (event.target === card && event.propertyName === 'transform') {
+                    finishMorph();
+                }
+            };
+            card.addEventListener('transitionend', cardMorphEndHandler);
+            cardMorphTimer = window.setTimeout(finishMorph, 540);
+        }
+
         document.querySelectorAll('.setup-lang-btn').forEach((button) => {
             button.addEventListener('click', () => {
                 const previousLang = currentLang;
@@ -1829,23 +1903,23 @@
                 } else {
                     updateBrandCopy();
                 }
-                languagePanel.classList.add('is-hidden');
-                card.classList.remove('is-language');
-                card.classList.add('is-wizard');
-                window.setTimeout(() => {
+                morphSetupCard(() => {
+                    languagePanel.classList.add('is-hidden');
                     wizard.classList.remove('is-hidden');
+                    card.classList.remove('is-language');
+                    card.classList.add('is-wizard');
                     renderStep();
-                }, 180);
+                });
             });
         });
 
         function showLanguageChoice() {
-            wizard.classList.add('is-hidden');
-            card.classList.remove('is-wizard');
-            card.classList.add('is-language');
-            window.setTimeout(() => {
+            morphSetupCard(() => {
+                wizard.classList.add('is-hidden');
+                card.classList.remove('is-wizard');
+                card.classList.add('is-language');
                 languagePanel.classList.remove('is-hidden');
-            }, 160);
+            });
         }
 
         backBtn.addEventListener('click', () => {
