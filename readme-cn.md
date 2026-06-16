@@ -209,6 +209,7 @@ flowchart TD
 
 | 路由 | 页面 | 说明 |
 | --- | --- | --- |
+| `/setup` | 首次配置向导 | 安装脚本生成的一次性 token 配置流程 |
 | `/login` | 登录页 | 密码登录、递增延迟、防爆破、审计日志 |
 | `/hardware` | 硬件首页 | 默认登录后入口 |
 | `/resources` | 资源页 | CPU、内存、网络、磁盘、CPU 封装功耗 |
@@ -221,6 +222,7 @@ flowchart TD
 - `/api/status_*` 返回内存中的最新状态。
 - `/api/history`、`/api/history_custom`、`/api/history_gpu`、`/api/sensor_history_detail` 返回经过降采样或后端聚合的图表数据。
 - `/api/settings`、`/api/config`、`/api/config/gpu`、`/api/alert_rules` 管理运行时设置。
+- `/api/setup/complete` 保存首次配置、消费 setup token，并创建首次登录会话。
 - `/api/storage_status`、`/api/export_data`、`/api/config/export`、`/api/config/import` 用于维护和迁移。
 - `/api/certificate` 校验证书并保存 HTTPS 文件。
 - `/api/update_notice` 与 `/api/release_notes` 从 `CHANGELOG.md` 暴露版本更新说明。
@@ -246,6 +248,39 @@ SQLite 使用 WAL 模式，并启用增量 vacuum 支持。长期部署仍应监
 ## 快速开始
 
 IPMI_WEB 面向具备 IPMI 访问能力的 Linux 主机。风扇控制命令偏 Dell 服务器实现，最初围绕 PowerEdge R730xd 构建，在其他硬件上请谨慎测试。
+
+### 交互式安装
+
+正式部署建议 clone 后直接运行安装脚本。每一步提示里的方括号内容就是默认值，直接回车会采用该默认值。
+
+```bash
+git clone https://github.com/stlin256/IPMI_WEB.git
+cd IPMI_WEB
+sudo bash scripts/install-linux.sh
+```
+
+Linux 安装脚本会完成：
+
+- 检查当前是否为 root，避免在不能执行 `sudo` 的环境里跑到一半才失败；
+- 安装 Python、`ipmitool`、`lm-sensors`、Git、rsync 和 Python 依赖；
+- 交互式询问 HTTP 端口、安装目录、数据目录、systemd 服务名和运行用户；
+- 写入 `config.json`、`install.json` 和一次性 `setup.token`；
+- 创建并启动 systemd 服务；
+- 输出类似 `http://server-ip:90/setup?token=...` 的首次配置地址。
+
+浏览器打开这个 setup 地址后，引导界面会配置显示用服务器名称、管理员密码、数据库保留期、低磁盘空间保护、可选 GPU Agent、可选 SMTP 邮件告警和自动更新模式。完成后会自动登录并进入 `/hardware`。
+
+Windows 下请使用管理员 PowerShell：
+
+```powershell
+git clone https://github.com/stlin256/IPMI_WEB.git
+cd IPMI_WEB
+.\scripts\install-windows.ps1
+```
+
+Windows 安装脚本会使用提权计划任务作为启动管理器，因为当前 Python 应用还没有打包成原生 Windows Service。它同样会生成 `config.json`、`install.json`、一次性 token，并进入同一套首次配置向导。
+
+### 手动开发运行
 
 ```bash
 sudo apt-get update

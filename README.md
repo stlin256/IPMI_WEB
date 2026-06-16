@@ -209,6 +209,7 @@ flowchart TD
 
 | Route | Page | Notes |
 | --- | --- | --- |
+| `/setup` | First-run setup wizard | One-time token flow created by the installer |
 | `/login` | Login | Password login with progressive delay and audit logging |
 | `/hardware` | Hardware dashboard | Default authenticated landing page |
 | `/resources` | Resource dashboard | CPU, memory, network, disk, CPU package power |
@@ -221,6 +222,7 @@ Important API families:
 - `/api/status_*` returns latest in-memory status.
 - `/api/history`, `/api/history_custom`, `/api/history_gpu`, `/api/sensor_history_detail` return chart data with downsampling or backend aggregation.
 - `/api/settings`, `/api/config`, `/api/config/gpu`, `/api/alert_rules` manage runtime settings.
+- `/api/setup/complete` saves first-run setup values, consumes the setup token, and creates the first logged-in session.
 - `/api/storage_status`, `/api/export_data`, `/api/config/export`, `/api/config/import` support maintenance and portability.
 - `/api/certificate` validates and saves HTTPS certificate files.
 - `/api/update_notice` and `/api/release_notes` expose version notices from `CHANGELOG.md`.
@@ -246,6 +248,39 @@ SQLite runs in WAL mode and uses incremental vacuum support. Long-running deploy
 ## Quick Start
 
 IPMI_WEB is designed for Linux hosts with IPMI access. The fan-control commands are Dell-oriented and were built around a PowerEdge R730xd, so test carefully on other hardware.
+
+### Interactive Install
+
+For a normal deployment, clone the repository and run the interactive installer. Pressing Enter accepts the shown default value for each prompt.
+
+```bash
+git clone https://github.com/stlin256/IPMI_WEB.git
+cd IPMI_WEB
+sudo bash scripts/install-linux.sh
+```
+
+The Linux installer:
+
+- checks that it is running as root, so it does not fail later on systems without usable `sudo`;
+- installs Python, `ipmitool`, `lm-sensors`, Git, rsync, and the Python requirements;
+- asks for the HTTP port, install directory, data directory, systemd service name, and service user;
+- writes `config.json`, `install.json`, and a one-time `setup.token`;
+- enables and starts a systemd service;
+- prints a URL like `http://server-ip:90/setup?token=...`.
+
+Open that setup URL in a browser. The setup wizard configures the display server name, administrator password, database retention, low disk space protection, optional GPU Agent, optional SMTP alerts, and automatic update mode. After completion it signs you in automatically and enters `/hardware`.
+
+On Windows, run PowerShell as Administrator:
+
+```powershell
+git clone https://github.com/stlin256/IPMI_WEB.git
+cd IPMI_WEB
+.\scripts\install-windows.ps1
+```
+
+The Windows installer uses an elevated scheduled task as the startup manager because this Python app is not yet packaged as a native Windows Service. It uses the same setup wizard and writes the same `config.json`, `install.json`, and one-time token files.
+
+### Manual Development Run
 
 ```bash
 sudo apt-get update

@@ -11,6 +11,7 @@ import subprocess
 import re
 import psutil
 import urllib.request
+import urllib.parse
 import markupsafe
 import ipaddress
 import shutil
@@ -25,6 +26,7 @@ import base64
 import concurrent.futures
 import ssl
 import sys
+import secrets
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from email.mime.text import MIMEText
@@ -36,13 +38,15 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 from i18n import DEFAULT_LOCALE, I18n, normalize_locale, pick_browser_locale
 
 # --- 配置 ---
-def load_config():
-    if not os.path.exists('config.json'):
-        print("Config file not found, copying from example...")
-        import shutil
-        shutil.copy('config.json.example', 'config.json')
+CONFIG_FILE = os.environ.get('IPMI_WEB_CONFIG', 'config.json')
 
-    with open('config.json', 'r') as f:
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        print("Config file not found, copying from example...")
+        os.makedirs(os.path.dirname(os.path.abspath(CONFIG_FILE)) or '.', exist_ok=True)
+        shutil.copy('config.json.example', CONFIG_FILE)
+
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 config = load_config()
@@ -166,6 +170,159 @@ SENSITIVE_PLACEHOLDER = '********'
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 i18n = I18n(os.path.join(app.root_path, 'static', 'i18n', 'messages.json'))
+
+SETUP_TOKEN_ENV = 'IPMI_WEB_SETUP_TOKEN'
+SETUP_TOKEN_FILE_ENV = 'IPMI_WEB_SETUP_TOKEN_FILE'
+SETUP_TOKEN_FILENAME = 'setup.token'
+INSTALL_METADATA_ENV = 'IPMI_WEB_INSTALL_FILE'
+INSTALL_METADATA_FILENAME = 'install.json'
+
+def atomic_write_json(path, payload):
+    target = os.path.abspath(path)
+    os.makedirs(os.path.dirname(target) or '.', exist_ok=True)
+    tmp_path = f"{target}.tmp"
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=4)
+        f.write('\n')
+    os.replace(tmp_path, target)
+
+def get_data_root():
+    return os.path.dirname(os.path.abspath(DB_FILE)) or os.path.abspath(os.getcwd())
+
+def setup_token_file_paths():
+    paths = []
+    env_path = os.environ.get(SETUP_TOKEN_FILE_ENV)
+    if env_path:
+        paths.append(env_path)
+    paths.append(os.path.join(get_data_root(), SETUP_TOKEN_FILENAME))
+    paths.append(os.path.join(app.root_path, SETUP_TOKEN_FILENAME))
+    seen = set()
+    unique = []
+    for path in paths:
+        abs_path = os.path.abspath(path)
+        if abs_path not in seen:
+            seen.add(abs_path)
+            unique.append(abs_path)
+    return unique
+
+def read_setup_token():
+    env_token = os.environ.get(SETUP_TOKEN_ENV, '').strip()
+    if env_token:
+        return env_token
+    for path in setup_token_file_paths():
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                token = f.read().strip()
+                if token:
+                    return token
+        except OSError:
+            continue
+    return ''
+
+def setup_token_matches(submitted_token):
+    expected = read_setup_token()
+    if not expected:
+        return True
+    return secrets.compare_digest(str(submitted_token or '').strip(), expected)
+
+def clear_setup_token_files():
+    for path in setup_token_file_paths():
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            logging.warning(f"Failed to remove setup token file {path}: {e}")
+
+def load_install_metadata():
+    metadata = {
+        'service_name': '',
+        'service_mode': 'standalone',
+        'install_root': os.path.abspath(os.getcwd()),
+        'data_root': get_data_root(),
+        'port': PORT,
+        'db_path': os.path.abspath(DB_FILE)
+    }
+    candidate_paths = []
+    env_path = os.environ.get(INSTALL_METADATA_ENV)
+    if env_path:
+        candidate_paths.append(env_path)
+    candidate_paths.append(os.path.join(get_data_root(), INSTALL_METADATA_FILENAME))
+    candidate_paths.append(os.path.join(app.root_path, INSTALL_METADATA_FILENAME))
+
+    for path in candidate_paths:
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                metadata.update({k: v for k, v in loaded.items() if v not in (None, '')})
+                break
+        except (OSError, json.JSONDecodeError):
+            continue
+    return metadata
+
+def is_setup_completed():
+    try:
+        conn = get_db_connection()
+        value = get_config_value(conn, 'setup_completed', 'false')
+        conn.close()
+        return parse_bool(value, False)
+    except Exception:
+        return False
+
+def normalize_setup_locale(raw):
+    text = str(raw or '').strip().lower()
+    if text.startswith('zh'):
+        return 'zh-CN'
+    if text.startswith('en'):
+        return 'en'
+    return DEFAULT_LOCALE
+
+def parse_setup_int(value, default, min_value, max_value):
+    try:
+        parsed = int(float(value))
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(max_value, parsed))
+
+def validate_setup_hostname(host):
+    host = str(host or '').strip()
+    if not host or len(host) > 253 or re.search(r'\s|://', host):
+        return False
+    if host == 'localhost':
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    return re.match(r'^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$', host) is not None
+
+def validate_setup_email(address):
+    return re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', str(address or '').strip()) is not None
+
+def parse_setup_email_list(raw):
+    return [item.strip() for item in re.split(r'[,;\s]+', str(raw or '')) if item.strip()]
+
+def parse_setup_gpu_agent(raw_url, note=''):
+    parsed = urllib.parse.urlparse(str(raw_url or '').strip())
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise ValueError('GPU Agent URL is invalid')
+    if parsed.port is None:
+        port = 9999
+    else:
+        port = parse_setup_int(parsed.port, 9999, 1, 65535)
+    return {
+        'id': 'agent-1',
+        'host': parsed.hostname,
+        'port': port,
+        'enabled': True,
+        'note': str(note or '').strip()[:GPU_AGENT_NOTE_MAX_LENGTH],
+        'slot': 0
+    }
+
+def setup_error(message, status=400):
+    return jsonify({'status': 'error', 'message': message}), status
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2557,6 +2714,12 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('summary_custom_hours', '24')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('server_name', 'MY_SERVER')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('ui_language', '')")
+    setup_completed_default = 'false' if read_setup_token() else 'true'
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_completed', ?)", (setup_completed_default,))
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_completed_at', '0')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('setup_complete_notice_pending', 'false')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('auto_update_mode', 'notify')")
+    c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('auto_update_enabled', 'false')")
 
     # 兼容性升级与初始化：确保所有邮件相关配置项存在
     smtp_configs = [
@@ -5063,6 +5226,178 @@ def login():
     conn.close()
     return render_template('login.html', server_name=SERVER_NAME)
 
+@app.route('/setup')
+def setup_page():
+    if is_setup_completed():
+        if session.get('logged_in'):
+            return redirect(url_for('hardware_page'))
+        return redirect(url_for('login'))
+
+    if read_setup_token() and not setup_token_matches(request.args.get('token', '')):
+        return render_template('login.html', error='Invalid setup token', server_name=SERVER_NAME), 403
+
+    metadata = load_install_metadata()
+    install_root = os.path.abspath(str(metadata.get('install_root') or os.getcwd()))
+    data_root = os.path.abspath(str(metadata.get('data_root') or get_data_root()))
+    return render_template(
+        'setup.html',
+        server_name=SERVER_NAME,
+        service_name=str(metadata.get('service_name') or ''),
+        service_mode=str(metadata.get('service_mode') or 'standalone'),
+        port=int(metadata.get('port') or PORT),
+        install_root=install_root,
+        data_root=data_root,
+        db_path=os.path.abspath(str(metadata.get('db_path') or DB_FILE)),
+        retention_days=RETENTION_DAYS
+    )
+
+@app.route('/api/setup/complete', methods=['POST'])
+def api_setup_complete():
+    global config, SERVER_NAME, LOGIN_PASSWORD, RETENTION_DAYS, PORT
+
+    if is_setup_completed():
+        return setup_error('Setup is already completed.', 409)
+
+    data = request.get_json(silent=True) or {}
+    if read_setup_token() and not setup_token_matches(data.get('token') or request.args.get('token', '')):
+        return setup_error('Invalid setup token.', 403)
+
+    server_name = str(data.get('serverName') or '').strip()
+    password = str(data.get('password') or '')
+    if not server_name:
+        return setup_error('Server name is required.')
+    if len(password) < 8:
+        return setup_error('Password must be at least 8 characters.')
+
+    port = parse_setup_int(data.get('port'), PORT, 1, 65535)
+    retention_days = parse_setup_int(data.get('retentionDays'), RETENTION_DAYS, 1, 365)
+    low_disk_guard = parse_bool(data.get('lowDiskGuard'), False)
+    locale = normalize_setup_locale(data.get('language'))
+    update_mode = str(data.get('updateMode') or 'auto').strip().lower()
+    if update_mode not in ('auto', 'notify'):
+        return setup_error('Auto update mode is invalid.')
+
+    has_gpu = parse_bool(data.get('hasGpu'), False)
+    try:
+        if has_gpu:
+            gpu_agents = [parse_setup_gpu_agent(data.get('gpuAgent'), data.get('gpuNote'))]
+        else:
+            gpu_agents = [{
+                'id': 'agent-1',
+                'host': '127.0.0.1',
+                'port': 9999,
+                'enabled': False,
+                'note': '',
+                'slot': 0
+            }]
+    except ValueError as e:
+        return setup_error(str(e))
+
+    skip_email = parse_bool(data.get('skipEmail'), False)
+    email_receivers = []
+    smtp_host = str(data.get('smtpHost') or '').strip()
+    smtp_user = str(data.get('smtpUser') or '').strip()
+    smtp_password = str(data.get('smtpPassword') or '')
+    smtp_port = parse_setup_int(data.get('smtpPort'), 465, 1, 65535)
+    if not skip_email:
+        email_receivers = parse_setup_email_list(data.get('mailReceivers'))
+        if not smtp_host or not validate_setup_hostname(smtp_host):
+            return setup_error('SMTP server is invalid.')
+        if not validate_setup_email(smtp_user):
+            return setup_error('Sender account is invalid.')
+        if not smtp_password:
+            return setup_error('SMTP password is required.')
+        if not email_receivers or not all(validate_setup_email(item) for item in email_receivers):
+            return setup_error('Email recipients are invalid.')
+
+    new_config = json.loads(json.dumps(config))
+    new_config.setdefault('DATABASE', {})
+    new_config.setdefault('SERVER', {})
+    new_config.setdefault('SECURITY', {})
+    new_config['DATABASE']['path'] = DB_FILE
+    new_config['DATABASE']['retention_days'] = retention_days
+    new_config['SERVER']['port'] = port
+    new_config['SERVER']['server_name'] = server_name
+    new_config['SECURITY']['login_password'] = password
+    atomic_write_json(CONFIG_FILE, new_config)
+
+    conn = get_db_connection()
+    try:
+        set_config_value(conn, 'server_name', server_name)
+        set_config_value(conn, 'ui_language', locale)
+        set_config_value(conn, 'data_retention_days', retention_days)
+        set_config_value(conn, 'pending_retention_days', 0)
+        set_config_value(conn, 'retention_change_ts', 0)
+        set_config_value(conn, 'low_disk_auto_prune_enabled', 'true' if low_disk_guard else 'false')
+        set_config_value(conn, 'low_disk_prune_blocked_until', 0)
+        set_config_value(conn, 'auto_update_mode', update_mode)
+        set_config_value(conn, 'auto_update_enabled', 'true' if update_mode == 'auto' else 'false')
+        set_config_value(conn, 'last_access_domain', request.url_root.rstrip('/'))
+
+        if skip_email:
+            set_config_value(conn, 'email_enabled', 'false')
+        else:
+            set_config_value(conn, 'email_enabled', 'true')
+            set_config_value(conn, 'email_mode', 'smtp')
+            set_config_value(conn, 'smtp_server', smtp_host)
+            set_config_value(conn, 'smtp_port', smtp_port)
+            set_config_value(conn, 'smtp_user', smtp_user)
+            set_config_value(conn, 'smtp_pass', smtp_password)
+            set_config_value(conn, 'smtp_encryption', 'true')
+            set_config_value(conn, 'email_sender_name', f'System@{server_name}.local')
+            set_config_value(conn, 'email_receiver', ','.join(email_receivers))
+
+        save_gpu_agents_config(conn, gpu_agents, commit=False)
+        set_config_value(conn, 'setup_completed', 'true')
+        set_config_value(conn, 'setup_completed_at', int(time.time()))
+        set_config_value(conn, 'setup_complete_notice_pending', 'true')
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        metadata = load_install_metadata()
+        metadata.update({
+            'service_name': str(data.get('serviceName') or metadata.get('service_name') or ''),
+            'service_mode': str(data.get('serviceMode') or metadata.get('service_mode') or 'standalone'),
+            'install_root': str(data.get('installRoot') or metadata.get('install_root') or os.getcwd()),
+            'data_root': get_data_root(),
+            'db_path': os.path.abspath(DB_FILE),
+            'port': port,
+            'auto_update_mode': update_mode,
+            'setup_completed_at': int(time.time())
+        })
+        atomic_write_json(os.path.join(get_data_root(), INSTALL_METADATA_FILENAME), metadata)
+    except Exception as e:
+        logging.warning(f"Failed to update install metadata: {e}")
+
+    config = new_config
+    SERVER_NAME = server_name
+    LOGIN_PASSWORD = password
+    RETENTION_DAYS = retention_days
+    PORT = port
+    clear_setup_token_files()
+
+    session.permanent = True
+    session['logged_in'] = True
+    session['setup_completed_at'] = int(time.time())
+    write_audit(
+        'INFO',
+        'CONFIG',
+        'SETUP_COMPLETE',
+        '初始化配置已完成',
+        details={
+            'server_name': server_name,
+            'retention_days': retention_days,
+            'low_disk_guard': low_disk_guard,
+            'gpu_enabled': has_gpu,
+            'email_enabled': not skip_email,
+            'auto_update_mode': update_mode
+        },
+        operator=get_client_ip()
+    )
+    return jsonify({'status': 'ok', 'redirect': url_for('hardware_page', setup=1)})
+
 @app.route('/logout')
 def logout(): session.pop('logged_in', None); return redirect(url_for('login'))
 @app.route('/')
@@ -5113,13 +5448,44 @@ def api_update_notice():
     c = conn.cursor()
     if request.method == 'POST':
         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('update_notice_ack_version', ?)", (VERSION,))
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('setup_complete_notice_pending', 'false')")
         conn.commit()
         conn.close()
         return jsonify({'status': 'ok'})
 
-    c.execute("SELECT key, value FROM config WHERE key IN ('update_notice_ack_version', 'previous_software_version')")
+    c.execute("SELECT key, value FROM config WHERE key IN ('update_notice_ack_version', 'previous_software_version', 'setup_complete_notice_pending')")
     cfg = {row['key']: row['value'] for row in c.fetchall()}
     conn.close()
+
+    if parse_bool(cfg.get('setup_complete_notice_pending'), False):
+        return jsonify({
+            'show': True,
+            'type': 'setup_complete',
+            'version': VERSION,
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'previous_version': '',
+            'logo': IPMI_ASCII_LOGO,
+            'notes': [
+                'Initial setup is complete.',
+                'You are signed in and ready to use the hardware dashboard.'
+            ],
+            'notes_by_lang': {
+                'zh-CN': [
+                    '初始化配置已完成。',
+                    '你已自动登录并进入硬件监控页。',
+                    '邮件、GPU Agent、自动更新和数据保留策略后续仍可在设置中调整。'
+                ],
+                'en': [
+                    'Initial setup is complete.',
+                    'You are signed in and ready to use the hardware dashboard.',
+                    'Email, GPU Agents, automatic updates, and retention can still be adjusted later from Settings.'
+                ]
+            },
+            'language_labels': {
+                'zh-CN': '中文',
+                'en': 'English'
+            }
+        })
 
     ack_version = cfg.get('update_notice_ack_version', '')
     release_note = get_release_note(VERSION)

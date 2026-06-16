@@ -1,0 +1,1807 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - IPMI_WEB</title>
+    {% include 'partials/favicon.html' %}
+    <script>
+        (() => {
+            try {
+                const saved = window.localStorage.getItem('ipmi.web.theme');
+                const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const theme = saved === 'light' || saved === 'dark' ? saved : (systemDark ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-bs-theme', theme);
+            } catch (_e) {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                }
+            }
+        })();
+    </script>
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/all.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/app-modern.css') }}?v=20260616-nav" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app-core.js') }}?v=20260614-motion"></script>
+    <style>
+        body {
+            min-height: 100vh;
+            min-height: 100svh;
+            margin: 0;
+            position: relative;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            overflow-x: clip;
+            --login-theme-x: calc(100vw - 2rem);
+            --login-theme-y: 2rem;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 6;
+            pointer-events: none;
+            opacity: 0;
+            clip-path: circle(0 at var(--login-theme-x) var(--login-theme-y));
+            background:
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--accent-yellow) 42%, transparent), transparent 9rem),
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--bg-body) 78%, transparent), transparent 62vmax),
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 18%, transparent), color-mix(in srgb, var(--accent-red) 16%, transparent));
+            filter: blur(14px) saturate(1.2);
+            mix-blend-mode: screen;
+        }
+        html[data-bs-theme="light"] body::before {
+            mix-blend-mode: multiply;
+            background:
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--accent-yellow) 34%, transparent), transparent 8rem),
+                radial-gradient(circle at var(--login-theme-x) var(--login-theme-y), color-mix(in srgb, var(--bg-body) 74%, transparent), transparent 62vmax),
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 12%, transparent), color-mix(in srgb, var(--accent-red) 10%, transparent));
+        }
+        .login-stage {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent-yellow) 9%, transparent), transparent 19rem),
+                radial-gradient(circle at 78% 82%, color-mix(in srgb, var(--accent-blue) 5%, transparent), transparent 22rem);
+            pointer-events: none;
+        }
+        .login-stage::before {
+            content: "";
+            position: absolute;
+            inset: 9vh 8vw;
+            z-index: 1;
+            border: 1px solid color-mix(in srgb, var(--accent-yellow) 28%, transparent);
+            clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%);
+            opacity: 0.55;
+        }
+        .login-stage::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background:
+                linear-gradient(180deg, transparent 34%, color-mix(in srgb, var(--accent-yellow) 7%, transparent) 100%),
+                repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-main) 7%, transparent) 0 1px, transparent 1px 72px),
+                repeating-linear-gradient(0deg, color-mix(in srgb, var(--text-main) 5%, transparent) 0 1px, transparent 1px 72px);
+            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.78) 48%, #000 100%);
+            opacity: 0;
+            transform: translate3d(0, 0.45rem, 0) scale(1.012);
+        }
+        @keyframes login-stage-drift {
+            0% { background-position: 0 0, 0 0, 0 0; }
+            100% { background-position: 0 0, 1.75rem 0, 0 1.75rem; }
+        }
+        @keyframes login-grid-reveal {
+            0% { opacity: 0; transform: translate3d(0, 0.45rem, 0) scale(1.012); filter: blur(0.8px) saturate(0.86); }
+            58% { opacity: 0.72; transform: translate3d(0, 0.06rem, 0) scale(1.002); filter: blur(0.1px) saturate(1); }
+            100% { opacity: 0.88; transform: translate3d(0, 0, 0) scale(1); filter: blur(0) saturate(1.05); }
+        }
+        @keyframes login-frame-reveal {
+            0% { clip-path: polygon(0 0, 0 0, 0 42%, 0 100%, 0 100%, 0 62%); opacity: 0; transform: translate3d(0, 0.75rem, 0) scale(0.992); }
+            100% { clip-path: polygon(0 0, 68% 0, 100% 42%, 100% 100%, 28% 100%, 0 62%); opacity: 0.55; transform: translate3d(0, 0, 0) scale(1); }
+        }
+        @keyframes login-identity-reveal {
+            0% { opacity: 0; transform: translate3d(-1.25rem, 1rem, 0); filter: blur(10px); }
+            62% { opacity: 1; transform: translate3d(0.15rem, -0.15rem, 0); filter: blur(0); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+        }
+        @keyframes login-wordmark-reveal {
+            0% { opacity: 0; transform: translate3d(0, 1.35rem, 0) scale(0.94); filter: blur(12px); }
+            58% { opacity: 1; transform: translate3d(0, -0.18rem, 0) scale(1.018); filter: blur(0); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+        }
+        @keyframes login-card-reveal {
+            0% { opacity: 0; transform: translate3d(1.1rem, 1.35rem, 0) scale(0.975); filter: blur(12px); }
+            58% { opacity: 1; transform: translate3d(-0.12rem, -0.18rem, 0) scale(1.006); filter: blur(0); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+        }
+        @keyframes login-kicker-line {
+            0% { transform: scaleX(0); opacity: 0; }
+            100% { transform: scaleX(1); opacity: 1; }
+        }
+        @keyframes setup-step-in {
+            0% { opacity: 0; transform: translate3d(0.75rem, 0, 0); filter: blur(8px); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+        }
+        @keyframes setup-message-in {
+            0% { opacity: 0; transform: translate3d(0, -0.42rem, 0); filter: blur(5px); }
+            100% { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+        }
+        @keyframes setup-wait-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.82; }
+            50% { transform: scale(1.08); opacity: 1; }
+        }
+        @keyframes setup-progress-sweep {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(180%); }
+        }
+        @keyframes setup-orbit-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes setup-dot-pulse {
+            0%, 100% { opacity: 0.34; }
+            45% { opacity: 1; }
+        }
+        @keyframes login-card-glow {
+            0% { opacity: 0; transform: translateX(-72%) skewX(-10deg); }
+            36% { opacity: 0.48; }
+            100% { opacity: 0; transform: translateX(72%) skewX(-10deg); }
+        }
+        @keyframes login-theme-wash {
+            0% { opacity: 0; clip-path: circle(0 at var(--login-theme-x) var(--login-theme-y)); filter: blur(16px) saturate(0.95); }
+            32% { opacity: 0.68; clip-path: circle(44vmax at var(--login-theme-x) var(--login-theme-y)); filter: blur(8px) saturate(1.22); }
+            72% { opacity: 0.28; clip-path: circle(112vmax at var(--login-theme-x) var(--login-theme-y)); filter: blur(4px) saturate(1.08); }
+            100% { opacity: 0; clip-path: circle(142vmax at var(--login-theme-x) var(--login-theme-y)); filter: blur(2px) saturate(1); }
+        }
+        @keyframes login-theme-stage-shift {
+            0% { filter: brightness(0.95) saturate(0.95); }
+            42% { filter: brightness(1.2) saturate(1.25); }
+            100% { filter: brightness(1) saturate(1.05); }
+        }
+        @keyframes login-theme-shell-sheen {
+            0% { opacity: 0; transform: translateX(38%) skewX(-12deg); }
+            46% { opacity: 0.56; }
+            100% { opacity: 0; transform: translateX(-38%) skewX(-12deg); }
+        }
+        .login-shell {
+            width: min(100% - 2rem, 1080px);
+            position: relative;
+            z-index: 2;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(360px, 540px);
+            align-items: center;
+            gap: clamp(1.5rem, 5vw, 4.5rem);
+        }
+        .login-shell::before {
+            content: "";
+            position: absolute;
+            inset: -12% -8%;
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0;
+            background: linear-gradient(105deg, transparent 18%, color-mix(in srgb, var(--accent-yellow) 30%, transparent) 48%, transparent 76%);
+            transform: translateX(36%) skewX(-12deg);
+            filter: blur(8px);
+            mix-blend-mode: screen;
+        }
+        .login-identity {
+            min-width: 0;
+            padding-left: clamp(1.5rem, 5vw, 4.25rem);
+        }
+        .login-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            color: var(--accent-red);
+            font-family: "SF Mono", Consolas, monospace;
+            font-size: clamp(0.95rem, 1.55vw, 1.2rem);
+            font-weight: 850;
+            text-transform: uppercase;
+        }
+        .login-kicker::before {
+            content: "";
+            width: 2.25rem;
+            height: 2px;
+            background: currentColor;
+        }
+        .login-wordmark {
+            margin: 1rem 0 0;
+            color: var(--text-main);
+            font-size: clamp(2.8rem, 8vw, 6.4rem);
+            font-weight: 950;
+            line-height: 0.9;
+            letter-spacing: 0;
+        }
+        .login-server {
+            margin-top: 1rem;
+            color: var(--text-muted);
+            font-size: clamp(1.12rem, 2.25vw, 1.45rem);
+            font-weight: 850;
+        }
+        .login-card {
+            width: 100%;
+            border-radius: 8px !important;
+            text-align: left;
+            overflow: hidden;
+        }
+        .login-card::before {
+            content: "";
+            position: absolute;
+            inset: -20% -45%;
+            z-index: 0;
+            pointer-events: none;
+            background: linear-gradient(105deg, transparent 36%, color-mix(in srgb, var(--accent-yellow) 24%, transparent) 49%, transparent 62%);
+            opacity: 0;
+        }
+        .login-card > * {
+            position: relative;
+            z-index: 1;
+        }
+        .setup-card {
+            justify-self: end;
+            opacity: 0;
+            transform: translate3d(1.1rem, 1.35rem, 0) scale(0.975);
+            filter: blur(12px);
+            transition:
+                width 360ms cubic-bezier(0.16, 1, 0.3, 1),
+                min-height 360ms cubic-bezier(0.16, 1, 0.3, 1),
+                padding 360ms cubic-bezier(0.16, 1, 0.3, 1),
+                transform 760ms cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 760ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                filter 760ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        html.ipmi-motion-enabled .setup-card.ipmi-motion-target,
+        html.ipmi-motion-enabled.ipmi-page-ready .setup-card.ipmi-motion-target {
+            animation: none !important;
+            opacity: 0 !important;
+            transform: translate3d(1.1rem, 1.35rem, 0) scale(0.975) !important;
+            filter: blur(12px) !important;
+        }
+        .setup-card.is-intro-visible,
+        html.ipmi-motion-enabled .setup-card.ipmi-motion-target.is-intro-visible,
+        html.ipmi-motion-enabled.ipmi-page-ready .setup-card.ipmi-motion-target.is-intro-visible {
+            opacity: 1 !important;
+            transform: translate3d(0, 0, 0) scale(1) !important;
+            filter: blur(0) !important;
+        }
+        .setup-card.is-language {
+            width: min(100%, 360px);
+            min-height: 250px;
+            padding: 1.35rem;
+            margin-right: clamp(0.35rem, 1vw, 0.75rem);
+        }
+        .setup-card.is-wizard {
+            width: 100%;
+            min-height: 620px;
+            padding: 1.55rem;
+        }
+        .setup-card.is-collapsing,
+        html.ipmi-motion-enabled .setup-card.ipmi-motion-target.is-collapsing,
+        html.ipmi-motion-enabled.ipmi-page-ready .setup-card.ipmi-motion-target.is-collapsing {
+            overflow: hidden;
+        }
+        .setup-card.is-collapsing > :not(.setup-loading-dots) {
+            opacity: 0;
+            transform: translate3d(0, 0.25rem, 0) scale(0.985);
+            filter: blur(4px);
+            pointer-events: none;
+            transition:
+                opacity 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                filter 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .setup-loading-dots {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            z-index: 2;
+            width: 3.25rem;
+            height: 3.25rem;
+            margin: -1.625rem 0 0 -1.625rem;
+            opacity: 0;
+            pointer-events: none;
+            transform-origin: center;
+        }
+        .setup-card.is-collapsing .setup-loading-dots {
+            opacity: 1;
+            animation: setup-orbit-spin 1.08s linear infinite;
+            transition: opacity 180ms cubic-bezier(0.22, 0.61, 0.36, 1) 220ms;
+        }
+        .setup-loading-dots span {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 0.54rem;
+            height: 0.54rem;
+            margin: -0.27rem 0 0 -0.27rem;
+            border-radius: 999px;
+            background: var(--accent-red);
+            box-shadow: 0 0 12px color-mix(in srgb, var(--accent-yellow) 26%, transparent);
+            animation: setup-dot-pulse 1.08s ease-in-out infinite;
+        }
+        .setup-loading-dots span:nth-child(1) { transform: rotate(0deg) translateY(-1.22rem); animation-delay: 0ms; }
+        .setup-loading-dots span:nth-child(2) { transform: rotate(45deg) translateY(-1.22rem); animation-delay: 90ms; }
+        .setup-loading-dots span:nth-child(3) { transform: rotate(90deg) translateY(-1.22rem); animation-delay: 180ms; }
+        .setup-loading-dots span:nth-child(4) { transform: rotate(135deg) translateY(-1.22rem); animation-delay: 270ms; }
+        .setup-loading-dots span:nth-child(5) { transform: rotate(180deg) translateY(-1.22rem); animation-delay: 360ms; }
+        .setup-loading-dots span:nth-child(6) { transform: rotate(225deg) translateY(-1.22rem); animation-delay: 450ms; }
+        .setup-loading-dots span:nth-child(7) { transform: rotate(270deg) translateY(-1.22rem); animation-delay: 540ms; }
+        .setup-loading-dots span:nth-child(8) { transform: rotate(315deg) translateY(-1.22rem); animation-delay: 630ms; }
+        .setup-card.is-collapsing .setup-loading-dots span {
+            animation-play-state: running;
+        }
+        .setup-language {
+            display: grid;
+            gap: 0.9rem;
+        }
+        .setup-language.is-hidden,
+        .setup-wizard.is-hidden {
+            display: none;
+        }
+        .setup-card.is-wizard .setup-wizard {
+            height: 100%;
+            min-height: calc(620px - 3.1rem);
+        }
+        .setup-card.is-wizard #setup-form {
+            height: 100%;
+            min-height: calc(620px - 8.2rem);
+            display: flex;
+            flex-direction: column;
+        }
+        .setup-language h1,
+        .setup-step h2 {
+            margin: 0 0 0.35rem;
+            color: var(--text-main);
+            font-size: 1.34rem;
+            font-weight: 950;
+            letter-spacing: 0;
+            white-space: nowrap;
+        }
+        .setup-language p,
+        .setup-step-copy {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 0.92rem;
+            font-weight: 650;
+            line-height: 1.55;
+        }
+        .setup-language-actions {
+            display: grid;
+            gap: 0.7rem;
+            margin-top: 0.1rem;
+        }
+        .setup-lang-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            min-height: 3.6rem;
+            padding: 0.85rem 1rem;
+            border: 1px solid color-mix(in srgb, var(--text-main) 12%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-body) 30%, transparent);
+            color: var(--text-main);
+            font-weight: 900;
+            text-align: left;
+        }
+        .setup-lang-btn:hover,
+        .setup-lang-btn:focus-visible {
+            border-color: color-mix(in srgb, var(--accent-red) 42%, transparent);
+            background: color-mix(in srgb, var(--accent-yellow) 14%, var(--bg-card));
+            color: var(--text-main);
+        }
+        .setup-lang-btn span {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+        .setup-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.15rem;
+        }
+        .setup-title {
+            margin: 0;
+            color: var(--text-main);
+            font-size: 1.15rem;
+            font-weight: 900;
+            letter-spacing: 0;
+            white-space: nowrap;
+        }
+        .setup-count {
+            flex: 0 0 auto;
+            color: var(--accent-yellow);
+            font-family: "SF Mono", Consolas, monospace;
+            font-size: 0.8rem;
+            font-weight: 900;
+        }
+        .setup-track {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.45rem;
+            margin-bottom: 1.35rem;
+        }
+        .setup-dot {
+            height: 0.32rem;
+            border: 0;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--text-main) 12%, transparent);
+            overflow: hidden;
+        }
+        .setup-dot::before {
+            content: "";
+            display: block;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(0);
+            transform-origin: left;
+            background: linear-gradient(90deg, var(--accent-red), var(--accent-yellow));
+            transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .setup-dot.is-active::before,
+        .setup-dot.is-done::before {
+            transform: scaleX(1);
+        }
+        .setup-step {
+            display: none;
+        }
+        .setup-step.is-active {
+            display: block;
+            animation: setup-step-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+        }
+        .setup-card.is-wizard .setup-step.is-active {
+            flex: 1 1 auto;
+        }
+        .setup-icon {
+            width: 2.48rem;
+            height: 2.48rem;
+            display: inline-grid;
+            place-items: center;
+            margin: 0 0.75rem 0.75rem 0;
+            border: 1px solid color-mix(in srgb, var(--accent-red) 28%, transparent);
+            border-radius: 8px;
+            color: var(--accent-yellow);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-red) 14%, transparent), transparent),
+                color-mix(in srgb, var(--bg-body) 24%, transparent);
+            box-shadow: 0 12px 30px color-mix(in srgb, #000 14%, transparent);
+            vertical-align: middle;
+        }
+        .setup-step h2 {
+            display: inline-block;
+            margin-bottom: 0.75rem;
+            vertical-align: middle;
+        }
+        .setup-step-copy {
+            margin-bottom: 0.95rem;
+            max-width: 34rem;
+            line-height: 1.42;
+        }
+        .setup-fieldset {
+            display: grid;
+            gap: 0.95rem;
+        }
+        .setup-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 0.8rem;
+        }
+        .setup-label {
+            margin-bottom: 0.38rem;
+            color: var(--text-muted);
+            font-size: 0.74rem;
+            font-weight: 900;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .form-control,
+        .form-select,
+        .input-group-text {
+            min-height: 2.86rem;
+        }
+        .input-group-text {
+            min-width: 2.86rem;
+            justify-content: center;
+        }
+        .form-control[readonly] {
+            color: var(--text-main);
+            background: color-mix(in srgb, var(--bg-body) 28%, transparent);
+            cursor: default;
+        }
+        .setup-switch-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            min-height: 3.4rem;
+            padding: 0.75rem 0.9rem;
+            border: 1px solid color-mix(in srgb, var(--text-main) 10%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-body) 24%, transparent);
+        }
+        .setup-switch-title {
+            color: var(--text-main);
+            font-weight: 850;
+            white-space: nowrap;
+        }
+        .setup-conditional {
+            display: grid;
+            gap: 0.85rem;
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transform: translate3d(0, -0.35rem, 0);
+            pointer-events: none;
+            transition:
+                max-height 320ms cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .setup-conditional.is-visible {
+            max-height: 18rem;
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            pointer-events: auto;
+        }
+        .setup-choice-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.7rem;
+        }
+        .setup-choice {
+            position: relative;
+        }
+        .setup-choice input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .setup-choice span {
+            display: grid;
+            min-height: 4.15rem;
+            place-items: center;
+            padding: 0.7rem;
+            border: 1px solid color-mix(in srgb, var(--text-main) 12%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-body) 24%, transparent);
+            color: var(--text-main);
+            font-size: 0.84rem;
+            font-weight: 900;
+            text-align: center;
+        }
+        .setup-choice input:checked + span {
+            border-color: color-mix(in srgb, var(--accent-red) 58%, transparent);
+            background: color-mix(in srgb, var(--accent-red) 14%, var(--bg-card));
+            box-shadow: 0 12px 24px color-mix(in srgb, var(--accent-red) 12%, transparent);
+        }
+        .setup-summary {
+            display: grid;
+            gap: 0.65rem;
+            margin-top: 0.25rem;
+        }
+        .setup-summary-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.7rem 0;
+            border-bottom: 1px solid color-mix(in srgb, var(--text-main) 10%, transparent);
+        }
+        .setup-summary-row:last-child {
+            border-bottom: 0;
+        }
+        .setup-summary-row span {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 800;
+        }
+        .setup-summary-row strong {
+            color: var(--text-main);
+            font-size: 0.86rem;
+            font-weight: 900;
+            text-align: right;
+            overflow-wrap: anywhere;
+        }
+        .setup-error {
+            display: none;
+            margin-top: 1rem;
+            padding: 0.72rem 0.85rem;
+            border: 1px solid color-mix(in srgb, var(--accent-red) 34%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--accent-red) 12%, transparent);
+            color: var(--text-main);
+            font-size: 0.82rem;
+            font-weight: 800;
+        }
+        .setup-error.is-visible {
+            display: block;
+            animation: setup-message-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .setup-toast {
+            display: none;
+            margin-top: 1rem;
+            padding: 0.78rem 0.9rem;
+            border: 1px solid color-mix(in srgb, var(--accent-green) 30%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--accent-green) 12%, transparent);
+            color: var(--text-main);
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+        .setup-toast.is-visible {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            animation: setup-message-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .setup-progress {
+            display: none;
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid color-mix(in srgb, var(--accent-yellow) 24%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-body) 28%, transparent);
+        }
+        .setup-progress.is-visible {
+            display: block;
+            animation: setup-message-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .setup-progress-head {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            font-weight: 900;
+        }
+        .setup-progress-icon {
+            width: 2rem;
+            height: 2rem;
+            display: inline-grid;
+            place-items: center;
+            border-radius: 8px;
+            color: var(--accent-yellow);
+            background: color-mix(in srgb, var(--accent-yellow) 13%, transparent);
+            animation: setup-wait-pulse 1.2s ease-in-out infinite;
+        }
+        .setup-progress-bar {
+            position: relative;
+            height: 0.36rem;
+            margin-top: 0.85rem;
+            overflow: hidden;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--text-main) 10%, transparent);
+        }
+        .setup-progress-bar::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            width: 48%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent-red), var(--accent-yellow));
+            animation: setup-progress-sweep 1.05s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+        .setup-progress-list {
+            display: grid;
+            gap: 0.36rem;
+            margin-top: 0.85rem;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+        .setup-card.is-completing .setup-actions,
+        .setup-card.is-completing .setup-error {
+            display: none;
+        }
+        .setup-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-top: auto;
+            padding-top: 1.2rem;
+        }
+        .setup-actions .btn {
+            min-height: 2.85rem;
+            font-weight: 900;
+        }
+        .setup-actions .btn-primary {
+            min-width: 9rem;
+        }
+        .setup-inline-skip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.42rem;
+            min-height: 2.2rem;
+            padding: 0.38rem 0.62rem;
+            border: 1px solid color-mix(in srgb, var(--text-main) 10%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-body) 20%, transparent);
+            color: var(--text-muted);
+            font-size: 0.84rem;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+        .setup-inline-skip:hover,
+        .setup-inline-skip:focus-visible {
+            border-color: color-mix(in srgb, var(--accent-red) 34%, transparent);
+            background: color-mix(in srgb, var(--accent-yellow) 12%, var(--bg-card));
+            color: var(--text-main);
+        }
+        .setup-inline-skip {
+            justify-self: end;
+            margin-top: -0.1rem;
+        }
+        .setup-actions .btn-outline-secondary:hover,
+        .setup-actions .btn-outline-secondary:focus-visible {
+            color: var(--text-main) !important;
+            border-color: color-mix(in srgb, var(--accent-yellow) 42%, var(--border-color)) !important;
+            background: color-mix(in srgb, var(--accent-yellow) 14%, var(--bg-card)) !important;
+        }
+        .login-github-credit {
+            position: absolute;
+            right: calc(clamp(12px, 2vw, 24px) + env(safe-area-inset-right));
+            bottom: calc(clamp(10px, 1.8vw, 20px) + env(safe-area-inset-bottom));
+            z-index: 5;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.38rem;
+            min-height: 28px;
+            padding: 5px 9px;
+            overflow: hidden;
+            border: 1px solid color-mix(in srgb, var(--text-main) 12%, transparent);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-card) 66%, transparent);
+            color: color-mix(in srgb, var(--text-main) 54%, transparent);
+            opacity: 0;
+            transform: translate3d(0, 0.45rem, 0) scale(0.98);
+            font-size: 0.75rem;
+            font-weight: 850;
+            line-height: 1;
+            text-decoration: none;
+            box-shadow: 0 8px 22px color-mix(in srgb, #000 10%, transparent);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition:
+                opacity 780ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 780ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                color 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                border-color 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                background 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        body.setup-accessories-ready .login-github-credit {
+            opacity: 0.46;
+            transform: translate3d(0, 0, 0) scale(1);
+        }
+        body:not(.setup-accessories-ready) .ipmi-floating-theme-toggle {
+            opacity: 0;
+            transform: translate3d(0, -0.35rem, 0) scale(0.98);
+            pointer-events: none;
+        }
+        .ipmi-floating-theme-toggle {
+            transition:
+                opacity 780ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 780ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                background-color 252ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                border-color 252ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                color 252ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        @media (prefers-reduced-motion: no-preference) {
+            .login-stage::after {
+                animation:
+                    login-grid-reveal 120ms cubic-bezier(0.18, 0.84, 0.26, 1) both 32ms,
+                    login-stage-drift 15s ease-in-out infinite alternate 120ms;
+            }
+            .login-stage::before {
+                animation: login-frame-reveal 1.36s cubic-bezier(0.18, 0.84, 0.26, 1) both 784ms;
+            }
+            .login-identity {
+                animation: login-identity-reveal 1.16s cubic-bezier(0.18, 0.84, 0.26, 1) both 520ms;
+            }
+            .login-kicker::before {
+                transform-origin: left center;
+                animation: login-kicker-line 840ms cubic-bezier(0.16, 1, 0.3, 1) both 840ms;
+            }
+            .login-wordmark {
+                transform-origin: left bottom;
+                animation: login-wordmark-reveal 1.24s cubic-bezier(0.18, 0.84, 0.26, 1) both 940ms;
+            }
+            .login-server {
+                animation: login-identity-reveal 1.04s cubic-bezier(0.18, 0.84, 0.26, 1) both 1.16s;
+            }
+            .login-card {
+                animation: login-card-reveal 1.12s cubic-bezier(0.18, 0.84, 0.26, 1) both 2.62s;
+            }
+            .login-card::before {
+                animation: login-card-glow 2.16s cubic-bezier(0.16, 1, 0.3, 1) both 3.12s;
+            }
+            html.login-theme-shifting body::before {
+                animation: login-theme-wash 384ms cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            html.login-theme-shifting .login-stage {
+                animation: login-theme-stage-shift 384ms cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            html.login-theme-shifting .login-shell::before {
+                animation: login-theme-shell-sheen 408ms cubic-bezier(0.16, 1, 0.3, 1) both 21ms;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            body::before,
+            .login-stage,
+            .login-stage::before,
+            .login-stage::after,
+            .login-shell::before,
+            .login-identity,
+            .login-kicker::before,
+            .login-wordmark,
+            .login-server,
+            .login-card,
+            .login-card::before {
+                animation: none !important;
+            }
+            .setup-card {
+                opacity: 1;
+                transform: none;
+                filter: none;
+            }
+            .login-stage::after {
+                opacity: 0.88;
+                transform: none;
+                filter: none;
+            }
+        }
+        @media (max-width: 920px) {
+            body {
+                min-height: 100svh;
+                overflow-x: clip;
+                overflow-y: auto;
+            }
+            .login-shell {
+                grid-template-columns: 1fr;
+                padding: 5rem 0 2rem;
+            }
+            .login-identity {
+                text-align: left;
+                padding-left: clamp(1.5rem, 7vw, 3rem);
+            }
+            .setup-card {
+                justify-self: center;
+            }
+            .setup-card.is-wizard {
+                max-width: 540px;
+                min-height: auto;
+            }
+        }
+        @media (max-width: 560px) {
+            .login-shell {
+                width: min(100% - 1.5rem, 420px);
+            }
+            .login-identity {
+                padding-left: 0.75rem;
+            }
+            .login-wordmark {
+                font-size: 3.1rem;
+            }
+            .setup-card.is-language,
+            .setup-card.is-wizard {
+                width: 100%;
+                padding: 1.25rem;
+            }
+            .setup-head {
+                display: block;
+            }
+            .setup-count {
+                display: block;
+                margin-top: 0.4rem;
+            }
+            .setup-grid,
+            .setup-choice-grid {
+                grid-template-columns: 1fr;
+            }
+            .setup-actions {
+                align-items: stretch;
+            }
+            .setup-actions .btn {
+                flex: 1 1 0;
+                padding-inline: 0.75rem;
+            }
+            .login-github-credit {
+                right: calc(0.75rem + env(safe-area-inset-right));
+                bottom: calc(0.75rem + env(safe-area-inset-bottom));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-stage"></div>
+    <main class="login-shell">
+        <section class="login-identity">
+            <div class="login-kicker" data-l10n="brand.kicker">FIRST RUN</div>
+            <h1 class="login-wordmark">IPMI<br>WEB</h1>
+            <div class="login-server" data-l10n="brand.subtitle">Setup Console</div>
+        </section>
+
+        <section id="setup-card" class="login-card setup-card is-language position-relative" aria-label="IPMI_WEB Setup Wizard">
+            <div id="language-panel" class="setup-language">
+                <div class="setup-icon"><i class="fas fa-language"></i></div>
+                <div>
+                    <h1 id="language-title">Language / 语言</h1>
+                </div>
+                <div class="setup-language-actions">
+                    <button id="language-zh" class="setup-lang-btn" type="button" data-lang="zh">
+                        简体中文
+                        <span>继续配置</span>
+                    </button>
+                    <button id="language-en" class="setup-lang-btn" type="button" data-lang="en">
+                        English
+                        <span>Continue setup</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="setup-wizard" class="setup-wizard is-hidden">
+                <div class="setup-head">
+                    <div>
+                        <h1 class="setup-title" data-l10n="setup.title">初始化配置</h1>
+                    </div>
+                    <div class="setup-count"><span id="setup-current">01</span> / 07</div>
+                </div>
+                <div class="setup-track" aria-hidden="true">
+                    <span class="setup-dot is-active"></span>
+                    <span class="setup-dot"></span>
+                    <span class="setup-dot"></span>
+                    <span class="setup-dot"></span>
+                    <span class="setup-dot"></span>
+                    <span class="setup-dot"></span>
+                    <span class="setup-dot"></span>
+                </div>
+
+                <form id="setup-form" novalidate>
+                    <section class="setup-step is-active" data-step="0" data-title-key="step.install.title">
+                        <div class="setup-icon"><i class="fas fa-server"></i></div>
+                        <h2 data-l10n="step.install.heading">安装信息</h2>
+                        <p class="setup-step-copy" data-l10n="step.install.copy">这些信息由安装脚本写入，用于服务管理和自动更新。</p>
+                        <div class="setup-fieldset">
+                            <div>
+                                <label class="setup-label" for="service-name" data-l10n="field.serviceName">服务名称</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-cube"></i></span>
+                                    <input id="service-name" name="serviceName" class="form-control" value="{{ service_name }}" readonly>
+                                </div>
+                            </div>
+                            <div class="setup-grid">
+                                <div>
+                                    <label class="setup-label" for="setup-port" data-l10n="field.port">端口</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-network-wired"></i></span>
+                                        <input id="setup-port" name="port" class="form-control" type="number" min="1" max="65535" value="{{ port }}" readonly required>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="setup-label" for="service-mode" data-l10n="field.serviceMode">服务模式</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-gears"></i></span>
+                                        <input id="service-mode" name="serviceMode" class="form-control" value="{{ service_mode }}" readonly>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="setup-label" for="install-root" data-l10n="field.installRoot">安装目录</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-folder-open"></i></span>
+                                    <input id="install-root" name="installRoot" class="form-control" value="{{ install_root }}" readonly required>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="1" data-title-key="step.admin.title">
+                        <div class="setup-icon"><i class="fas fa-key"></i></div>
+                        <h2 data-l10n="step.admin.heading">管理员账户</h2>
+                        <p class="setup-step-copy" data-l10n="step.admin.copy">设置面板显示名称和管理员登录密码。</p>
+                        <div class="setup-fieldset">
+                            <div>
+                                <label class="setup-label" for="server-name" data-l10n="field.serverName">服务器名称</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-tag"></i></span>
+                                    <input id="server-name" name="serverName" class="form-control" value="" autocomplete="off" required data-placeholder-key="placeholder.serverName">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="setup-label" for="admin-password" data-l10n="field.password">登录密码</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-lock"></i></span>
+                                    <input id="admin-password" name="password" class="form-control" type="password" autocomplete="new-password" required data-placeholder-key="placeholder.password">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="setup-label" for="admin-password-repeat" data-l10n="field.passwordRepeat">确认密码</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-shield-alt"></i></span>
+                                    <input id="admin-password-repeat" name="passwordRepeat" class="form-control" type="password" autocomplete="new-password" required data-placeholder-key="placeholder.passwordRepeat">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="2" data-title-key="step.data.title">
+                        <div class="setup-icon"><i class="fas fa-database"></i></div>
+                        <h2 data-l10n="step.data.heading">数据策略</h2>
+                        <p class="setup-step-copy" data-l10n="step.data.copy">确认数据库路径和历史数据保留周期。</p>
+                        <div class="setup-fieldset">
+                            <div>
+                                <label class="setup-label" for="db-path" data-l10n="field.dbPath">数据库路径</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-database"></i></span>
+                                    <input id="db-path" name="dbPath" class="form-control" value="{{ db_path }}" readonly required>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="setup-label" for="retention-days" data-l10n="field.retentionDays">历史保留</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-clock"></i></span>
+                                    <input id="retention-days" name="retentionDays" class="form-control" type="number" min="1" max="365" value="{{ retention_days }}" required>
+                                </div>
+                            </div>
+                            <label class="setup-switch-row" for="low-disk-guard">
+                                <span class="setup-switch-title" data-l10n="field.lowDiskGuard">低磁盘空间保护</span>
+                                <input id="low-disk-guard" name="lowDiskGuard" class="form-check-input m-0" type="checkbox" checked>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="3" data-title-key="step.gpu.title">
+                        <div class="setup-icon"><i class="fas fa-microchip"></i></div>
+                        <h2 data-l10n="step.gpu.heading">GPU 监控</h2>
+                        <p class="setup-step-copy" data-l10n="step.gpu.copy">如果这台机器需要 GPU 监控，启用后填写 Agent 地址。</p>
+                        <div class="setup-fieldset">
+                            <label class="setup-switch-row" for="has-gpu">
+                                <span class="setup-switch-title" data-l10n="field.hasGpu">我有 GPU</span>
+                                <input id="has-gpu" name="hasGpu" class="form-check-input m-0" type="checkbox">
+                            </label>
+                            <div id="gpu-fields" class="setup-conditional">
+                                <div>
+                                    <label class="setup-label" for="gpu-agent" data-l10n="field.gpuAgent">GPU Agent 地址</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-gauge-high"></i></span>
+                                        <input id="gpu-agent" name="gpuAgent" class="form-control" data-placeholder-key="placeholder.gpuAgent" autocomplete="off">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="setup-label" for="gpu-note" data-l10n="field.gpuNote">备注</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-pen"></i></span>
+                                        <input id="gpu-note" name="gpuNote" class="form-control" data-placeholder-key="placeholder.gpuNote" autocomplete="off">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="4" data-title-key="step.mail.title">
+                        <div class="setup-icon"><i class="fas fa-envelope"></i></div>
+                        <h2 data-l10n="step.mail.heading">邮件告警</h2>
+                        <p class="setup-step-copy" data-l10n="step.mail.copy">用于发送硬件异常、数据中断和更新结果通知。</p>
+                        <div class="setup-fieldset">
+                            <div class="setup-grid">
+                                <div>
+                                    <label class="setup-label" for="smtp-host" data-l10n="field.smtpHost">SMTP 服务器</label>
+                                    <input id="smtp-host" name="smtpHost" class="form-control" data-placeholder-key="placeholder.smtpHost" autocomplete="off">
+                                </div>
+                                <div>
+                                    <label class="setup-label" for="smtp-port" data-l10n="field.smtpPort">SMTP 端口</label>
+                                    <input id="smtp-port" name="smtpPort" class="form-control" type="number" min="1" max="65535" value="465">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="setup-label" for="smtp-user" data-l10n="field.smtpUser">发件账号</label>
+                                <input id="smtp-user" name="smtpUser" class="form-control" autocomplete="off" data-placeholder-key="placeholder.smtpUser">
+                            </div>
+                            <div>
+                                <label class="setup-label" for="smtp-password" data-l10n="field.smtpPassword">SMTP 密码</label>
+                                <input id="smtp-password" name="smtpPassword" class="form-control" type="password" autocomplete="new-password" data-placeholder-key="placeholder.smtpPassword">
+                            </div>
+                            <div>
+                                <label class="setup-label" for="mail-receivers" data-l10n="field.mailReceivers">收件人</label>
+                                <input id="mail-receivers" name="mailReceivers" class="form-control" autocomplete="off" data-placeholder-key="placeholder.mailReceivers">
+                            </div>
+                            <button class="setup-inline-skip" id="email-skip" type="button">
+                                <i class="fas fa-forward-step"></i>
+                                <span data-l10n="button.skipEmail">跳过邮件配置</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="5" data-title-key="step.update.title">
+                        <div class="setup-icon"><i class="fas fa-arrows-rotate"></i></div>
+                        <h2 data-l10n="step.update.heading">自动更新</h2>
+                        <p class="setup-step-copy" data-l10n="step.update.copy">用于自动获取修复、安全改进和新版本功能。</p>
+                        <div class="setup-fieldset">
+                            <div class="setup-choice-grid">
+                                <label class="setup-choice">
+                                    <input type="radio" name="updateMode" value="auto" checked>
+                                    <span data-l10n="choice.auto">自动安装</span>
+                                </label>
+                                <label class="setup-choice">
+                                    <input type="radio" name="updateMode" value="notify">
+                                    <span data-l10n="choice.notify">仅提示</span>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="6" data-title-key="step.finish.title">
+                        <div class="setup-icon"><i class="fas fa-rocket"></i></div>
+                        <h2 data-l10n="step.finish.heading">确认配置</h2>
+                        <div class="setup-summary" id="setup-summary"></div>
+                        <div class="setup-toast" id="setup-toast">
+                            <i class="fas fa-circle-check"></i>
+                            <span data-l10n="toast.preview">正在提交初始化配置。</span>
+                        </div>
+                        <div class="setup-progress" id="setup-progress">
+                            <div class="setup-progress-head">
+                                <span class="setup-progress-icon"><i class="fas fa-spinner"></i></span>
+                                <span id="setup-progress-title" data-l10n="progress.title">正在应用配置</span>
+                            </div>
+                            <div class="setup-progress-bar" aria-hidden="true"></div>
+                            <div class="setup-progress-list">
+                                <span data-l10n="progress.write">写入初始化配置</span>
+                                <span data-l10n="progress.service">刷新服务状态</span>
+                                <span data-l10n="progress.home">准备进入主页</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="setup-error" id="setup-error"></div>
+                    <div class="setup-actions">
+                        <button class="btn btn-outline-secondary" type="button" id="setup-back">
+                            <i class="fas fa-arrow-left me-1"></i><span data-l10n="button.back">上一步</span>
+                        </button>
+                        <button class="btn btn-primary" type="button" id="setup-next"></button>
+                    </div>
+                </form>
+            </div>
+            <div class="setup-loading-dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </section>
+    </main>
+    <a class="login-github-credit" href="https://github.com/stlin256/IPMI_WEB" target="_blank" rel="noreferrer" aria-label="GitHub stlin256 IPMI_WEB">
+        <i class="fab fa-github" aria-hidden="true"></i>
+        <span>stlin256</span>
+    </a>
+
+    <script>
+        window.I18N_MESSAGES = {{ i18n_messages | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script>
+        const setupMessages = {
+            zh: {
+                'brand.kicker': '首次启动',
+                'brand.subtitle': '配置控制台',
+                'setup.title': '初始化配置',
+                'step.install.title': '安装信息',
+                'step.install.heading': '安装信息',
+                'step.install.copy': '这些信息由安装脚本写入，用于服务管理和自动更新。',
+                'step.admin.title': '管理员账户',
+                'step.admin.heading': '管理员账户',
+                'step.admin.copy': '设置面板显示名称和管理员登录密码。',
+                'step.data.title': '数据策略',
+                'step.data.heading': '数据策略',
+                'step.data.copy': '确认数据库路径和历史数据保留周期。',
+                'step.gpu.title': 'GPU 监控',
+                'step.gpu.heading': 'GPU 监控',
+                'step.gpu.copy': '如果这台机器需要 GPU 监控，启用后填写 Agent 地址。',
+                'step.mail.title': '邮件告警',
+                'step.mail.heading': '邮件告警',
+                'step.mail.copy': '用于发送硬件异常、数据中断和更新结果通知。',
+                'step.update.title': '自动更新',
+                'step.update.heading': '自动更新',
+                'step.update.copy': '用于自动获取修复、安全改进和新版本功能。',
+                'step.finish.title': '确认配置',
+                'step.finish.heading': '确认配置',
+                'field.serviceName': '服务名称',
+                'field.port': '端口',
+                'field.serviceMode': '服务模式',
+                'field.installRoot': '安装目录',
+                'field.serverName': '服务器名称',
+                'field.password': '登录密码',
+                'field.passwordRepeat': '确认密码',
+                'field.dbPath': '数据库路径',
+                'field.retentionDays': '历史保留',
+                'field.lowDiskGuard': '低磁盘空间保护',
+                'field.hasGpu': '我有 GPU',
+                'field.gpuAgent': 'GPU Agent 地址',
+                'field.gpuNote': '备注',
+                'field.smtpHost': 'SMTP 服务器',
+                'field.smtpPort': 'SMTP 端口',
+                'field.smtpUser': '发件账号',
+                'field.smtpPassword': 'SMTP 密码',
+                'field.mailReceivers': '收件人',
+                'choice.auto': '自动安装',
+                'choice.notify': '仅提示',
+                'button.back': '上一步',
+                'button.next': '下一步',
+                'button.finish': '完成',
+                'button.skipEmail': '跳过邮件配置',
+                'toast.preview': '正在提交初始化配置。',
+                'progress.title': '正在应用配置',
+                'progress.write': '写入初始化配置',
+                'progress.service': '刷新服务状态',
+                'progress.home': '准备进入主页',
+                'home.tab.overview': '总览',
+                'home.tab.resources': '资源',
+                'home.tab.history': '历史',
+                'home.tab.logs': '日志',
+                'home.cpu': 'CPU 温度',
+                'home.fan': '风扇',
+                'home.power': '功耗',
+                'home.update': '更新',
+                'home.normal': '状态正常',
+                'home.auto': '自动控制',
+                'home.live': '实时采样',
+                'home.ready': '已就绪',
+                'home.trend': '硬件曲线',
+                'home.notice': '初始化摘要',
+                'home.modal.title': '欢迎使用 IPMI_WEB',
+                'home.modal.copy': '初始化已经完成。这里是运行总览入口，后续可以在设置中继续调整告警、GPU Agent、自动更新和数据保留策略。',
+                'home.modal.button': '进入主页',
+                'placeholder.serverName': '例如 R730XD',
+                'placeholder.password': '至少 8 位',
+                'placeholder.passwordRepeat': '再次输入',
+                'placeholder.gpuAgent': 'http://127.0.0.1:9735',
+                'placeholder.gpuNote': '例如 4090 节点',
+                'placeholder.smtpHost': 'smtp.example.com',
+                'placeholder.smtpUser': 'alerts@example.com',
+                'placeholder.smtpPassword': '应用专用密码',
+                'placeholder.mailReceivers': 'admin@example.com',
+                'summary.serviceName': '服务名称',
+                'summary.port': '访问端口',
+                'summary.installRoot': '安装目录',
+                'summary.dbPath': '数据库路径',
+                'summary.serverName': '服务器名称',
+                'summary.gpu': 'GPU 监控',
+                'summary.mail': '邮件告警',
+                'summary.update': '自动更新',
+                'status.enabled': '启用',
+                'status.disabled': '关闭',
+                'status.skipped': '跳过',
+                'status.configured': '已配置',
+                'status.notConfigured': '未配置',
+                'error.required': '请填写当前步骤的必填项。',
+                'error.port': '端口必须在 1 到 65535 之间。',
+                'error.passwordLength': '登录密码至少需要 8 位。',
+                'error.passwordMatch': '两次输入的密码不一致。',
+                'error.retention': '历史保留天数必须在 1 到 365 之间。',
+                'error.gpuAgent': '启用 GPU 监控后需要填写有效的 Agent 地址。',
+                'error.smtp': '配置邮件告警时需要填写 SMTP、账号、密码和收件人。',
+                'error.smtpPort': 'SMTP 端口必须在 1 到 65535 之间。',
+                'error.smtpHost': 'SMTP 服务器格式不正确。',
+                'error.senderEmail': '发件账号需要是有效的邮箱地址。',
+                'error.receiverEmail': '收件人需要是有效的邮箱地址，多个地址用逗号或分号分隔。',
+                'error.submit': '初始化配置提交失败，请检查服务状态后重试。'
+            },
+            en: {
+                'brand.kicker': 'FIRST RUN',
+                'brand.subtitle': 'Setup Console',
+                'setup.title': 'Initial Setup',
+                'step.install.title': 'Install Info',
+                'step.install.heading': 'Install Info',
+                'step.install.copy': 'These values are written by the installer and used for service control and updates.',
+                'step.admin.title': 'Administrator',
+                'step.admin.heading': 'Administrator',
+                'step.admin.copy': 'Set the display name and administrator password.',
+                'step.data.title': 'Data Policy',
+                'step.data.heading': 'Data Policy',
+                'step.data.copy': 'Confirm the database path and history retention period.',
+                'step.gpu.title': 'GPU Monitoring',
+                'step.gpu.heading': 'GPU Monitoring',
+                'step.gpu.copy': 'Enable this only when this machine needs GPU monitoring, then enter the Agent URL.',
+                'step.mail.title': 'Email Alerts',
+                'step.mail.heading': 'Email Alerts',
+                'step.mail.copy': 'Used for hardware alerts, data interruption notices, and update results.',
+                'step.update.title': 'Auto Update',
+                'step.update.heading': 'Auto Update',
+                'step.update.copy': 'Used to receive fixes, security improvements, and new version features.',
+                'step.finish.title': 'Review',
+                'step.finish.heading': 'Review',
+                'field.serviceName': 'Service Name',
+                'field.port': 'Port',
+                'field.serviceMode': 'Service Mode',
+                'field.installRoot': 'Install Directory',
+                'field.serverName': 'Server Name',
+                'field.password': 'Login Password',
+                'field.passwordRepeat': 'Confirm Password',
+                'field.dbPath': 'Database Path',
+                'field.retentionDays': 'History Retention',
+                'field.lowDiskGuard': 'Low Disk Space Protection',
+                'field.hasGpu': 'I have a GPU',
+                'field.gpuAgent': 'GPU Agent URL',
+                'field.gpuNote': 'Note',
+                'field.smtpHost': 'SMTP Server',
+                'field.smtpPort': 'SMTP Port',
+                'field.smtpUser': 'Sender Account',
+                'field.smtpPassword': 'SMTP Password',
+                'field.mailReceivers': 'Recipients',
+                'choice.auto': 'Automatic Install',
+                'choice.notify': 'Notify Only',
+                'button.back': 'Back',
+                'button.next': 'Next',
+                'button.finish': 'Finish',
+                'button.skipEmail': 'Skip Email Setup',
+                'toast.preview': 'Submitting initial configuration.',
+                'progress.title': 'Applying Configuration',
+                'progress.write': 'Saving initial settings',
+                'progress.service': 'Refreshing service state',
+                'progress.home': 'Preparing the home page',
+                'home.tab.overview': 'Overview',
+                'home.tab.resources': 'Resources',
+                'home.tab.history': 'History',
+                'home.tab.logs': 'Logs',
+                'home.cpu': 'CPU Temp',
+                'home.fan': 'Fan',
+                'home.power': 'Power',
+                'home.update': 'Update',
+                'home.normal': 'Normal',
+                'home.auto': 'Automatic',
+                'home.live': 'Live sampling',
+                'home.ready': 'Ready',
+                'home.trend': 'Hardware Trend',
+                'home.notice': 'Setup Summary',
+                'home.modal.title': 'Welcome to IPMI_WEB',
+                'home.modal.copy': 'Initial setup is complete. This is the operations overview; you can later adjust alerts, GPU Agents, automatic updates, and retention from Settings.',
+                'home.modal.button': 'Enter Home',
+                'placeholder.serverName': 'Example: R730XD',
+                'placeholder.password': 'At least 8 characters',
+                'placeholder.passwordRepeat': 'Enter again',
+                'placeholder.gpuAgent': 'http://127.0.0.1:9735',
+                'placeholder.gpuNote': 'Example: 4090 node',
+                'placeholder.smtpHost': 'smtp.example.com',
+                'placeholder.smtpUser': 'alerts@example.com',
+                'placeholder.smtpPassword': 'App password',
+                'placeholder.mailReceivers': 'admin@example.com',
+                'summary.serviceName': 'Service Name',
+                'summary.port': 'Port',
+                'summary.installRoot': 'Install Directory',
+                'summary.dbPath': 'Database Path',
+                'summary.serverName': 'Server Name',
+                'summary.gpu': 'GPU Monitoring',
+                'summary.mail': 'Email Alerts',
+                'summary.update': 'Auto Update',
+                'status.enabled': 'Enabled',
+                'status.disabled': 'Disabled',
+                'status.skipped': 'Skipped',
+                'status.configured': 'Configured',
+                'status.notConfigured': 'Not configured',
+                'error.required': 'Fill in the required fields for this step.',
+                'error.port': 'Port must be between 1 and 65535.',
+                'error.passwordLength': 'The password must be at least 8 characters.',
+                'error.passwordMatch': 'The passwords do not match.',
+                'error.retention': 'Retention days must be between 1 and 365.',
+                'error.gpuAgent': 'Enter a valid Agent URL when GPU monitoring is enabled.',
+                'error.smtp': 'SMTP host, account, password, and recipients are required for email alerts.',
+                'error.smtpPort': 'SMTP port must be between 1 and 65535.',
+                'error.smtpHost': 'SMTP server format is invalid.',
+                'error.senderEmail': 'Sender account must be a valid email address.',
+                'error.receiverEmail': 'Recipients must be valid email addresses separated by commas or semicolons.',
+                'error.submit': 'Failed to submit initial configuration. Check the service and try again.'
+            }
+        };
+
+        const steps = Array.from(document.querySelectorAll('.setup-step'));
+        const dots = Array.from(document.querySelectorAll('.setup-dot'));
+        const card = document.getElementById('setup-card');
+        const languagePanel = document.getElementById('language-panel');
+        const languageTitle = document.getElementById('language-title');
+        const languageZh = document.getElementById('language-zh');
+        const languageEn = document.getElementById('language-en');
+        const wizard = document.getElementById('setup-wizard');
+        const backBtn = document.getElementById('setup-back');
+        const nextBtn = document.getElementById('setup-next');
+        const currentLabel = document.getElementById('setup-current');
+        const summary = document.getElementById('setup-summary');
+        const toast = document.getElementById('setup-toast');
+        const setupProgress = document.getElementById('setup-progress');
+        const errorBox = document.getElementById('setup-error');
+        const hasGpu = document.getElementById('has-gpu');
+        const gpuFields = document.getElementById('gpu-fields');
+        const emailSkip = document.getElementById('email-skip');
+        function browserSetupLanguage() {
+            const langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'zh'];
+            return langs.some((lang) => String(lang).toLowerCase().startsWith('zh')) ? 'zh' : 'en';
+        }
+
+        let currentLang = browserSetupLanguage();
+        let currentStep = 0;
+        let emailSkipped = false;
+
+        function msg(key) {
+            return setupMessages[currentLang][key] || setupMessages.zh[key] || key;
+        }
+
+        function applyLocale() {
+            document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+            applyLanguageIntro();
+            document.querySelectorAll('[data-l10n]').forEach((node) => {
+                node.textContent = msg(node.dataset.l10n);
+            });
+            document.querySelectorAll('[data-placeholder-key]').forEach((node) => {
+                node.placeholder = msg(node.dataset.placeholderKey);
+            });
+            renderStep();
+        }
+
+        function applyLanguageIntro() {
+            languageTitle.textContent = currentLang === 'zh' ? '语言 / Language' : 'Language / 语言';
+            languageZh.style.order = currentLang === 'zh' ? '1' : '2';
+            languageEn.style.order = currentLang === 'zh' ? '2' : '1';
+        }
+
+        function field(name) {
+            return document.querySelector(`[name="${name}"]`);
+        }
+
+        function value(name) {
+            const item = field(name);
+            if (!item) return '';
+            if (item.type === 'checkbox') return item.checked;
+            return item.value.trim();
+        }
+
+        function escapeHtml(raw) {
+            return String(raw || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function setError(message) {
+            if (!message) {
+                errorBox.textContent = '';
+                errorBox.classList.remove('is-visible');
+                return;
+            }
+            errorBox.textContent = message;
+            errorBox.classList.add('is-visible');
+        }
+
+        function markInvalid(node, invalid) {
+            if (!node) return;
+            node.classList.toggle('is-invalid', Boolean(invalid));
+        }
+
+        function validPort(raw) {
+            const port = Number(raw);
+            return Number.isInteger(port) && port >= 1 && port <= 65535;
+        }
+
+        function validUrl(raw) {
+            try {
+                const url = new URL(raw);
+                return url.protocol === 'http:' || url.protocol === 'https:';
+            } catch {
+                return false;
+            }
+        }
+
+        function validEmail(raw) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(raw || '').trim());
+        }
+
+        function validEmailList(raw) {
+            const items = String(raw || '')
+                .split(/[;,]/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+            return items.length > 0 && items.every(validEmail);
+        }
+
+        function validHost(raw) {
+            const host = String(raw || '').trim();
+            if (!host || /\s|:\/\//.test(host)) return false;
+            if (host === 'localhost') return true;
+            if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+                return host.split('.').every((part) => Number(part) >= 0 && Number(part) <= 255);
+            }
+            return /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/.test(host);
+        }
+
+        function validateRequired(container) {
+            const required = Array.from(container.querySelectorAll('[required]'));
+            for (const item of required) {
+                const empty = !String(item.value || '').trim();
+                markInvalid(item, empty);
+                if (empty) {
+                    item.focus();
+                    setError(msg('error.required'));
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function validateStep() {
+            setError('');
+            const active = steps[currentStep];
+            if (!validateRequired(active)) return false;
+
+            if (currentStep === 0) {
+                if (!validPort(value('port'))) {
+                    setError(msg('error.port'));
+                    return false;
+                }
+            }
+            if (currentStep === 1) {
+                const password = field('password');
+                const repeat = field('passwordRepeat');
+                if (password.value.length < 8) {
+                    markInvalid(password, true);
+                    password.focus();
+                    setError(msg('error.passwordLength'));
+                    return false;
+                }
+                if (password.value !== repeat.value) {
+                    markInvalid(repeat, true);
+                    repeat.focus();
+                    setError(msg('error.passwordMatch'));
+                    return false;
+                }
+            }
+            if (currentStep === 2) {
+                const retention = Number(value('retentionDays'));
+                if (!Number.isInteger(retention) || retention < 1 || retention > 365) {
+                    markInvalid(field('retentionDays'), true);
+                    field('retentionDays').focus();
+                    setError(msg('error.retention'));
+                    return false;
+                }
+            }
+            if (currentStep === 3 && hasGpu.checked) {
+                const agent = field('gpuAgent');
+                if (!validUrl(agent.value.trim())) {
+                    markInvalid(agent, true);
+                    agent.focus();
+                    setError(msg('error.gpuAgent'));
+                    return false;
+                }
+            }
+            if (currentStep === 4 && !emailSkipped) {
+                const requiredEmail = ['smtpHost', 'smtpUser', 'smtpPassword', 'mailReceivers'];
+                for (const name of requiredEmail) {
+                    const item = field(name);
+                    const empty = !item.value.trim();
+                    markInvalid(item, empty);
+                    if (empty) {
+                        item.focus();
+                        setError(msg('error.smtp'));
+                        return false;
+                    }
+                }
+                if (!validPort(value('smtpPort'))) {
+                    markInvalid(field('smtpPort'), true);
+                    field('smtpPort').focus();
+                    setError(msg('error.smtpPort'));
+                    return false;
+                }
+                if (!validHost(value('smtpHost'))) {
+                    markInvalid(field('smtpHost'), true);
+                    field('smtpHost').focus();
+                    setError(msg('error.smtpHost'));
+                    return false;
+                }
+                if (!validEmail(value('smtpUser'))) {
+                    markInvalid(field('smtpUser'), true);
+                    field('smtpUser').focus();
+                    setError(msg('error.senderEmail'));
+                    return false;
+                }
+                if (!validEmailList(value('mailReceivers'))) {
+                    markInvalid(field('mailReceivers'), true);
+                    field('mailReceivers').focus();
+                    setError(msg('error.receiverEmail'));
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function updateConditionalBlocks() {
+            gpuFields.classList.toggle('is-visible', hasGpu.checked);
+        }
+
+        function updateSummary() {
+            const selectedUpdateMode = document.querySelector('[name="updateMode"]:checked')?.value || 'auto';
+            const updateModeLabels = {
+                auto: msg('choice.auto'),
+                notify: msg('choice.notify')
+            };
+            const updateMode = updateModeLabels[selectedUpdateMode] || msg('choice.notify');
+            const rows = [
+                [msg('summary.serviceName'), value('serviceName')],
+                [msg('summary.port'), value('port')],
+                [msg('summary.installRoot'), value('installRoot')],
+                [msg('summary.dbPath'), value('dbPath')],
+                [msg('summary.serverName'), value('serverName')],
+                [msg('summary.gpu'), hasGpu.checked ? `${msg('status.enabled')} - ${value('gpuAgent')}` : msg('status.disabled')],
+                [msg('summary.mail'), emailSkipped ? msg('status.skipped') : value('mailReceivers')],
+                [msg('summary.update'), updateMode]
+            ];
+            summary.innerHTML = rows.map(([label, rowValue]) => `
+                <div class="setup-summary-row">
+                    <span>${escapeHtml(label)}</span>
+                    <strong>${escapeHtml(rowValue || '-')}</strong>
+                </div>
+            `).join('');
+        }
+
+        function collectSetupPayload() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                token: params.get('token') || '',
+                language: currentLang,
+                serviceName: value('serviceName'),
+                port: Number(value('port')),
+                serviceMode: value('serviceMode'),
+                installRoot: value('installRoot'),
+                dbPath: value('dbPath'),
+                serverName: value('serverName'),
+                password: value('password'),
+                retentionDays: Number(value('retentionDays')),
+                lowDiskGuard: Boolean(value('lowDiskGuard')),
+                hasGpu: hasGpu.checked,
+                gpuAgent: value('gpuAgent'),
+                gpuNote: value('gpuNote'),
+                skipEmail: emailSkipped,
+                smtpHost: value('smtpHost'),
+                smtpPort: Number(value('smtpPort')),
+                smtpUser: value('smtpUser'),
+                smtpPassword: value('smtpPassword'),
+                mailReceivers: value('mailReceivers'),
+                updateMode: document.querySelector('[name="updateMode"]:checked')?.value || 'auto'
+            };
+        }
+
+        async function completeSetupPreview() {
+            card.classList.add('is-completing', 'is-collapsing');
+            setupProgress.classList.remove('is-visible');
+            toast.classList.remove('is-visible');
+            backBtn.disabled = true;
+            nextBtn.disabled = true;
+            const started = Date.now();
+            try {
+                const response = await fetch('/api/setup/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(collectSetupPayload())
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || result.status === 'error') {
+                    throw new Error(result.message || msg('error.submit'));
+                }
+                const wait = Math.max(760, 1220 - (Date.now() - started));
+                window.setTimeout(() => {
+                    window.location.href = result.redirect || '/hardware?setup=1';
+                }, wait);
+            } catch (error) {
+                const wait = Math.max(280, 760 - (Date.now() - started));
+                window.setTimeout(() => {
+                    card.classList.remove('is-completing', 'is-collapsing');
+                    backBtn.disabled = false;
+                    nextBtn.disabled = false;
+                    setError(error.message || msg('error.submit'));
+                }, wait);
+            }
+        }
+
+        function renderStep() {
+            if (wizard.classList.contains('is-hidden')) return;
+            steps.forEach((step, index) => {
+                step.classList.toggle('is-active', index === currentStep);
+            });
+            dots.forEach((dot, index) => {
+                dot.classList.toggle('is-active', index === currentStep);
+                dot.classList.toggle('is-done', index < currentStep);
+            });
+            currentLabel.textContent = String(currentStep + 1).padStart(2, '0');
+            backBtn.disabled = false;
+            nextBtn.innerHTML = currentStep === steps.length - 1
+                ? `${msg('button.finish')}<i class="fas fa-check ms-1"></i>`
+                : `${msg('button.next')}<i class="fas fa-arrow-right ms-1"></i>`;
+            toast.classList.remove('is-visible');
+            setError('');
+            if (currentStep === steps.length - 1) updateSummary();
+        }
+
+        document.querySelectorAll('.setup-lang-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                currentLang = button.dataset.lang;
+                applyLocale();
+                languagePanel.classList.add('is-hidden');
+                card.classList.remove('is-language');
+                card.classList.add('is-wizard');
+                window.setTimeout(() => {
+                    wizard.classList.remove('is-hidden');
+                    renderStep();
+                }, 180);
+            });
+        });
+
+        function showLanguageChoice() {
+            wizard.classList.add('is-hidden');
+            card.classList.remove('is-wizard');
+            card.classList.add('is-language');
+            window.setTimeout(() => {
+                languagePanel.classList.remove('is-hidden');
+            }, 160);
+        }
+
+        backBtn.addEventListener('click', () => {
+            if (currentStep === 0) {
+                showLanguageChoice();
+                return;
+            }
+            currentStep = Math.max(0, currentStep - 1);
+            renderStep();
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (!validateStep()) return;
+            if (currentStep === steps.length - 1) {
+                completeSetupPreview();
+                return;
+            }
+            currentStep = Math.min(steps.length - 1, currentStep + 1);
+            renderStep();
+        });
+
+        emailSkip.addEventListener('click', () => {
+            emailSkipped = true;
+            setError('');
+            currentStep = Math.min(steps.length - 1, currentStep + 1);
+            renderStep();
+        });
+
+        document.querySelectorAll('input, select').forEach((item) => {
+            item.addEventListener('input', () => {
+                markInvalid(item, false);
+                setError('');
+                if (item.closest('[data-step="4"]')) {
+                    emailSkipped = false;
+                }
+                if (currentStep === steps.length - 1) updateSummary();
+            });
+        });
+        hasGpu.addEventListener('change', updateConditionalBlocks);
+        document.querySelectorAll('[name="updateMode"]').forEach((item) => {
+            item.addEventListener('change', () => {
+                if (currentStep === steps.length - 1) updateSummary();
+            });
+        });
+        applyLocale();
+        updateConditionalBlocks();
+        window.setTimeout(() => {
+            card.classList.add('is-intro-visible');
+        }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 2850);
+        window.setTimeout(() => {
+            document.body.classList.add('setup-accessories-ready');
+        }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 3350);
+    </script>
+</body>
+</html>
