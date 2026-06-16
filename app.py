@@ -451,6 +451,7 @@ HIDDEN_AUDIT_LOG_EVENTS = {('SYSTEM', 'AUDIT_ARCHIVE')}
 SENSOR_HISTORY_COMPRESSION_LEVEL = 9
 SENSOR_ARCHIVE_AFTER_SECONDS = 6 * 3600
 SENSOR_ARCHIVE_MAX_HOURS_PER_RUN = 12
+SENSOR_DETAIL_TARGET_POINTS = 1200
 COMPRESSED_CODEC_ZLIB = b'ZL1'
 COMPRESSED_CODEC_LZMA = b'XZ1'
 SQLITE_AUTO_RECLAIM_MIN_BYTES = 16 * 1024 * 1024
@@ -1073,6 +1074,151 @@ def estimate_sensor_sample_count(conn, start_ts=None, end_ts=None):
     except sqlite3.Error:
         pass
     return total
+
+def parse_sensor_numeric_value(value):
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (TypeError, ValueError):
+        text = str(value or '').strip()
+        if text.lower().startswith('0x'):
+            try:
+                return float(int(text, 16))
+            except ValueError:
+                return None
+        return None
+
+def add_sensor_history_sample(bucketed, timestamp, value, unit, bucket_anchor, bucket_size):
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        return
+    bucket = int((ts - bucket_anchor) // max(1, int(bucket_size)))
+    existing = bucketed.get(bucket)
+    if existing is None or ts >= existing[0]:
+        bucketed[bucket] = (ts, value, unit or '')
+
+def collect_archived_sensor_points(conn, name, start_ts, end_ts, bucket_anchor, bucket_size, bucketed):
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM sensor_history_archives WHERE end_ts > ? AND start_ts < ? ORDER BY hour_ts ASC",
+        (int(start_ts), int(end_ts))
+    )
+    for archive in c.fetchall():
+        try:
+            raw = decompress_payload(archive['data']).decode('utf-8')
+            payload = json.loads(raw)
+            if not isinstance(payload, dict) or payload.get('format') != 'sensor_cols_v1':
+                continue
+            sensors = payload.get('sensors') or []
+            rows = payload.get('rows') or []
+            sensor_indexes = [
+                idx for idx, meta in enumerate(sensors)
+                if isinstance(meta, dict) and meta.get('name') == name
+            ]
+            if not sensor_indexes:
+                continue
+
+            for item in rows:
+                if not isinstance(item, list) or len(item) < 2:
+                    continue
+                ts = int(item[0])
+                if ts < start_ts or ts >= end_ts:
+                    continue
+                values = item[1] if isinstance(item[1], list) else []
+                for sensor_idx in sensor_indexes:
+                    if sensor_idx >= len(values) or values[sensor_idx] is None:
+                        continue
+                    meta = sensors[sensor_idx] if sensor_idx < len(sensors) and isinstance(sensors[sensor_idx], dict) else {}
+                    add_sensor_history_sample(bucketed, ts, values[sensor_idx], meta.get('unit', ''), bucket_anchor, bucket_size)
+                    break
+        except Exception as e:
+            logging.error(f"Sensor archive detail decode failed for hour {archive['hour_ts']}: {e}")
+
+def collect_hot_sensor_points(conn, name, start_ts, end_ts, bucket_anchor, bucket_size, bucketed):
+    c = conn.cursor()
+    c.execute("""
+        WITH bucketed AS (
+            SELECT MAX(timestamp) AS sample_ts
+            FROM sensor_history
+            WHERE timestamp >= ? AND timestamp < ?
+            GROUP BY CAST((timestamp - ?) / ? AS INTEGER)
+        )
+        SELECT h.timestamp, h.data
+        FROM sensor_history h
+        INNER JOIN bucketed b ON h.timestamp = b.sample_ts
+        ORDER BY h.timestamp ASC
+    """, (int(start_ts), int(end_ts), int(bucket_anchor), max(1, int(bucket_size))))
+    for row in c.fetchall():
+        try:
+            sensors = json.loads(decompress_payload(row['data']).decode('utf-8'))
+            if not isinstance(sensors, list):
+                continue
+            target = next(
+                (sensor for sensor in sensors if isinstance(sensor, dict) and sensor.get('name') == name),
+                None
+            )
+            if target:
+                add_sensor_history_sample(
+                    bucketed,
+                    row['timestamp'],
+                    target.get('value'),
+                    target.get('unit', ''),
+                    bucket_anchor,
+                    bucket_size
+                )
+        except Exception as e:
+            logging.error(f"Sensor hot detail decode failed at {row['timestamp']}: {e}")
+
+def build_sensor_history_detail_response(name, hours, now_ts=None):
+    now_ts = int(now_ts or time.time())
+    end_ts = now_ts + 1
+    start_ts = now_ts - int(hours) * 3600
+    bucket_size = history_bucket_seconds(hours, SENSOR_DETAIL_TARGET_POINTS)
+    bucket_anchor = (start_ts // bucket_size) * bucket_size
+    bucketed = {}
+
+    conn = get_db_connection()
+    try:
+        collect_archived_sensor_points(conn, name, start_ts, end_ts, bucket_anchor, bucket_size, bucketed)
+        collect_hot_sensor_points(conn, name, start_ts, end_ts, bucket_anchor, bucket_size, bucketed)
+    finally:
+        conn.close()
+
+    series = sorted(bucketed.values(), key=lambda item: item[0])
+    if not series:
+        return {'times': [], 'values': [], 'unit': '', 'is_numeric': True}
+
+    unit = next((item[2] for item in reversed(series) if item[2]), '')
+    numeric_series = []
+    is_numeric = True
+    for ts, value, _ in series:
+        number = parse_sensor_numeric_value(value)
+        if number is None:
+            is_numeric = False
+            break
+        numeric_series.append((ts, number))
+
+    time_fmt = '%H:%M:%S' if int(hours) <= 1 else '%m-%d %H:%M'
+    if is_numeric:
+        sampled = lttb_downsample(numeric_series, SENSOR_DETAIL_TARGET_POINTS)
+        return {
+            'times': [datetime.fromtimestamp(ts).strftime(time_fmt) for ts, _ in sampled],
+            'values': [value for _, value in sampled],
+            'is_numeric': True,
+            'unit': unit
+        }
+
+    step = max(1, len(series) // SENSOR_DETAIL_TARGET_POINTS)
+    sampled = series[::step]
+    if sampled and sampled[-1][0] != series[-1][0]:
+        sampled.append(series[-1])
+    return {
+        'times': [datetime.fromtimestamp(ts).strftime(time_fmt) for ts, _, _ in sampled],
+        'values': [value for _, value, _ in sampled],
+        'is_numeric': False,
+        'unit': unit
+    }
 
 def archive_old_sensor_history(conn, now_ts=None):
     now_ts = int(now_ts or time.time())
@@ -7065,79 +7211,9 @@ def api_history_gpu():
 @login_required
 def api_sensor_history_detail():
     name = request.args.get('name')
-    hours = int(request.args.get('hours', 24))
+    hours = parse_hours_arg(default=24)
     if not name: return jsonify({'error': 'Missing name'}), 400
-
-    conn = get_db_connection()
-    cutoff = int(time.time() - (hours * 3600))
-    
-    # [性能优化] 先估算总行数，计算步长进行跳步解压；同时覆盖热表和小时归档块。
-    total_count = estimate_sensor_sample_count(conn, cutoff)
-    
-    if total_count == 0:
-        conn.close()
-        return jsonify({'times': [], 'values': [], 'is_numeric': True})
-
-    # 目标点数 2000 点
-    target_points = 2000
-    step = max(1, total_count // target_points)
-    
-    raw_series = []
-    unit = ""
-    count = 0
-    
-    for ts, sensors in iter_all_sensor_rows(conn, cutoff):
-        # 跳步逻辑：每 step 行处理一次
-        if count % step == 0:
-            try:
-                target = next((s for s in sensors if s['name'] == name), None)
-                if target:
-                    val_raw = target['value']
-                    unit = target['unit']
-                    raw_series.append((ts, val_raw))
-            except: pass
-        
-        count += 1
-        # 防止结果集溢出目标点数太多 (由于 step 是向下取整)
-        if len(raw_series) >= target_points + 100:
-            break
-
-    conn.close()
-
-    if not raw_series: return jsonify({'times': [], 'values': [], 'unit': unit})
-
-    # 判断是否为数值型
-    def to_float(v):
-        try: return float(v)
-        except:
-            if v.startswith('0x'):
-                try: return int(v, 16)
-                except: pass
-            return None
-
-    is_numeric = all(to_float(s[1]) is not None for s in raw_series)
-    
-    if is_numeric:
-        # 数值型：应用 LTTB 降采样
-        data_for_lttb = [(s[0], to_float(s[1])) for s in raw_series]
-        downsampled = lttb_downsample(data_for_lttb, 2000)
-        return jsonify({
-            'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M:%S') for d in downsampled],
-            'values': [d[1] for d in downsampled],
-            'is_numeric': True,
-            'unit': unit
-        })
-    else:
-        # 离散/文本型：简单步进降采样 (LTTB 不适用于文本)
-        # 注意：为了保留刺，离散型采样稍微密集一点，或者取变化点
-        step = max(1, len(raw_series) // 2000)
-        sampled = raw_series[::step]
-        return jsonify({
-            'times': [datetime.fromtimestamp(d[0]).strftime('%m-%d %H:%M:%S') for d in sampled],
-            'values': [d[1] for d in sampled],
-            'is_numeric': False,
-            'unit': unit
-        })
+    return jsonify(build_sensor_history_detail_response(name, hours))
 
 @app.route('/api/recording_stats')
 @login_required

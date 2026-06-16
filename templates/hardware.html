@@ -932,6 +932,10 @@
     let hardwareNoticeModal = null;
     let calibrationConfirmModal = null;
     let calibrationModal = null;
+    let dashboardOptions = null;
+    let sensorHistoryAbortController = null;
+    const sensorHistoryCache = new Map();
+    const SENSOR_HISTORY_CACHE_TTL_MS = 30000;
 
     function tx(key, fallback, params = {}) {
         const translated = t(key, params);
@@ -1480,7 +1484,7 @@
                 tr.setAttribute('data-name', s.name);
                 tr.innerHTML = `
                     <td class="text-muted small">${s.source}</td>
-                    <td><span class="sensor-name-link fw-bold" onclick="showSensorDetail('${s.name}')">${s.name}</span></td>
+                    <td><span class="sensor-name-link fw-bold" onclick='showSensorDetail(${JSON.stringify(s.name)})'>${s.name}</span></td>
                     <td class="text-end font-monospace text-info sensor-value-cell">${valueHtml}</td>
                     <td class="text-center hide-mobile sensor-status-cell">${statusHtml}</td>
                 `;
@@ -1559,6 +1563,7 @@
         try {
             const res = await fetch('/api/dashboard_options');
             const settings = await res.json();
+            dashboardOptions = settings;
             const container = document.getElementById('tr-container');
             if (container && settings.dashboard_hours_hw) {
                 const savedHours = parseInt(localStorage.getItem('hw_hist_time_range'), 10);
@@ -1809,45 +1814,105 @@
     let currentActiveSensor = null;
     const detailModal = new bootstrap.Modal(document.getElementById('sensorDetailModal'));
 
-    async function showSensorDetail(name) {
-        currentActiveSensor = name;
-        document.getElementById('modal-sensor-name').innerText = name;
-        
-        // 1. 初始化按钮组 (遵循 hist 设置，并匹配 hist 页面样式)
-        const settingsRes = await fetch('/api/dashboard_options');
-        const settings = await settingsRes.json();
+    document.getElementById('sensorDetailModal').addEventListener('hidden.bs.modal', () => {
+        currentActiveSensor = null;
+        if (sensorHistoryAbortController) sensorHistoryAbortController.abort();
+    });
+
+    function formatRangeLabel(hours) {
+        return hours >= 24 ? `${Math.round(hours / 24)}D` : `${hours}H`;
+    }
+
+    function sensorRangeOptions() {
+        const configured = dashboardOptions && Array.isArray(dashboardOptions.dashboard_hours_hist)
+            ? dashboardOptions.dashboard_hours_hist
+            : [];
+        return configured.length ? configured : [1, 24, 168];
+    }
+
+    function defaultSensorRange(hoursList) {
+        return hoursList.includes(24) ? 24 : hoursList[0];
+    }
+
+    function renderSensorRangeButtons(selectedHours) {
         const container = document.getElementById('sensor-hist-range-container');
-        
-        const hoursList = settings.dashboard_hours_hist || [1, 24, 168];
-        container.innerHTML = hoursList.map((h, i) => {
-            const label = h >= 24 ? (h/24).toFixed(0) + 'D' : h + 'H';
+        const hoursList = sensorRangeOptions().map((h) => parseInt(h, 10)).filter((h) => Number.isFinite(h) && h > 0);
+        const activeHours = hoursList.includes(parseInt(selectedHours, 10)) ? parseInt(selectedHours, 10) : defaultSensorRange(hoursList);
+
+        container.innerHTML = hoursList.map((h) => {
+            const label = formatRangeLabel(h);
             return `
-                <input type="radio" class="btn-check" name="sensorRange" id="sr${h}" value="${h}" ${h==24?'checked':''}>
+                <input type="radio" class="btn-check" name="sensorRange" id="sr${h}" value="${h}" ${h===activeHours?'checked':''}>
                 <label class="btn btn-outline-secondary px-3" for="sr${h}">${label}</label>
             `;
         }).join('');
 
-        // 2. 绑定事件
         document.querySelectorAll('input[name="sensorRange"]').forEach(el => {
-            el.onchange = () => loadSensorHistory(name, el.value);
+            el.checked = parseInt(el.value, 10) === activeHours;
+            el.onchange = () => loadSensorHistory(currentActiveSensor, el.value);
         });
 
+        return activeHours;
+    }
+
+    function refreshSensorRangeOptions(name, selectedHours) {
+        if (dashboardOptions) return;
+        window.IPMI.fetchJson('/api/dashboard_options', { timeoutMs: 8000 })
+            .then((settings) => {
+                dashboardOptions = settings;
+                if (currentActiveSensor === name) {
+                    const activeHours = renderSensorRangeButtons(selectedHours);
+                    if (activeHours !== parseInt(selectedHours, 10)) {
+                        loadSensorHistory(name, activeHours);
+                    }
+                }
+            })
+            .catch((error) => console.debug('Sensor range options load failed:', error));
+    }
+
+    function showSensorDetail(name) {
+        currentActiveSensor = name;
+        document.getElementById('modal-sensor-name').innerText = name;
+        const defaultHours = renderSensorRangeButtons(24);
         detailModal.show();
-        loadSensorHistory(name, 24);
+        loadSensorHistory(name, defaultHours);
+        refreshSensorRangeOptions(name, defaultHours);
     }
 
     async function loadSensorHistory(name, hours) {
+        if (!name) return;
+        const normalizedHours = parseInt(hours, 10) || 24;
         const loader = document.getElementById('sensor-chart-loader');
-        loader.style.display = 'block';
+        const cacheKey = `${name}\u0000${normalizedHours}`;
+        const cached = sensorHistoryCache.get(cacheKey);
 
+        if (sensorHistoryAbortController) sensorHistoryAbortController.abort();
+
+        if (cached && Date.now() - cached.time < SENSOR_HISTORY_CACHE_TTL_MS) {
+            renderSensorChart(cached.data);
+            loader.style.display = 'none';
+            return;
+        }
+
+        const controller = new AbortController();
+        sensorHistoryAbortController = controller;
+        loader.style.display = 'block';
         try {
-            const res = await fetch(`/api/sensor_history_detail?name=${encodeURIComponent(name)}&hours=${hours}`);
-            const data = await res.json();
+            const data = await window.IPMI.fetchJson(
+                `/api/sensor_history_detail?name=${encodeURIComponent(name)}&hours=${normalizedHours}`,
+                { signal: controller.signal, cacheTtlMs: SENSOR_HISTORY_CACHE_TTL_MS }
+            );
+            if (controller.signal.aborted || currentActiveSensor !== name) return;
+            sensorHistoryCache.set(cacheKey, { time: Date.now(), data });
             renderSensorChart(data);
         } catch (e) {
+            if (window.IPMI && window.IPMI.isAbort(e)) return;
             console.error("Failed to load sensor history", e);
         } finally {
-            loader.style.display = 'none';
+            if (sensorHistoryAbortController === controller) {
+                sensorHistoryAbortController = null;
+                loader.style.display = 'none';
+            }
         }
     }
 
