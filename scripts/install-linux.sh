@@ -17,16 +17,29 @@ prompt_default() {
     printf '%s' "${answer:-$default_value}"
 }
 
+detect_default_run_user() {
+    if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+        printf '%s' "$SUDO_USER"
+        return
+    fi
+    id -un
+}
+
+DEFAULT_RUN_USER="$(detect_default_run_user)"
 INSTALL_DIR="$(prompt_default "Install directory" "/opt/ipmi-web")"
 DATA_DIR="$(prompt_default "Data directory" "/var/lib/ipmi-web")"
 PORT="$(prompt_default "HTTP port" "90")"
 SERVICE_NAME="$(prompt_default "Systemd service name" "ipmi-web")"
-RUN_USER="$(prompt_default "Run as Linux user" "ipmi-web")"
+RUN_USER="$(prompt_default "Run service as Linux user" "$DEFAULT_RUN_USER")"
 INSTALL_DEPENDENCIES="$(prompt_default "Install system and Python dependencies automatically? (Y/n)" "Y")"
 
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
     echo "Invalid port: $PORT"
     exit 1
+fi
+SYSTEMD_CAPABILITY_BLOCK=""
+if [ "$PORT" -lt 1024 ]; then
+    SYSTEMD_CAPABILITY_BLOCK=$'AmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nNoNewPrivileges=true'
 fi
 
 install_packages() {
@@ -156,6 +169,7 @@ WorkingDirectory=${INSTALL_DIR}
 ExecStart=${APP_PYTHON} ${INSTALL_DIR}/app.py
 Restart=on-failure
 RestartSec=3
+${SYSTEMD_CAPABILITY_BLOCK}
 
 [Install]
 WantedBy=multi-user.target
@@ -169,6 +183,9 @@ HOST_IP="${HOST_IP:-127.0.0.1}"
 
 echo
 echo "IPMI_WEB is installed and starting."
+if [ "$PORT" -lt 1024 ]; then
+    echo "Low port ${PORT} detected; systemd grants CAP_NET_BIND_SERVICE to the service process."
+fi
 echo "Open the setup wizard:"
 echo "  http://${HOST_IP}:${PORT}/setup"
 echo

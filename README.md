@@ -263,7 +263,7 @@ The Linux installer:
 - checks that it is running as root, so it does not fail later on systems without usable `sudo`;
 - asks whether to install dependencies; entering `n` skips both system package installation and Python requirement installation;
 - installs Python, `ipmitool`, `lm-sensors`, Git, rsync, and the Python requirements when dependency installation is enabled;
-- asks for the HTTP port, install directory, data directory, systemd service name, and service user;
+- asks for the HTTP port, install directory, data directory, systemd service name, and service user; the service user defaults to the account that invoked the installer;
 - writes `config.json` and `install.json`, including the first-run setup mode flag;
 - enables and starts a systemd service;
 - prints a URL like `http://server-ip:90/setup`.

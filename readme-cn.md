@@ -263,7 +263,7 @@ Linux 安装脚本会完成：
 - 检查当前是否为 root，避免在不能执行 `sudo` 的环境里跑到一半才失败；
 - 询问是否自动安装依赖；输入 `n` 会跳过系统包安装和 Python requirements 安装；
 - 在启用依赖安装时安装 Python、`ipmitool`、`lm-sensors`、Git、rsync 和 Python 依赖；
-- 交互式询问 HTTP 端口、安装目录、数据目录、systemd 服务名和运行用户；
+- 交互式询问 HTTP 端口、安装目录、数据目录、systemd 服务名和运行用户；运行用户默认采用启动安装脚本的账号；
 - 写入 `config.json` 和 `install.json`，其中包含首次配置模式标记；
 - 创建并启动 systemd 服务；
 - 输出类似 `http://server-ip:90/setup` 的首次配置地址。
