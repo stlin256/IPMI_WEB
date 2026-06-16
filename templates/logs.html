@@ -1043,6 +1043,17 @@
             border-color: color-mix(in srgb, var(--row-accent) 48%, var(--border-color));
         }
 
+        .cli-line-clickable {
+            cursor: pointer;
+        }
+
+        .cli-line-clickable.is-expanded {
+            border-color: color-mix(in srgb, var(--row-accent) 58%, var(--border-color));
+            background:
+                linear-gradient(90deg, color-mix(in srgb, var(--row-accent) 12%, transparent), transparent 42%),
+                color-mix(in srgb, var(--bg-elevated) 54%, transparent);
+        }
+
         .cli-line.log-success { --row-accent: var(--accent-green); }
         .cli-line.log-fail { --row-accent: var(--accent-red); }
         .cli-line.log-warn { --row-accent: var(--accent-yellow); }
@@ -1173,6 +1184,7 @@
             line-height: 1.2;
             text-decoration: none;
             white-space: nowrap;
+            transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
         }
 
         .cli-detail-toggle i {
@@ -1182,6 +1194,12 @@
         .cli-detail-toggle:hover {
             color: var(--text-main);
             background: color-mix(in srgb, var(--accent-blue) 16%, transparent);
+        }
+
+        .cli-detail-toggle[aria-expanded="true"] {
+            color: var(--text-main);
+            border-color: color-mix(in srgb, var(--accent-blue) 58%, var(--border-color));
+            background: color-mix(in srgb, var(--accent-blue) 20%, transparent);
         }
 
         .highlighted.cli-tag,
@@ -2436,6 +2454,16 @@
         return escapeHtml(value).replace(/`/g, '&#96;');
     }
 
+    function escapeJsString(value) {
+        return String(value ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n')
+            .replace(/\u2028/g, '\\u2028')
+            .replace(/\u2029/g, '\\u2029');
+    }
+
     function parseUAInfo(ua) {
         ua = String(ua || '');
         let tag = "Unknown";
@@ -2482,7 +2510,18 @@
         const el = document.getElementById(id);
         if (!el) return;
         const isOpen = el.classList.toggle('show');
+
+        let row = null;
         if (trigger) {
+            row = trigger.classList && trigger.classList.contains('cli-line')
+                ? trigger
+                : (trigger.closest ? trigger.closest('.cli-line') : null);
+        }
+        if (row) {
+            row.classList.toggle('is-expanded', isOpen);
+            const detailToggle = row.querySelector('.cli-detail-toggle');
+            if (detailToggle) detailToggle.setAttribute('aria-expanded', String(isOpen));
+        } else if (trigger) {
             trigger.setAttribute('aria-expanded', String(isOpen));
         }
     }
@@ -2770,6 +2809,7 @@
         const safeMainMsg = escapeHtml(mainMsg);
         const safeDetailsContent = escapeHtml(detailsContent);
         const safeDetailsId = escapeAttr(detailsId);
+        const jsDetailsId = escapeAttr(escapeJsString(detailsId));
         const detailsLabel = resolveLabel('logs.details', 'Details');
         const detailsTitle = resolveLabel('logs.detailsTitle', 'Details');
         const safeDetailsLabel = escapeHtml(detailsLabel);
@@ -2777,7 +2817,7 @@
         const safeDetailsTitle = escapeHtml(detailsTitle);
         
         return `
-            <div class="cli-line fingerprint-group log-${statusClass}">
+            <div class="cli-line fingerprint-group log-${statusClass}${detailsContent ? ' cli-line-clickable' : ''}"${detailsContent ? ` onclick="toggleDetails('${jsDetailsId}', this)"` : ''}>
                 <div class="cli-stamp">
                     <span class="cli-time">${safeTime}</span>
                     <span class="cli-status ${statusClass}">${statusText}</span>
@@ -2799,7 +2839,7 @@
                     <div class="cli-message">
                         <span class="cli-message-text">${safeMainMsg}</span>
                     ${detailsContent ? `
-                        <a href="javascript:void(0)" class="cli-detail-toggle" onclick="toggleDetails('${safeDetailsId}', this)" aria-expanded="false" aria-controls="${safeDetailsId}" aria-label="${safeDetailsLabelAttr}" title="${safeDetailsLabelAttr}">
+                        <a href="javascript:void(0)" class="cli-detail-toggle" onclick="event.stopPropagation(); toggleDetails('${jsDetailsId}', this)" aria-expanded="false" aria-controls="${safeDetailsId}" aria-label="${safeDetailsLabelAttr}" title="${safeDetailsLabelAttr}">
                             <i class="fas fa-receipt"></i><span class="visually-hidden">${safeDetailsLabel}</span>
                         </a>
                     ` : ''}
