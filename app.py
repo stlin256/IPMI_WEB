@@ -5273,6 +5273,15 @@ def api_setup_certificate():
         logging.exception('Setup certificate upload failed')
         return setup_error(str(e), 500)
 
+@app.route('/api/setup/ready')
+def api_setup_ready():
+    return jsonify({
+        'status': 'ok',
+        'version': VERSION,
+        'setup_completed': is_setup_completed(),
+        'https_active': HAS_CERT
+    })
+
 @app.route('/api/setup/complete', methods=['POST'])
 def api_setup_complete():
     global config, SERVER_NAME, LOGIN_PASSWORD, RETENTION_DAYS, PORT, SECRET_KEY
@@ -5360,12 +5369,14 @@ def api_setup_complete():
         _remove_file_quietly(SETUP_PENDING_KEY_FILE)
 
     redirect_url = url_for('hardware_page', setup=1)
+    ready_url = url_for('api_setup_ready')
     restart_required = False
     access_domain = request.url_root.rstrip('/')
     if certificate_configured:
         restart_required = True
         https_origin = f'https://{request.host}'
         redirect_url = urllib.parse.urljoin(https_origin, url_for('hardware_page', setup=1))
+        ready_url = urllib.parse.urljoin(https_origin, url_for('api_setup_ready'))
         access_domain = https_origin
 
     new_config = json.loads(json.dumps(config))
@@ -5470,6 +5481,7 @@ def api_setup_complete():
     return jsonify({
         'status': 'ok',
         'redirect': redirect_url,
+        'ready_url': ready_url,
         'restart_required': restart_required
     })
 

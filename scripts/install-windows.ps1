@@ -25,6 +25,23 @@ function Read-Default {
     return $answer.Trim()
 }
 
+function Confirm-Continue {
+    param([string]$Message)
+    $answer = Read-Host "$Message (y/N)"
+    if ($answer -notmatch "^[Yy]$") {
+        throw "Installation cancelled."
+    }
+}
+
+function Test-DirectoryHasEntries {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return $false
+    }
+    $first = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $null -ne $first
+}
+
 function New-Token {
     param([int]$Bytes = 32)
     $buffer = New-Object byte[] $Bytes
@@ -57,6 +74,17 @@ if (-not $ServiceName) {
 $installDependencies = Read-Default "Install Python dependencies automatically? (Y/n)" "Y"
 if ($Port -lt 1 -or $Port -gt 65535) {
     throw "Invalid port: $Port"
+}
+if (Test-DirectoryHasEntries $InstallDir) {
+    Confirm-Continue "Install directory '$InstallDir' already contains files. Continue and overwrite managed project files?"
+}
+if (Test-DirectoryHasEntries $DataDir) {
+    Confirm-Continue "Data directory '$DataDir' already contains files. Continue and reuse this data directory?"
+}
+$existingTask = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+if ($existingTask) {
+    Confirm-Continue "Startup task '$ServiceName' already exists. Continue and replace its task definition?"
+    Stop-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
 }
 
 $python = Get-Command python -ErrorAction SilentlyContinue

@@ -17,6 +17,21 @@ prompt_default() {
     printf '%s' "${answer:-$default_value}"
 }
 
+confirm_continue() {
+    local message="$1"
+    local answer
+    read -r -p "$message (y/N): " answer
+    if ! [[ "$answer" =~ ^[Yy]$ ]]; then
+        echo "Installation cancelled."
+        exit 1
+    fi
+}
+
+directory_has_entries() {
+    local path="$1"
+    [ -d "$path" ] && [ -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]
+}
+
 detect_default_run_user() {
     if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
         printf '%s' "$SUDO_USER"
@@ -40,6 +55,17 @@ fi
 SYSTEMD_CAPABILITY_BLOCK=""
 if [ "$PORT" -lt 1024 ]; then
     SYSTEMD_CAPABILITY_BLOCK=$'AmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nNoNewPrivileges=true'
+fi
+
+if directory_has_entries "$INSTALL_DIR"; then
+    confirm_continue "Install directory '$INSTALL_DIR' already contains files. Continue and overwrite managed project files?"
+fi
+if directory_has_entries "$DATA_DIR"; then
+    confirm_continue "Data directory '$DATA_DIR' already contains files. Continue and reuse this data directory?"
+fi
+if systemctl cat "$SERVICE_NAME" >/dev/null 2>&1; then
+    confirm_continue "Systemd service '$SERVICE_NAME' already exists. Continue and replace its service definition?"
+    systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
 fi
 
 install_packages() {

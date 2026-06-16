@@ -264,6 +264,7 @@ Linux 安装脚本会完成：
 - 询问是否自动安装依赖；输入 `n` 会跳过系统包安装和 Python requirements 安装；
 - 在启用依赖安装时安装 Python、`ipmitool`、`lm-sensors`、Git、rsync 和 Python 依赖；
 - 交互式询问 HTTP 端口、安装目录、数据目录、systemd 服务名和运行用户；运行用户默认采用启动安装脚本的账号；
+- 安装/数据目录已有文件或 systemd 服务名已存在时，会先询问是否继续覆盖或复用；
 - 写入 `config.json` 和 `install.json`，其中包含首次配置模式标记；
 - 创建并启动 systemd 服务；
 - 输出类似 `http://server-ip:90/setup` 的首次配置地址。
@@ -278,7 +279,7 @@ cd IPMI_WEB
 .\scripts\install-windows.ps1
 ```
 
-Windows 安装脚本会使用提权计划任务作为启动管理器，因为当前 Python 应用还没有打包成原生 Windows Service。它同样会询问是否自动安装依赖，生成 `config.json` 和 `install.json`，并进入同一套首次配置向导。
+Windows 安装脚本会使用提权计划任务作为启动管理器，因为当前 Python 应用还没有打包成原生 Windows Service。它同样会询问是否自动安装依赖，并在目录或计划任务重合时询问是否覆盖，生成 `config.json` 和 `install.json` 后进入同一套首次配置向导。
 
 ### Release 发布包
 

@@ -264,6 +264,7 @@ The Linux installer:
 - asks whether to install dependencies; entering `n` skips both system package installation and Python requirement installation;
 - installs Python, `ipmitool`, `lm-sensors`, Git, rsync, and the Python requirements when dependency installation is enabled;
 - asks for the HTTP port, install directory, data directory, systemd service name, and service user; the service user defaults to the account that invoked the installer;
+- asks for confirmation before reusing a non-empty install/data directory or replacing an existing systemd service with the same name;
 - writes `config.json` and `install.json`, including the first-run setup mode flag;
 - enables and starts a systemd service;
 - prints a URL like `http://server-ip:90/setup`.
@@ -278,7 +279,7 @@ cd IPMI_WEB
 .\scripts\install-windows.ps1
 ```
 
-The Windows installer uses an elevated scheduled task as the startup manager because this Python app is not yet packaged as a native Windows Service. It asks the same dependency-installation question, uses the same setup wizard, and writes the same `config.json` and `install.json` files.
+The Windows installer uses an elevated scheduled task as the startup manager because this Python app is not yet packaged as a native Windows Service. It asks the same dependency-installation and overwrite-confirmation questions, uses the same setup wizard, and writes the same `config.json` and `install.json` files.
 
 ### Release Packages
 

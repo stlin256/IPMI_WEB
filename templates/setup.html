@@ -775,6 +775,104 @@
             gap: 0.65rem;
             flex-wrap: wrap;
         }
+        .setup-file-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.8rem;
+        }
+        .setup-file-field {
+            min-width: 0;
+        }
+        .setup-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .setup-file-card {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 0.78rem;
+            min-height: 4.8rem;
+            padding: 0.88rem 0.95rem;
+            border: 1px solid color-mix(in srgb, var(--text-main) 12%, transparent);
+            border-radius: 8px;
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-yellow) 6%, transparent), transparent),
+                color-mix(in srgb, var(--bg-body) 24%, transparent);
+            color: var(--text-main);
+            cursor: pointer;
+            transition:
+                border-color 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                background-color 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                box-shadow 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .setup-file-card:hover,
+        .setup-file-input:focus-visible + .setup-file-card {
+            border-color: color-mix(in srgb, var(--accent-yellow) 44%, transparent);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-yellow) 10%, transparent), transparent),
+                color-mix(in srgb, var(--bg-card) 74%, transparent);
+            transform: translate3d(0, -1px, 0);
+            box-shadow: 0 12px 24px color-mix(in srgb, #000 10%, transparent);
+        }
+        .setup-file-input.is-invalid + .setup-file-card {
+            border-color: color-mix(in srgb, var(--accent-red) 62%, transparent);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-red) 12%, transparent), transparent),
+                color-mix(in srgb, var(--bg-body) 24%, transparent);
+        }
+        .setup-file-card.is-selected {
+            border-color: color-mix(in srgb, var(--accent-green) 46%, transparent);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--accent-green) 10%, transparent), transparent),
+                color-mix(in srgb, var(--bg-body) 24%, transparent);
+        }
+        .setup-file-icon {
+            width: 2.24rem;
+            height: 2.24rem;
+            display: inline-grid;
+            place-items: center;
+            border: 1px solid color-mix(in srgb, var(--accent-red) 24%, transparent);
+            border-radius: 8px;
+            color: var(--accent-yellow);
+            background: color-mix(in srgb, var(--accent-red) 10%, transparent);
+        }
+        .setup-file-copy {
+            min-width: 0;
+        }
+        .setup-file-title {
+            display: block;
+            color: var(--text-main);
+            font-size: 0.86rem;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+        .setup-file-name {
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .setup-file-action {
+            color: var(--accent-yellow);
+            font-size: 0.76rem;
+            font-weight: 950;
+            white-space: nowrap;
+        }
+        .setup-cert-submit {
+            min-height: 2.55rem;
+            padding-inline: 0.95rem;
+            font-size: 0.84rem;
+            font-weight: 900;
+        }
         .setup-cert-status {
             display: none;
             align-items: flex-start;
@@ -976,7 +1074,8 @@
                 margin-top: 0.4rem;
             }
             .setup-grid,
-            .setup-choice-grid {
+            .setup-choice-grid,
+            .setup-file-grid {
                 grid-template-columns: 1fr;
             }
             .setup-actions {
@@ -1137,14 +1236,30 @@
                         <h2 data-l10n="step.cert.heading">HTTPS 证书</h2>
                         <p class="setup-step-copy" data-l10n="step.cert.copy">用于启用 HTTPS 访问和安全 Cookie，适合远程访问或反向代理前的直连部署。</p>
                         <div class="setup-fieldset">
-                            <div class="setup-grid">
-                                <div>
+                            <div class="setup-file-grid">
+                                <div class="setup-file-field">
                                     <label class="setup-label" for="cert-file" data-l10n="field.certFile">证书文件</label>
-                                    <input id="cert-file" name="certFile" class="form-control" type="file" accept=".crt,.cer,.pem">
+                                    <input id="cert-file" name="certFile" class="setup-file-input" type="file" accept=".crt,.cer,.pem">
+                                    <label id="cert-file-card" class="setup-file-card" for="cert-file">
+                                        <span class="setup-file-icon"><i class="fas fa-file-shield"></i></span>
+                                        <span class="setup-file-copy">
+                                            <span class="setup-file-title" data-l10n="file.certTitle">选择证书文件</span>
+                                            <span id="cert-file-name" class="setup-file-name" data-l10n="file.certEmpty">支持 .crt / .cer / .pem</span>
+                                        </span>
+                                        <span class="setup-file-action" data-l10n="file.browse">浏览</span>
+                                    </label>
                                 </div>
-                                <div>
+                                <div class="setup-file-field">
                                     <label class="setup-label" for="key-file" data-l10n="field.keyFile">私钥文件</label>
-                                    <input id="key-file" name="keyFile" class="form-control" type="file" accept=".key,.pem">
+                                    <input id="key-file" name="keyFile" class="setup-file-input" type="file" accept=".key,.pem">
+                                    <label id="key-file-card" class="setup-file-card" for="key-file">
+                                        <span class="setup-file-icon"><i class="fas fa-key"></i></span>
+                                        <span class="setup-file-copy">
+                                            <span class="setup-file-title" data-l10n="file.keyTitle">选择私钥文件</span>
+                                            <span id="key-file-name" class="setup-file-name" data-l10n="file.keyEmpty">支持 .key / .pem</span>
+                                        </span>
+                                        <span class="setup-file-action" data-l10n="file.browse">浏览</span>
+                                    </label>
                                 </div>
                             </div>
                             <div id="cert-status" class="setup-cert-status" aria-live="polite">
@@ -1159,7 +1274,7 @@
                                     <i class="fas fa-forward-step"></i>
                                     <span data-l10n="button.skipCertificate">跳过证书配置</span>
                                 </button>
-                                <button class="btn btn-outline-secondary btn-sm" id="certificate-upload" type="button">
+                                <button class="btn btn-outline-secondary setup-cert-submit" id="certificate-upload" type="button">
                                     <i class="fas fa-shield-halved me-1"></i>
                                     <span data-l10n="button.validateCertificate">上传并检查</span>
                                 </button>
@@ -1376,11 +1491,17 @@
                 'button.skipEmail': '跳过邮件配置',
                 'button.skipCertificate': '跳过证书配置',
                 'button.validateCertificate': '上传并检查',
+                'file.certTitle': '选择证书文件',
+                'file.certEmpty': '支持 .crt / .cer / .pem',
+                'file.keyTitle': '选择私钥文件',
+                'file.keyEmpty': '支持 .key / .pem',
+                'file.browse': '浏览',
                 'toast.preview': '正在提交初始化配置。',
                 'progress.title': '正在应用配置',
                 'progress.write': '写入初始化配置',
                 'progress.service': '刷新服务状态',
                 'progress.home': '准备进入主页',
+                'progress.waitRestart': '等待服务重启完成',
                 'home.tab.overview': '总览',
                 'home.tab.resources': '资源',
                 'home.tab.history': '历史',
@@ -1499,11 +1620,17 @@
                 'button.skipEmail': 'Skip Email Setup',
                 'button.skipCertificate': 'Skip Certificate Setup',
                 'button.validateCertificate': 'Upload and Check',
+                'file.certTitle': 'Select certificate file',
+                'file.certEmpty': 'Supports .crt / .cer / .pem',
+                'file.keyTitle': 'Select private key file',
+                'file.keyEmpty': 'Supports .key / .pem',
+                'file.browse': 'Browse',
                 'toast.preview': 'Submitting initial configuration.',
                 'progress.title': 'Applying Configuration',
                 'progress.write': 'Saving initial settings',
                 'progress.service': 'Refreshing service state',
                 'progress.home': 'Preparing the home page',
+                'progress.waitRestart': 'Waiting for service restart',
                 'home.tab.overview': 'Overview',
                 'home.tab.resources': 'Resources',
                 'home.tab.history': 'History',
@@ -1589,6 +1716,10 @@
         const certificateUpload = document.getElementById('certificate-upload');
         const certFile = document.getElementById('cert-file');
         const keyFile = document.getElementById('key-file');
+        const certFileCard = document.getElementById('cert-file-card');
+        const keyFileCard = document.getElementById('key-file-card');
+        const certFileName = document.getElementById('cert-file-name');
+        const keyFileName = document.getElementById('key-file-name');
         const certStatus = document.getElementById('cert-status');
         const certStatusTitle = document.getElementById('cert-status-title');
         const certStatusDetail = document.getElementById('cert-status-detail');
@@ -1654,6 +1785,7 @@
             document.querySelectorAll('[data-placeholder-key]').forEach((node) => {
                 node.placeholder = msg(node.dataset.placeholderKey);
             });
+            updateCertificateFileLabels();
             renderCertificateStatus();
             renderStep();
         }
@@ -1699,6 +1831,15 @@
             node.classList.toggle('is-invalid', Boolean(invalid));
         }
 
+        function updateCertificateFileLabels() {
+            const cert = certFile.files && certFile.files[0];
+            const key = keyFile.files && keyFile.files[0];
+            certFileCard.classList.toggle('is-selected', Boolean(cert));
+            keyFileCard.classList.toggle('is-selected', Boolean(key));
+            certFileName.textContent = cert ? cert.name : msg('file.certEmpty');
+            keyFileName.textContent = key ? key.name : msg('file.keyEmpty');
+        }
+
         function selectedCertificateFingerprint() {
             const cert = certFile.files && certFile.files[0];
             const key = keyFile.files && keyFile.files[0];
@@ -1740,6 +1881,7 @@
             certificateConfigured = false;
             certificateInfo = null;
             certificateFingerprint = '';
+            updateCertificateFileLabels();
             renderCertificateStatus();
         }
 
@@ -2013,6 +2155,29 @@
             };
         }
 
+        function sleep(ms) {
+            return new Promise((resolve) => window.setTimeout(resolve, ms));
+        }
+
+        async function waitForSetupReady(readyUrl, timeoutMs = 45000) {
+            const target = readyUrl || '/api/setup/ready';
+            const started = Date.now();
+            await sleep(1200);
+            while (Date.now() - started < timeoutMs) {
+                try {
+                    await fetch(target, {
+                        method: 'GET',
+                        mode: 'no-cors',
+                        cache: 'no-store'
+                    });
+                    return true;
+                } catch (_error) {
+                    await sleep(850);
+                }
+            }
+            return false;
+        }
+
         async function completeSetupPreview() {
             card.classList.add('is-completing', 'is-collapsing');
             setupProgress.classList.remove('is-visible');
@@ -2029,6 +2194,13 @@
                 const result = await response.json().catch(() => ({}));
                 if (!response.ok || result.status === 'error') {
                     throw new Error(result.message || msg('error.submit'));
+                }
+                if (result.restart_required) {
+                    const progressTitle = document.getElementById('setup-progress-title');
+                    if (progressTitle) progressTitle.textContent = msg('progress.waitRestart');
+                    await waitForSetupReady(result.ready_url || result.redirect);
+                    window.location.href = result.redirect || '/hardware?setup=1';
+                    return;
                 }
                 const targetWait = result.restart_required ? 2600 : 1220;
                 const wait = Math.max(result.restart_required ? 1800 : 760, targetWait - (Date.now() - started));
@@ -2194,6 +2366,7 @@
             keyFile.value = '';
             markInvalid(certFile, false);
             markInvalid(keyFile, false);
+            updateCertificateFileLabels();
             renderCertificateStatus();
             setError('');
             currentStep = Math.min(steps.length - 1, currentStep + 1);
