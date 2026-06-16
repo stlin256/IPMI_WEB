@@ -447,6 +447,7 @@ MAX_CERT_UPLOAD_BYTES = 256 * 1024
 AUDIT_ARCHIVE_AFTER_DAYS = 1
 AUDIT_ARCHIVE_MAX_DAYS_PER_RUN = 14
 AUDIT_ARCHIVE_COMPRESSION_LEVEL = 9
+HIDDEN_AUDIT_LOG_EVENTS = {('SYSTEM', 'AUDIT_ARCHIVE')}
 SENSOR_HISTORY_COMPRESSION_LEVEL = 9
 SENSOR_ARCHIVE_AFTER_SECONDS = 6 * 3600
 SENSOR_ARCHIVE_MAX_HOURS_PER_RUN = 12
@@ -1143,7 +1144,13 @@ def archive_old_sensor_history(conn, now_ts=None):
         )
     return {'hours': archived_hours, 'rows': archived_rows, 'saved_bytes': saved_bytes}
 
+def is_visible_audit_record(record):
+    event_key = (record.get('module') or '', record.get('action') or '')
+    return event_key not in HIDDEN_AUDIT_LOG_EVENTS
+
 def filter_audit_record(record, module=None, level=None, search=None):
+    if not is_visible_audit_record(record):
+        return False
     if module and record.get('module') != module:
         return False
     if level and record.get('level') != level:
@@ -1183,6 +1190,9 @@ def format_audit_record(record):
 def build_audit_filter_sql(module=None, level=None, search=None):
     clauses = []
     params = []
+    for hidden_module, hidden_action in sorted(HIDDEN_AUDIT_LOG_EVENTS):
+        clauses.append("NOT (COALESCE(module, '') = ? AND COALESCE(action, '') = ?)")
+        params.extend([hidden_module, hidden_action])
     if module:
         clauses.append("module = ?")
         params.append(module)
@@ -1207,17 +1217,18 @@ def query_audit_archive_records(conn, module=None, level=None, search=None, limi
     has_filters = bool(module or level or search)
 
     for archive in archive_rows:
-        archive_count = int(archive['count'] or 0)
-
         if not has_filters:
-            total += archive_count
+            day_records = [
+                record for record in decode_audit_archive(archive)
+                if is_visible_audit_record(record)
+            ]
+            day_records.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
+            total += len(day_records)
             if not include_records or remaining_limit <= 0:
                 continue
-            if remaining_offset >= archive_count:
-                remaining_offset -= archive_count
+            if remaining_offset >= len(day_records):
+                remaining_offset -= len(day_records)
                 continue
-            day_records = decode_audit_archive(archive)
-            day_records.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
         else:
             day_records = [
                 record for record in decode_audit_archive(archive)
@@ -1303,20 +1314,7 @@ def compress_old_audit_logs(conn, now_ts=None):
         saved_text = format_bytes_compact(saved_bytes)
         logging.info(
             f"[AUDIT_ARCHIVE] Archived {archived_rows} rows across {archived_days} day(s), "
-            f"estimated saved {saved_bytes} bytes"
-        )
-        write_audit(
-            'INFO',
-            'SYSTEM',
-            'AUDIT_ARCHIVE',
-            f'审计日志已压缩归档，{archived_rows} 行 / {archived_days} 天，估算节省 {saved_text}',
-            details={
-                'rows': archived_rows,
-                'days': archived_days,
-                'saved_bytes': saved_bytes,
-                'saved_text': saved_text
-            },
-            operator='SYSTEM'
+            f"estimated saved {saved_text}"
         )
 
     return {
