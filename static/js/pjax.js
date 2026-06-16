@@ -51,8 +51,6 @@
 
     function routeDataUrls(path) {
         const hardwareHours = localStorage.getItem('hw_hist_time_range') || '24';
-        const historyHours = localStorage.getItem('hist_time_range') || '1';
-        const energyStart = localStorage.getItem('energy_start_ts') || '0';
         const urlSets = {
             '/hardware': [
                 '/api/status_hardware',
@@ -74,7 +72,6 @@
             ],
             '/history': [
                 '/api/dashboard_options',
-                '/api/history_custom?hours=' + encodeURIComponent(historyHours) + '&energy_start=' + encodeURIComponent(energyStart),
                 '/api/log_status'
             ],
             '/logs': [
