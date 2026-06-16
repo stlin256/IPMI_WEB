@@ -10,7 +10,7 @@ IPMI_WEB 是一个轻量自托管服务器运维面板，用于把 IPMI 硬件�
 
 ## 当前状态
 
-当前应用版本：`1.5.1`。
+当前应用版本：`1.6.0`。
 
 当前仓库已经进行过前端现代化重构。现在的界面风格是 **浅色优先、低饱和工业运维控制台**：信息密度较高、面板半径统一到 8px、色彩以中性系统底色为主，搭配蓝、青、绿、琥珀、红等语义强调色；导航保持紧凑粘性布局，Bootstrap、Font Awesome、Chart.js 均为本地静态资源，浅色/深色主题由 `static/js/theme.js` 持久化保存，并通过 `static/js/pjax.js` 实现带预取的同文档页面切换。项目仍保持 Flask/Jinja 服务端渲染，暂时不引入前端打包器。
 
@@ -280,7 +280,7 @@ Windows 安装脚本会使用提权计划任务作为启动管理器，因为当
 
 ### Release 发布包
 
-`.github/workflows/release.yml` 是给 `release` 更新通道使用的手动 GitHub Actions workflow。进入 Actions 页运行 **Release Package**，填写例如 `1.5.2` 的版本号，并选择要打包的目标 ref。workflow 会校验应用、生成 `ipmi-web-<version>.zip`、`.sha256` 校验文件和 release manifest，然后把三者发布到 `v<version>` 标签对应的 GitHub Release。
+`.github/workflows/release.yml` 是给 `release` 更新通道使用的手动 GitHub Actions workflow。进入 Actions 页运行 **Release Package**，填写例如 `1.6.1` 的版本号，并选择要打包的目标 ref。workflow 会校验应用、生成 `ipmi-web-<version>.zip`、`.sha256` 校验文件和 release manifest，然后把三者发布到 `v<version>` 标签对应的 GitHub Release。
 
 ### 手动开发运行
 

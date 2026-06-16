@@ -10,7 +10,7 @@ IPMI_WEB is a lightweight self-hosted operations panel for IPMI-capable servers.
 
 ## Current Status
 
-Current application version: `1.5.1`.
+Current application version: `1.6.0`.
 
 The repository has already gone through a front-end modernization pass. The current UI style is a **light-first, low-saturation industrial operations console**: dense operational screens, 8px-radius panels, neutral system surfaces, restrained blue/teal/green/amber/red accents, sticky compact navigation, local Bootstrap/Font Awesome/Chart.js assets, persistent light/dark switching through `static/js/theme.js`, and prefetched PJAX navigation through `static/js/pjax.js`. The app is still Flask/Jinja server-rendered and intentionally does not use a JavaScript bundler yet.
 
@@ -280,7 +280,7 @@ The Windows installer uses an elevated scheduled task as the startup manager bec
 
 ### Release Packages
 
-`.github/workflows/release.yml` is a manual GitHub Actions workflow for the `release` update channel. Run **Release Package** from the Actions tab, enter a version such as `1.5.2`, and choose the target ref to package. The workflow validates the app, builds `ipmi-web-<version>.zip`, generates a `.sha256` file and a release manifest, then publishes all three files to a GitHub Release tagged `v<version>`.
+`.github/workflows/release.yml` is a manual GitHub Actions workflow for the `release` update channel. Run **Release Package** from the Actions tab, enter a version such as `1.6.1`, and choose the target ref to package. The workflow validates the app, builds `ipmi-web-<version>.zip`, generates a `.sha256` file and a release manifest, then publishes all three files to a GitHub Release tagged `v<version>`.
 
 ### Manual Development Run
 

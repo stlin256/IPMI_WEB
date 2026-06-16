@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.0 - 2026-06-16
+
+### 中文
+
+- 新增首次运行安装与配置流程：Linux 和 Windows 安装脚本会交互式设置端口、安装目录、数据目录、服务名和运行方式，启动后进入 `/setup` 配置向导。
+- 新增基于登录页视觉体系的首次配置界面，支持浏览器语言默认、中文/英文切换、逐步校验、GPU 监控、邮件告警、自动更新模式和更新通道配置。
+- 新增自动更新基础框架：安装元数据和系统设置支持 `release` / `dev` 更新通道，默认使用 `release`；新增手动 GitHub Actions release 打包 workflow，生成压缩包、校验文件和 manifest。
+- 首次配置入口移除 setup token，改为安装态 `setup_required` 标记控制；未完成配置时访问登录页或受保护页面会自动跳转到 `/setup`。
+- 优化首次配置的入场和切换动效，移动端语言卡片到配置向导使用预计算 FLIP 变形，避免只表现为高度拉伸。
+- 移除重复的 GPU Agent 配置接口，减少前端调用歧义。
+
+### English
+
+- Added the first-run installation and setup flow: Linux and Windows installers now ask for the port, install path, data path, service name, and runtime mode before starting the service and entering `/setup`.
+- Added a first-run setup UI based on the login visual system, with browser-language defaults, Chinese/English switching, step validation, GPU monitoring, email alerts, auto-update mode, and update-channel configuration.
+- Added the auto-update foundation: install metadata and settings now support `release` / `dev` update channels, defaulting to `release`; a manual GitHub Actions release workflow now builds the archive, checksum, and manifest.
+- Removed setup tokens from the first-run entry path. Setup mode is now controlled by the installed `setup_required` flag, and unfinished instances redirect login or protected pages to `/setup`.
+- Improved first-run motion: mobile transitions from the language card to the setup wizard now use precomputed FLIP morphing instead of reading as a simple height stretch.
+- Removed a duplicate GPU Agent configuration endpoint to reduce frontend API ambiguity.
+
 ## 1.5.1 - 2026-06-16
 
 ### 中文
