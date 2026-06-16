@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.1 - 2026-06-16
+
+### 中文
+
+- 硬件页曲线刷新改为平滑推进，避免每次刷新时曲线重新从头冒出。
+- 优化桌面端导航间距，缩小左侧徽标和顶部导航之间的空白。
+- 历史页预加载逻辑改为轻量跳转优先，避免上次选择 30D 后下次打开页面长时间无响应；硬件传感器详情页复用同类快速加载体验。
+- 系统日志支持点击整条日志展开详情，同时保留右侧详情按钮；审计日志压缩归档这类维护事件不再显示在 logs 列表中。
+- GPU 监控支持配置多个 Agent，单独启用/关闭并填写备注；部分 Agent 离线时只给对应卡片加离线遮罩，全部失效时保持原有全局离线效果，并兼容旧版单 Agent 配置迁移。
+- 修复 GPU 卡片信息栏分割线缺失问题；资源页底部网络和磁盘 IO 数值区域收窄，趋势图横向空间加宽，方便查看。
+
+### English
+
+- Hardware charts now advance smoothly during refreshes instead of reappearing from the beginning each time.
+- Tightened desktop navigation spacing between the left logo and top navigation.
+- History preloading now prioritizes lightweight navigation so reopening after a long 30D selection no longer feels unresponsive; hardware sensor detail loading now uses the same fast path.
+- System logs can be expanded by clicking the whole row while keeping the detail button; audit-log compression archive maintenance events are hidden from the logs list.
+- GPU monitoring now supports multiple Agents with per-Agent enable switches and notes. Offline enabled Agents get per-card overlays, while all-offline still uses the original global offline effect, with migration from legacy single-Agent settings.
+- Fixed missing separators in GPU card info rows; widened the Resources page network and disk IO trend charts by moving the live values further aside.
+
 ## 1.5.0 - 2026-06-15
 
 ### 中文
