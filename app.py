@@ -6078,6 +6078,8 @@ def api_history_custom():
     now_ts = int(time.time())
     cutoff = now_ts - (hours * 3600)
     bucket_size = history_bucket_seconds(hours)
+    # Keep bucket boundaries stable between polls so charts advance instead of re-aggregating every refresh.
+    bucket_anchor = (cutoff // bucket_size) * bucket_size
     time_fmt = '%H:%M:%S' if hours <= 1 else '%m-%d %H:%M'
 
     conn = get_db_connection()
@@ -6134,7 +6136,7 @@ def api_history_custom():
                          LIMIT 1) AS cpu_pkg_power_json
                  FROM bucketed b
                  ORDER BY b.bucket ASC""",
-              (cutoff, bucket_size, cutoff, cutoff, bucket_size, cutoff, bucket_size))
+              (bucket_anchor, bucket_size, cutoff, bucket_anchor, bucket_size, bucket_anchor, bucket_size))
     metric_rows = [dict(row) for row in c.fetchall()]
 
     c.execute("""WITH per_ts AS (
@@ -6156,7 +6158,7 @@ def api_history_custom():
                         AVG(power_total) AS power_total
                  FROM per_ts
                  GROUP BY bucket
-                 ORDER BY bucket ASC""", (cutoff, cutoff, bucket_size))
+                 ORDER BY bucket ASC""", (cutoff, bucket_anchor, bucket_size))
     gpu_by_bucket = {row['bucket']: dict(row) for row in c.fetchall()}
 
     abs_min_ts = None

@@ -987,7 +987,7 @@
 
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
-        animation: { duration: 260, easing: 'easeOutQuart' },
+        animation: false,
         interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } },
         scales: { 
             x: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted, maxTicksLimit: 8 } },
@@ -1512,7 +1512,7 @@
 
     function handleTagChange() {
         savePrefs();
-       updateChart(isSilent ? 'none' : undefined);
+       updateChart('none');
     }
 
     function savePrefs() {
@@ -1592,7 +1592,7 @@
 
        fetch(`/api/history_custom?hours=${hours}&energy=0`).then(r => r.json()).then(d => {
            historyData = d;
-           updateChart();
+           updateChart(isSilent ? 'none' : undefined);
            if (!isSilent) {
                loader.style.display = 'none';
            }
@@ -1603,26 +1603,37 @@
        });
     }
 
+    function historyDataset(existingById, id, label, data, color, ctx, extra = {}) {
+       const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+       gradient.addColorStop(0, color + '33');
+       gradient.addColorStop(1, color + '00');
+       const dataset = existingById.get(id) || {};
+       Object.assign(dataset, {
+           id,
+           label,
+           data: data || [],
+           borderColor: color,
+           backgroundColor: gradient,
+           fill: true
+       }, extra);
+       return dataset;
+    }
+
     function updateChart(updateMode) {
        if (!historyData.times) return;
        
-       const datasets = [];
        const ctx = document.getElementById('mainChart').getContext('2d');
-       
-       const createGradient = (color) => {
-           const g = ctx.createLinearGradient(0, 0, 0, 300);
-           g.addColorStop(0, color + '33'); g.addColorStop(1, color + '00');
-           return g;
-       };
+       const existingById = new Map(mainChart.data.datasets.map(dataset => [dataset.id, dataset]));
+       const datasets = [];
 
        if(document.getElementById('chk-pwr').checked)
-           datasets.push({label:t('metrics.power'), data:historyData.power, borderColor: chartInk().power, backgroundColor: createGradient(chartInk().power), fill: true});
+           datasets.push(historyDataset(existingById, 'power', t('metrics.power'), historyData.power, chartInk().power, ctx));
        
        if(document.getElementById('chk-temp').checked)
-           datasets.push({label:t('metrics.temp'), data:historyData.cpu_temp, borderColor: chartInk().temp, backgroundColor: createGradient(chartInk().temp), fill: true});
+           datasets.push(historyDataset(existingById, 'temp', t('metrics.temp'), historyData.cpu_temp, chartInk().temp, ctx));
        
        if(document.getElementById('chk-fan').checked)
-           datasets.push({label:t('metrics.fan'), data:historyData.fan_rpm, borderColor: chartInk().fan, yAxisID: 'y1'});
+           datasets.push(historyDataset(existingById, 'fan', t('metrics.fan'), historyData.fan_rpm, chartInk().fan, ctx, { yAxisID: 'y1', fill: false, backgroundColor: 'transparent' }));
 
        mainChart.data.labels = historyData.times;
        mainChart.data.datasets = datasets;
