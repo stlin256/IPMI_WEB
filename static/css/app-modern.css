@@ -159,9 +159,14 @@ html[data-bs-theme="dark"] body {
 }
 
 .navbar-brand {
-    flex: 0 1 min(22rem, 34vw);
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: min(22rem, 34vw);
     margin-right: 0 !important;
+}
+
+.navbar .navbar-nav.me-auto {
+    margin-left: 0.5rem !important;
 }
 
 .navbar-brand .fw-bold {
