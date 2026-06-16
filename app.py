@@ -2037,7 +2037,7 @@ sys_cache = {
     'res': {'cpu': 0, 'mem_percent': 0, 'mem_used': 0, 'mem_total': 0, 
             'net_in': 0, 'net_out': 0, 'disk_r': 0, 'disk_w': 0,
             'cpu_power_w': 0, 'cpu_pkg_power': {}},
-    'gpu': {'online': False, 'gpus': [], 'last_update': 0, 'retry_delay': 1},
+    'gpu': {'online': False, 'gpus': [], 'agents': [], 'last_update': 0, 'retry_delay': 1},
     'calibration': {'active': False, 'progress': 0, 'current_pwm': 0, 'current_rpm': 0, 'log': ''}
 }
 rpm_map = {} 
@@ -2147,6 +2147,217 @@ def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=10) # 增加超时容错
     conn.row_factory = sqlite3.Row
     return conn
+
+GPU_HISTORY_INDEX_STRIDE = 1000
+GPU_AGENT_NOTE_MAX_LENGTH = 120
+
+def parse_gpu_agent_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+def build_legacy_gpu_agent(config_map=None):
+    config_map = config_map or {}
+    return {
+        'id': 'legacy-default',
+        'host': str(config_map.get('gpu_agent_host') or '127.0.0.1').strip() or '127.0.0.1',
+        'port': clamp_int(config_map.get('gpu_agent_port') or 9999, 9999, 1, 65535),
+        'enabled': parse_gpu_agent_bool(config_map.get('gpu_agent_enabled'), False),
+        'note': '',
+        'slot': 0
+    }
+
+def normalize_gpu_agent(agent, index=0, strict=False):
+    if not isinstance(agent, dict):
+        if strict:
+            raise ValueError('Invalid GPU agent entry')
+        return None
+
+    host = str(agent.get('host') or agent.get('gpu_agent_host') or '').strip()
+    if not host:
+        if strict:
+            raise ValueError('GPU agent host is required')
+        return None
+
+    try:
+        port = int(agent.get('port', agent.get('gpu_agent_port', 9999)))
+    except (TypeError, ValueError):
+        if strict:
+            raise ValueError('GPU agent port must be a number')
+        port = 9999
+    if port < 1 or port > 65535:
+        if strict:
+            raise ValueError('GPU agent port must be between 1 and 65535')
+        port = max(1, min(65535, port))
+
+    raw_id = str(agent.get('id') or '').strip()
+    if not re.match(r'^[A-Za-z0-9_.:-]{1,64}$', raw_id):
+        raw_id = f'agent-{index + 1}'
+
+    try:
+        slot = int(agent.get('slot', index))
+    except (TypeError, ValueError):
+        slot = index
+    slot = max(0, slot)
+
+    note = str(agent.get('note') or '').strip()[:GPU_AGENT_NOTE_MAX_LENGTH]
+    return {
+        'id': raw_id,
+        'host': host,
+        'port': port,
+        'enabled': parse_gpu_agent_bool(agent.get('enabled', agent.get('gpu_agent_enabled')), False),
+        'note': note,
+        'slot': slot
+    }
+
+def normalize_gpu_agents(agents, strict=False):
+    if not isinstance(agents, list):
+        if strict:
+            raise ValueError('gpu_agents must be a list')
+        agents = []
+
+    normalized = []
+    used_ids = set()
+    used_slots = set()
+    next_slot = 0
+    for index, raw_agent in enumerate(agents):
+        agent = normalize_gpu_agent(raw_agent, index, strict=strict)
+        if not agent:
+            continue
+
+        base_id = agent['id']
+        suffix = 2
+        while agent['id'] in used_ids:
+            agent['id'] = f'{base_id}-{suffix}'
+            suffix += 1
+        used_ids.add(agent['id'])
+
+        if agent['slot'] in used_slots:
+            while next_slot in used_slots:
+                next_slot += 1
+            agent['slot'] = next_slot
+        used_slots.add(agent['slot'])
+        normalized.append(agent)
+
+    return normalized
+
+def load_gpu_agents_config(conn):
+    rows = conn.execute(
+        "SELECT key, value FROM config WHERE key IN ('gpu_agents', 'gpu_agent_enabled', 'gpu_agent_host', 'gpu_agent_port')"
+    ).fetchall()
+    config_map = {row['key']: row['value'] for row in rows}
+
+    agents = []
+    raw_agents = config_map.get('gpu_agents')
+    if raw_agents:
+        try:
+            agents = normalize_gpu_agents(json.loads(raw_agents))
+        except Exception as e:
+            logging.warning(f"[GPU] Failed to parse gpu_agents config, falling back to legacy config: {e}")
+            agents = []
+
+    if not agents:
+        agents = [build_legacy_gpu_agent(config_map)]
+    return agents
+
+def save_gpu_agents_config(conn, agents, commit=True):
+    normalized = normalize_gpu_agents(agents, strict=True)
+    if not normalized:
+        normalized = [build_legacy_gpu_agent()]
+
+    payload = json.dumps(normalized, ensure_ascii=False, separators=(',', ':'))
+    conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('gpu_agents', ?)", (payload,))
+
+    legacy_agent = next((agent for agent in normalized if agent.get('enabled')), normalized[0])
+    conn.execute(
+        "INSERT OR REPLACE INTO config (key, value) VALUES ('gpu_agent_enabled', ?)",
+        ('true' if legacy_agent.get('enabled') else 'false',)
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO config (key, value) VALUES ('gpu_agent_host', ?)",
+        (legacy_agent.get('host') or '127.0.0.1',)
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO config (key, value) VALUES ('gpu_agent_port', ?)",
+        (str(legacy_agent.get('port') or 9999),)
+    )
+    if commit:
+        conn.commit()
+    return normalized
+
+def gpu_agent_label(agent):
+    note = str(agent.get('note') or '').strip()
+    return note or f"{agent.get('host')}:{agent.get('port')}"
+
+def make_gpu_agent_status(agent, online=False, gpus=None, error='', last_update=0, retry_delay=1):
+    return {
+        'id': agent.get('id'),
+        'host': agent.get('host'),
+        'port': agent.get('port'),
+        'note': agent.get('note') or '',
+        'slot': agent.get('slot', 0),
+        'enabled': bool(agent.get('enabled')),
+        'label': gpu_agent_label(agent),
+        'online': bool(online),
+        'last_update': int(last_update or 0),
+        'retry_delay': retry_delay,
+        'error': str(error or ''),
+        'gpus': gpus or []
+    }
+
+def normalize_agent_gpus(agent, raw_gpus):
+    normalized = []
+    for position, raw_gpu in enumerate(raw_gpus or []):
+        if not isinstance(raw_gpu, dict):
+            continue
+        gpu = dict(raw_gpu)
+        try:
+            local_index = int(gpu.get('index', position))
+        except (TypeError, ValueError):
+            local_index = position
+        history_index = int(agent.get('slot', 0)) * GPU_HISTORY_INDEX_STRIDE + local_index
+        gpu['index'] = local_index
+        gpu['history_index'] = history_index
+        gpu['agent_id'] = agent.get('id')
+        gpu['agent_host'] = agent.get('host')
+        gpu['agent_port'] = agent.get('port')
+        gpu['agent_note'] = agent.get('note') or ''
+        gpu['agent_label'] = gpu_agent_label(agent)
+        gpu['card_key'] = f"{agent.get('id')}:{local_index}"
+        normalized.append(gpu)
+    return normalized
+
+def fetch_gpu_agent_metrics(agent):
+    url = f"http://{agent.get('host')}:{agent.get('port')}/metrics"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as response:
+            data = json.loads(response.read().decode())
+            if 'error' in data:
+                raise Exception(data['error'])
+            gpus = normalize_agent_gpus(agent, data.get('gpus', []))
+            return make_gpu_agent_status(agent, online=True, gpus=gpus, last_update=int(time.time()), retry_delay=1)
+    except Exception as e:
+        return make_gpu_agent_status(agent, online=False, error=str(e))
+
+def gpu_metric_row(now, gpu):
+    return (
+        int(now),
+        int(gpu.get('history_index', gpu.get('index', 0)) or 0),
+        gpu.get('name', 'Unknown'),
+        gpu.get('temp'),
+        gpu.get('util_gpu'),
+        gpu.get('util_mem'),
+        gpu.get('memory_total'),
+        gpu.get('memory_used'),
+        gpu.get('power_draw'),
+        gpu.get('power_limit'),
+        gpu.get('clock_core'),
+        gpu.get('clock_mem'),
+        gpu.get('fan_speed'),
+        gpu.get('ecc_errors')
+    )
 
 def init_db():
     conn = get_db_connection()
@@ -2275,6 +2486,10 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_enabled', 'false')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_host', '127.0.0.1')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('gpu_agent_port', '9999')")
+    try:
+        save_gpu_agents_config(conn, load_gpu_agents_config(conn), commit=False)
+    except Exception as e:
+        print(f"Migration Error (gpu_agents config): {e}")
 
     # 耗电量永久化表 (Wh)
     c.execute('''CREATE TABLE IF NOT EXISTS energy_hourly 
@@ -4533,12 +4748,12 @@ gpu_tracking = {
     'was_online': None,  # 上次在线状态
     'has_logged_offline': False,  # 是否已记录过离线日志
     'has_logged_online': False,   # 是否已记录过上线路志
-    'last_known_gpus': []  # 最近识别到的 GPU 列表
+    'last_known_gpus': [],  # 最近识别到的 GPU 列表
+    'last_known_by_agent': {}
 }
 
 def gpu_worker():
     global gpu_tracking
-    worker_start_time = time.time()
     last_db_log_time = 0
     # [性能优化] 批量插入缓冲区
     gpu_metrics_buffer = []
@@ -4558,26 +4773,29 @@ def gpu_worker():
     while True:
         try:
             start_time = time.time()
-            
-            # 从数据库读取配置
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute("SELECT value FROM config WHERE key='gpu_agent_enabled'")
-            enabled = c.fetchone()[0] == 'true'
-            c.execute("SELECT value FROM config WHERE key='gpu_agent_host'")
-            host = c.fetchone()[0]
-            c.execute("SELECT value FROM config WHERE key='gpu_agent_port'")
-            port = c.fetchone()[0]
-            conn.close()
 
-            if not enabled:
+            conn = get_db_connection()
+            try:
+                agents = load_gpu_agents_config(conn)
+            finally:
+                conn.close()
+
+            enabled_agents = [agent for agent in agents if agent.get('enabled')]
+
+            if not enabled_agents:
                 was_online = gpu_tracking.get('was_online', False)
                 # 如果之前是在线状态，现在被关闭
                 if was_online:
                     gpus = gpu_tracking.get('last_known_gpus', [])
                     gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in gpus]
-                    write_audit('INFO', 'GPU', 'AGENT_STOPPED', '用户主动关闭 GPU 监控', 
-                               details={'gpus': gpu_names}, operator='SYSTEM')
+                    write_audit(
+                        'INFO',
+                        'GPU',
+                        'AGENT_STOPPED',
+                        '用户主动关闭 GPU 监控',
+                        details={'gpus': gpu_names},
+                        operator='SYSTEM'
+                    )
                     gpu_tracking['was_online'] = False
                     gpu_tracking['has_logged_offline'] = False
                     gpu_tracking['has_logged_online'] = False
@@ -4585,118 +4803,161 @@ def gpu_worker():
                 with cache_lock:
                     sys_cache['gpu']['online'] = False
                     sys_cache['gpu']['gpus'] = []
+                    sys_cache['gpu']['agents'] = [make_gpu_agent_status(agent) for agent in agents]
+                    sys_cache['gpu']['retry_delay'] = 1
                 time.sleep(5)
                 continue
 
-            # 请求 Agent
-            url = f"http://{host}:{port}/metrics"
-            try:
-                with urllib.request.urlopen(url, timeout=3) as response:
-                    data = json.loads(response.read().decode())
-                    if 'error' in data:
-                        raise Exception(data['error'])
-                    
-                    current_gpus = data.get('gpus', [])
-                    
-                    with cache_lock:
-                        sys_cache['gpu']['online'] = True
-                        sys_cache['gpu']['gpus'] = current_gpus
-                        sys_cache['gpu']['last_update'] = int(time.time())
-                        sys_cache['gpu']['retry_delay'] = 1
-                    
-                    retry_delay = 1 # 成功后重置延迟
-                    
-                    # === 状态变更检测与日志记录 ===
-                    was_online = gpu_tracking.get('was_online', False)
-                    
-                    # 1. 上线检测：从离线变为在线
-                    if not was_online:
-                        # 如果之前没有记录过上线路志（或者是首次启动/重启恢复）
-                        if not gpu_tracking.get('has_logged_online', False):
-                            gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in current_gpus]
-                            write_audit('INFO', 'GPU', 'AGENT_ONLINE', 'GPU Agent 已上线', 
-                                       details={'gpus': gpu_names}, operator='SYSTEM')
-                            gpu_tracking['has_logged_online'] = True
-                            gpu_tracking['has_logged_offline'] = False
-                    
-                    # 更新追踪状态
-                    gpu_tracking['was_online'] = True
-                    gpu_tracking['last_known_gpus'] = current_gpus
-                    
-                    # 记录历史数据 (1s一次)
-                    now = time.time()
-                    if now - last_db_log_time >= 1.0:
-                        # [性能优化] 使用缓冲区批量写入 GPU 指标
-                        for g in current_gpus:
-                            gpu_metrics_buffer.append((int(now), g['index'], g['name'], g['temp'], 
-                                      g['util_gpu'], g['util_mem'], g['memory_total'], g['memory_used'],
-                                      g['power_draw'], g['power_limit'], g['clock_core'], g['clock_mem'], 
-                                      g['fan_speed'], g['ecc_errors']))
-                        
-                        # 每 10 秒（或缓冲区积累一定量数据）执行一次批量写入
-                        if len(gpu_metrics_buffer) >= (10 * len(current_gpus) if current_gpus else 10):
-                            sqls = []
-                            all_params = []
-                            for row_g in gpu_metrics_buffer:
-                                sqls.append('INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                                all_params.append(row_g)
-                            
-                            # 获取清理时间点
-                            cleanup_conn = get_db_connection()
-                            cleanup_c = cleanup_conn.cursor()
-                            cleanup_c.execute("SELECT value FROM config WHERE key='data_retention_days'")
-                            retention_row = cleanup_c.fetchone()
-                            current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
-                            cutoff = int(now) - (current_retention_days * 86400)
-                            cleanup_conn.close()
+            results_by_id = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(enabled_agents))) as executor:
+                future_map = {executor.submit(fetch_gpu_agent_metrics, agent): agent for agent in enabled_agents}
+                for future in concurrent.futures.as_completed(future_map):
+                    agent = future_map[future]
+                    try:
+                        results_by_id[agent['id']] = future.result()
+                    except Exception as e:
+                        results_by_id[agent['id']] = make_gpu_agent_status(agent, online=False, error=str(e))
 
-                            execute_db_async(sqls, all_params, wait=True)
-                            deleted_gpu_rows = run_db_maintenance_delete(
-                                "DELETE FROM gpu_metrics WHERE timestamp < ?",
-                                (cutoff,),
-                                'gpu_metrics'
+            now_ts = int(time.time())
+            agent_statuses = []
+            current_gpus = []
+            any_agent_online = False
+            for agent in agents:
+                if not agent.get('enabled'):
+                    agent_statuses.append(make_gpu_agent_status(agent))
+                    continue
+
+                status = results_by_id.get(agent['id']) or make_gpu_agent_status(agent, online=False, error='No response')
+                if status.get('online'):
+                    any_agent_online = True
+                    gpu_tracking.setdefault('last_known_by_agent', {})[agent['id']] = status.get('gpus') or []
+                    current_gpus.extend(status.get('gpus') or [])
+                else:
+                    last_gpus = gpu_tracking.setdefault('last_known_by_agent', {}).get(agent['id'], [])
+                    if last_gpus:
+                        status['gpus'] = last_gpus
+                        status['stale'] = True
+                    status['retry_delay'] = retry_delay
+                agent_statuses.append(status)
+
+            with cache_lock:
+                sys_cache['gpu']['online'] = any_agent_online
+                sys_cache['gpu']['gpus'] = current_gpus
+                sys_cache['gpu']['agents'] = agent_statuses
+                if any_agent_online:
+                    sys_cache['gpu']['last_update'] = now_ts
+                    sys_cache['gpu']['retry_delay'] = 1
+                else:
+                    sys_cache['gpu']['retry_delay'] = retry_delay
+
+            if any_agent_online:
+                retry_delay = 1 # 成功后重置延迟
+
+                # === 状态变更检测与日志记录 ===
+                was_online = gpu_tracking.get('was_online', False)
+
+                # 1. 上线检测：从离线变为在线
+                if not was_online:
+                    # 如果之前没有记录过上线路志（或者是首次启动/重启恢复）
+                    if not gpu_tracking.get('has_logged_online', False):
+                        gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in current_gpus]
+                        online_agents = [
+                            {'id': status.get('id'), 'label': status.get('label')}
+                            for status in agent_statuses
+                            if status.get('enabled') and status.get('online')
+                        ]
+                        write_audit(
+                            'INFO',
+                            'GPU',
+                            'AGENT_ONLINE',
+                            'GPU Agent 已上线',
+                            details={'gpus': gpu_names, 'agents': online_agents},
+                            operator='SYSTEM'
+                        )
+                        gpu_tracking['has_logged_online'] = True
+                        gpu_tracking['has_logged_offline'] = False
+
+                # 更新追踪状态
+                gpu_tracking['was_online'] = True
+                gpu_tracking['last_known_gpus'] = current_gpus
+
+                # 记录历史数据 (1s一次)
+                now = time.time()
+                if now - last_db_log_time >= 1.0:
+                    # [性能优化] 使用缓冲区批量写入 GPU 指标
+                    for g in current_gpus:
+                        gpu_metrics_buffer.append(gpu_metric_row(now, g))
+
+                    # 每 10 秒（或缓冲区积累一定量数据）执行一次批量写入
+                    if len(gpu_metrics_buffer) >= (10 * len(current_gpus) if current_gpus else 10):
+                        sqls = []
+                        all_params = []
+                        for row_g in gpu_metrics_buffer:
+                            sqls.append('INSERT INTO gpu_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                            all_params.append(row_g)
+
+                        # 获取清理时间点
+                        cleanup_conn = get_db_connection()
+                        cleanup_c = cleanup_conn.cursor()
+                        cleanup_c.execute("SELECT value FROM config WHERE key='data_retention_days'")
+                        retention_row = cleanup_c.fetchone()
+                        current_retention_days = int(retention_row[0]) if retention_row else RETENTION_DAYS
+                        cutoff = int(now) - (current_retention_days * 86400)
+                        cleanup_conn.close()
+
+                        execute_db_async(sqls, all_params, wait=True)
+                        deleted_gpu_rows = run_db_maintenance_delete(
+                            "DELETE FROM gpu_metrics WHERE timestamp < ?",
+                            (cutoff,),
+                            'gpu_metrics'
+                        )
+                        if deleted_gpu_rows and now - last_gpu_retention_audit_ts >= 3600:
+                            write_audit(
+                                'INFO',
+                                'SYSTEM',
+                                'RETENTION_CLEANUP',
+                                f'按数据保留期清理 GPU 历史数据，共删除 {deleted_gpu_rows} 行',
+                                details={
+                                    'rows': deleted_gpu_rows,
+                                    'deleted': {'gpu_metrics': deleted_gpu_rows},
+                                    'retention_days': current_retention_days,
+                                    'cutoff_ts': cutoff
+                                },
+                                operator='SYSTEM'
                             )
-                            if deleted_gpu_rows and now - last_gpu_retention_audit_ts >= 3600:
-                                write_audit(
-                                    'INFO',
-                                    'SYSTEM',
-                                    'RETENTION_CLEANUP',
-                                    f'按数据保留期清理 GPU 历史数据，共删除 {deleted_gpu_rows} 行',
-                                    details={
-                                        'rows': deleted_gpu_rows,
-                                        'deleted': {'gpu_metrics': deleted_gpu_rows},
-                                        'retention_days': current_retention_days,
-                                        'cutoff_ts': cutoff
-                                    },
-                                    operator='SYSTEM'
-                                )
-                                last_gpu_retention_audit_ts = now
-                            gpu_metrics_buffer = [] # 清空缓冲区
-                            
-                        last_db_log_time = now
-                
+                            last_gpu_retention_audit_ts = now
+                        gpu_metrics_buffer = [] # 清空缓冲区
+
+                    last_db_log_time = now
+
                 elapsed = time.time() - start_time
                 time.sleep(max(0.1, 1.0 - elapsed))
-
-            except Exception as e:
+            else:
                 # === 离线检测：从在线变为离线 ===
                 was_online = gpu_tracking.get('was_online', False)
                 if was_online and not gpu_tracking.get('has_logged_offline', False):
                     # 记录离线日志
                     gpus = gpu_tracking.get('last_known_gpus', [])
                     gpu_names = [{'name': g.get('name', 'Unknown'), 'index': g.get('index', 0)} for g in gpus]
-                    write_audit('WARN', 'GPU', 'AGENT_OFFLINE', 'GPU Agent 离线', 
-                               details={'gpus': gpu_names}, operator='SYSTEM')
+                    write_audit(
+                        'WARN',
+                        'GPU',
+                        'AGENT_OFFLINE',
+                        'GPU Agent 离线',
+                        details={'gpus': gpu_names, 'agents': [status.get('label') for status in agent_statuses if status.get('enabled')]},
+                        operator='SYSTEM'
+                    )
                     gpu_tracking['has_logged_offline'] = True
                     gpu_tracking['has_logged_online'] = False
-                
+
                 gpu_tracking['was_online'] = False
-                
+
                 with cache_lock:
                     sys_cache['gpu']['online'] = False
                     sys_cache['gpu']['retry_delay'] = retry_delay
-                print(f"GPU Agent Error (Retrying in {retry_delay}s): {e}")
-                
+                offline_errors = [status.get('error') for status in agent_statuses if status.get('enabled') and status.get('error')]
+                print(f"GPU Agent Error (Retrying in {retry_delay}s): {'; '.join(offline_errors) or 'all agents offline'}")
+
                 time.sleep(retry_delay)
                 # 指数退避
                 retry_delay = min(max_retry_delay, retry_delay * 2)
@@ -7122,37 +7383,60 @@ def api_config_gpu():
     conn = get_db_connection()
     c = conn.cursor()
     if request.method == 'GET':
-        c.execute("SELECT key, value FROM config WHERE key LIKE 'gpu_agent_%'")
-        res = {row['key']: row['value'] for row in c.fetchall()}
+        agents = load_gpu_agents_config(conn)
+        primary_agent = next((agent for agent in agents if agent.get('enabled')), agents[0] if agents else build_legacy_gpu_agent())
+        res = {
+            'gpu_agents': agents,
+            'gpu_agent_enabled': 'true' if primary_agent.get('enabled') else 'false',
+            'gpu_agent_host': primary_agent.get('host') or '',
+            'gpu_agent_port': str(primary_agent.get('port') or '')
+        }
         conn.close()
         return jsonify(res)
     
     if request.method == 'POST':
         try:
-            data = request.json
-            details = {}
-            msg_parts = []
-            
-            if 'gpu_agent_enabled' in data:
-                val = str(data['gpu_agent_enabled']).lower()
-                c.execute("UPDATE config SET value=? WHERE key='gpu_agent_enabled'", (val,))
-                details['enabled'] = val
-                msg_parts.append(f"Agent开启->{val}")
-                
-            if 'gpu_agent_host' in data:
-                c.execute("UPDATE config SET value=? WHERE key='gpu_agent_host'", (data['gpu_agent_host'],))
-                details['host'] = data['gpu_agent_host']
-                msg_parts.append(f"Host->{data['gpu_agent_host']}")
-                
-            if 'gpu_agent_port' in data:
-                val = str(data['gpu_agent_port'])
-                c.execute("UPDATE config SET value=? WHERE key='gpu_agent_port'", (val,))
-                details['port'] = val
-                msg_parts.append(f"Port->{val}")
-                
-            conn.commit()
-            write_audit('INFO', 'GPU', 'UPDATE_CONFIG', f"更新GPU Agent配置: {', '.join(msg_parts)}", details=details)
-            return jsonify({'status': 'success'})
+            data = request.get_json(silent=True) or {}
+            if 'gpu_agents' in data:
+                agents = normalize_gpu_agents(data.get('gpu_agents'), strict=True)
+            else:
+                agents = normalize_gpu_agents([{
+                    'id': 'legacy-default',
+                    'host': data.get('gpu_agent_host'),
+                    'port': data.get('gpu_agent_port'),
+                    'enabled': data.get('gpu_agent_enabled'),
+                    'note': '',
+                    'slot': 0
+                }], strict=True)
+
+            if not agents:
+                raise ValueError('At least one GPU agent is required')
+
+            agents = save_gpu_agents_config(conn, agents, commit=True)
+            enabled_count = sum(1 for agent in agents if agent.get('enabled'))
+            details = {
+                'agents_count': len(agents),
+                'enabled_count': enabled_count,
+                'agents': [
+                    {
+                        'id': agent.get('id'),
+                        'host': agent.get('host'),
+                        'port': agent.get('port'),
+                        'enabled': agent.get('enabled'),
+                        'note': agent.get('note')
+                    }
+                    for agent in agents
+                ]
+            }
+
+            write_audit(
+                'INFO',
+                'GPU',
+                'UPDATE_CONFIG',
+                f"更新GPU Agent配置: {len(agents)} 个Agent，启用 {enabled_count} 个",
+                details=details
+            )
+            return jsonify({'status': 'success', 'gpu_agents': agents})
         except Exception as e:
             write_audit('ERROR', 'GPU', 'UPDATE_CONFIG_FAIL', f"更新GPU Agent配置失败: {str(e)}")
             return jsonify({'error': str(e)}), 500

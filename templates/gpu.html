@@ -157,6 +157,14 @@
             font-weight: 800;
             text-transform: uppercase;
         }
+        .gpu-agent-meta {
+            margin-top: 0.25rem;
+            color: var(--text-muted);
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 0.74rem;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
         .temp-badge {
             border-radius: 999px !important;
             padding: 0.38rem 0.7rem !important;
@@ -231,6 +239,77 @@
             padding: 0.9rem;
             background: color-mix(in srgb, var(--bg-elevated) 34%, transparent);
         }
+        .gpu-card.is-agent-offline {
+            border-color: color-mix(in srgb, var(--accent-red) 48%, var(--border-color)) !important;
+        }
+        .gpu-card.is-agent-offline::after {
+            content: attr(data-offline-label);
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: grid;
+            place-items: center;
+            padding: 1rem;
+            background: color-mix(in srgb, var(--bg-card) 72%, transparent);
+            color: var(--accent-red);
+            font-weight: 950;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            backdrop-filter: blur(4px);
+        }
+        .gpu-card.is-agent-offline > * {
+            filter: grayscale(1);
+            opacity: 0.42;
+        }
+        .gpu-agent-offline-body {
+            min-height: 12rem;
+            display: grid;
+            place-items: center;
+            gap: 0.65rem;
+            padding: 1.25rem;
+            color: var(--text-muted);
+            font-family: 'SF Mono', Consolas, monospace;
+            font-weight: 850;
+            text-align: center;
+            overflow-wrap: anywhere;
+        }
+        .gpu-agent-offline-body i {
+            color: var(--accent-red);
+            font-size: 2rem;
+        }
+        .gpu-agent-config-list {
+            display: grid;
+            gap: 0.85rem;
+        }
+        .gpu-agent-row {
+            padding: 0.95rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--bg-elevated) 46%, transparent);
+        }
+        .gpu-agent-row-head,
+        .gpu-agent-row-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.85rem;
+        }
+        .gpu-agent-row-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 900;
+            min-width: 0;
+        }
+        .gpu-agent-row-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 8.5rem;
+            gap: 0.75rem;
+            margin-top: 0.85rem;
+        }
+        .gpu-agent-note-field {
+            grid-column: 1 / -1;
+        }
         .agent-offline { filter: grayscale(1); pointer-events: none; opacity: 0.55; }
         .offline-overlay {
             position: fixed;
@@ -264,6 +343,10 @@
             .gpu-summary-grid { grid-template-columns: 1fr; }
             .gpu-card-head { flex-direction: column; }
             .temp-badge { align-self: flex-start; }
+            .gpu-agent-row-head,
+            .gpu-agent-row-actions { align-items: flex-start; }
+            .gpu-agent-row-head { flex-direction: column; }
+            .gpu-agent-row-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -343,6 +426,10 @@
 {% if gpu_port_label == 'gpu.port' %}{% set gpu_port_label = 'Agent port' %}{% endif %}
 {% set gpu_enabled_label = t('gpu.enabled') %}
 {% if gpu_enabled_label == 'gpu.enabled' %}{% set gpu_enabled_label = 'Enable GPU monitoring' %}{% endif %}
+{% set gpu_agents_label = t('gpu.agents') %}
+{% if gpu_agents_label == 'gpu.agents' %}{% set gpu_agents_label = 'Agents' %}{% endif %}
+{% set gpu_add_agent_label = t('gpu.addAgent') %}
+{% if gpu_add_agent_label == 'gpu.addAgent' %}{% set gpu_add_agent_label = 'Add agent' %}{% endif %}
 {% set gpu_cancel_label = t('app.cancel') %}
 {% if gpu_cancel_label == 'app.cancel' %}{% set gpu_cancel_label = 'Cancel' %}{% endif %}
 {% set gpu_save_label = t('app.save') %}
@@ -352,7 +439,7 @@
 
 <!-- GPU 配置模态框 -->
 <div class="modal fade" id="gpuConfigModal" tabindex="-1" role="dialog" aria-hidden="true" aria-labelledby="gpuConfigModalTitle">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content shadow-lg">
             <div class="modal-header border-bottom border-secondary">
                 <h5 class="modal-title" id="gpuConfigModalTitle"><i class="fas fa-cog me-2"></i><span data-i18n="gpu.agentConfig">{{ gpu_agent_config_label }}</span></h5>
@@ -360,18 +447,13 @@
             </div>
             <div class="modal-body">
                 <form id="gpuConfigForm">
-                    <div class="mb-3">
-                        <label class="form-label text-muted" data-i18n="gpu.host">{{ gpu_host_label }}</label>
-                        <input type="text" class="form-control" id="config-host" placeholder="127.0.0.1">
+                    <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                        <label class="form-label text-muted mb-0" data-i18n="gpu.agents">{{ gpu_agents_label }}</label>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-gpu-agent">
+                            <i class="fas fa-plus me-1"></i><span data-i18n="gpu.addAgent">{{ gpu_add_agent_label }}</span>
+                        </button>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label text-muted" data-i18n="gpu.port">{{ gpu_port_label }}</label>
-                        <input type="number" class="form-control" id="config-port" placeholder="9999">
-                    </div>
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="config-enabled">
-                        <label class="form-check-label" for="config-enabled" data-i18n="gpu.enabled">{{ gpu_enabled_label }}</label>
-                    </div>
+                    <div id="gpu-agent-list" class="gpu-agent-config-list"></div>
                 </form>
             </div>
             <div class="modal-footer border-top border-secondary">
