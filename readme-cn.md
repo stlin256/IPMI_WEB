@@ -6,7 +6,7 @@
 
 IPMI_WEB 是一个轻量自托管服务器运维面板，用于把 IPMI 硬件监控、风扇策略控制、系统资源图表、可选 NVIDIA GPU 监控、历史分析、审计日志、存储生命周期、证书管理、告警和邮件报告整合到一个浏览器界面中。
 
-[English](README.md) | [更新日志](CHANGELOG.md) | [前端重构说明](docs/frontend-modernization-plan.md)
+[English](README.md) | [快速开始](#快速开始) | [更新日志](CHANGELOG.md) | [前端重构说明](docs/frontend-modernization-plan.md)
 
 ## 当前状态
 
@@ -209,7 +209,7 @@ flowchart TD
 
 | 路由 | 页面 | 说明 |
 | --- | --- | --- |
-| `/setup` | 首次配置向导 | 安装脚本生成的一次性 token 配置流程 |
+| `/setup` | 首次配置向导 | 安装脚本开启的首次配置模式 |
 | `/login` | 登录页 | 密码登录、递增延迟、防爆破、审计日志 |
 | `/hardware` | 硬件首页 | 默认登录后入口 |
 | `/resources` | 资源页 | CPU、内存、网络、磁盘、CPU 封装功耗 |
@@ -222,6 +222,7 @@ flowchart TD
 - `/api/status_*` 返回内存中的最新状态。
 - `/api/history`、`/api/history_custom`、`/api/history_gpu`、`/api/sensor_history_detail` 返回经过降采样或后端聚合的图表数据。
 - `/api/settings`、`/api/config`、`/api/config/gpu`、`/api/alert_rules` 管理运行时设置。
+- `/api/setup/certificate` 在首次配置完成前校验 HTTPS 证书/私钥。
 - `/api/setup/complete` 保存首次配置，并创建首次登录会话。
 - `/api/storage_status`、`/api/export_data`、`/api/config/export`、`/api/config/import` 用于维护和迁移。
 - `/api/certificate` 校验证书并保存 HTTPS 文件。
@@ -260,13 +261,14 @@ sudo bash scripts/install-linux.sh
 Linux 安装脚本会完成：
 
 - 检查当前是否为 root，避免在不能执行 `sudo` 的环境里跑到一半才失败；
-- 安装 Python、`ipmitool`、`lm-sensors`、Git、rsync 和 Python 依赖；
+- 询问是否自动安装依赖；输入 `n` 会跳过系统包安装和 Python requirements 安装；
+- 在启用依赖安装时安装 Python、`ipmitool`、`lm-sensors`、Git、rsync 和 Python 依赖；
 - 交互式询问 HTTP 端口、安装目录、数据目录、systemd 服务名和运行用户；
 - 写入 `config.json` 和 `install.json`，其中包含首次配置模式标记；
 - 创建并启动 systemd 服务；
 - 输出类似 `http://server-ip:90/setup` 的首次配置地址。
 
-浏览器打开这个 setup 地址后，引导界面会配置显示用服务器名称、管理员密码、数据库保留期、低磁盘空间保护、可选 GPU Agent、可选 SMTP 邮件告警、自动更新模式和更新通道。默认通道是 `release`，只有需要紧跟 `main` 分支 commit 时才切到 `dev`。完成后会自动登录并进入 `/hardware`。
+浏览器打开这个 setup 地址后，引导界面会配置显示用服务器名称、管理员密码、数据库保留期、低磁盘空间保护、可选 HTTPS 证书、可选 GPU Agent、可选 SMTP 邮件告警、自动更新模式和更新通道。默认通道是 `release`，只有需要紧跟 `main` 分支 commit 时才切到 `dev`。如果配置了证书，系统会校验证书/私钥匹配关系，完成后重启并跳转到 HTTPS 的硬件页面；没有配置证书时会自动登录并以 HTTP 进入 `/hardware`。
 
 Windows 下请使用管理员 PowerShell：
 
@@ -276,7 +278,7 @@ cd IPMI_WEB
 .\scripts\install-windows.ps1
 ```
 
-Windows 安装脚本会使用提权计划任务作为启动管理器，因为当前 Python 应用还没有打包成原生 Windows Service。它同样会生成 `config.json`、`install.json`、一次性 token，并进入同一套首次配置向导。
+Windows 安装脚本会使用提权计划任务作为启动管理器，因为当前 Python 应用还没有打包成原生 Windows Service。它同样会询问是否自动安装依赖，生成 `config.json` 和 `install.json`，并进入同一套首次配置向导。
 
 ### Release 发布包
 
@@ -340,7 +342,7 @@ cert/server.pem
 
 检测到证书后，应用会启用安全 Cookie，并把普通 HTTP 跳转到 HTTPS；如果请求来自可信代理且 `X-Forwarded-Proto` 为 `https`，则不会误跳转。
 
-设置页也支持上传证书和私钥。后端会在保存前校验 PEM 格式、有效期和证书/私钥匹配关系。
+首次配置向导和设置页都支持上传证书和私钥。后端会在保存前校验 PEM 格式、有效期和证书/私钥匹配关系。首次配置时如果证书有效，完成后服务会重启，浏览器会继续跳转到 HTTPS 地址。
 
 ## 可信代理
 

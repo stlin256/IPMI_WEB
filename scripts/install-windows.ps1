@@ -54,6 +54,7 @@ if ($Port -eq 0) {
 if (-not $ServiceName) {
     $ServiceName = Read-Default "Startup task name" "IPMI_WEB"
 }
+$installDependencies = Read-Default "Install Python dependencies automatically? (Y/n)" "Y"
 if ($Port -lt 1 -or $Port -gt 65535) {
     throw "Invalid port: $Port"
 }
@@ -82,12 +83,18 @@ if ($LASTEXITCODE -gt 7) {
 }
 
 $venvDir = Join-Path $InstallDir ".venv"
-& $python.Source -m venv $venvDir
-$venvPython = Join-Path $venvDir "Scripts\python.exe"
-& $venvPython -m pip install --upgrade pip
-& $venvPython -m pip install -r (Join-Path $InstallDir "requirements.txt")
+if ($installDependencies -match "^[Nn]$") {
+    Write-Host "Skipping dependency installation. The selected Python environment must already provide the project requirements."
+    $appPython = $python.Source
+} else {
+    & $python.Source -m venv $venvDir
+    $appPython = Join-Path $venvDir "Scripts\python.exe"
+    & $appPython -m pip install --upgrade pip
+    & $appPython -m pip install -r (Join-Path $InstallDir "requirements.txt")
+}
 
 $bootstrapPassword = New-Token 24
+$bootstrapSecret = New-Token 48
 $dbPath = Join-Path $DataDir "data.db"
 $repoUrl = ""
 $repoBranch = "main"
@@ -116,6 +123,7 @@ $config = [ordered]@{
     }
     SECURITY = [ordered]@{
         login_password = $bootstrapPassword
+        secret_key = $bootstrapSecret
         trusted_proxies = @()
     }
 }
@@ -126,7 +134,7 @@ $metadata = [ordered]@{
     data_root = $DataDir
     db_path = $dbPath
     port = $Port
-    python = $venvPython
+    python = $appPython
     entrypoint = (Join-Path $InstallDir "app.py")
     auto_update_mode = "auto"
     update_channel = "release"
@@ -142,7 +150,7 @@ $metadata | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path (Join-Pat
 $metadata | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path (Join-Path $DataDir "install.json")
 
 $action = New-ScheduledTaskAction `
-    -Execute $venvPython `
+    -Execute $appPython `
     -Argument ('"{0}"' -f (Join-Path $InstallDir "app.py")) `
     -WorkingDirectory $InstallDir
 $trigger = New-ScheduledTaskTrigger -AtStartup

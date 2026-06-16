@@ -21,6 +21,7 @@ import csv
 import logging
 import queue
 import platform
+import secrets
 import smtplib
 import base64
 import concurrent.futures
@@ -55,7 +56,7 @@ RETENTION_DAYS = config['DATABASE']['retention_days']
 PORT = config['SERVER']['port']
 SERVER_NAME = config['SERVER'].get('server_name', 'IPMI Controller')
 LOGIN_PASSWORD = config['SECURITY']['login_password']
-SECRET_KEY = os.urandom(24)
+SECRET_KEY = config.get('SECURITY', {}).get('secret_key') or os.urandom(24)
 
 VERSION = '1.6.0'
 IPMI_ASCII_LOGO = """   ____ ___   __  ___ ____  _      __ ____ ___
@@ -547,6 +548,8 @@ cert_dir = 'cert'
 DEFAULT_CERT_FILE = os.path.join(cert_dir, 'server.crt')
 DEFAULT_KEY_FILE = os.path.join(cert_dir, 'server.key')
 COMBINED_CERT_FILE = os.path.join(cert_dir, 'server.pem')
+SETUP_PENDING_CERT_FILE = os.path.join(cert_dir, '.setup_server.crt')
+SETUP_PENDING_KEY_FILE = os.path.join(cert_dir, '.setup_server.key')
 cert_file = DEFAULT_CERT_FILE
 key_file = DEFAULT_KEY_FILE
 # 同时也检查 pem 扩展名
@@ -934,6 +937,12 @@ def _atomic_write_bytes(path, data, mode=None):
             os.chmod(path, mode)
         except OSError:
             pass
+
+def _remove_file_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 def restart_current_process():
     try:
@@ -5216,9 +5225,57 @@ def setup_page():
         update_channel=normalize_update_channel(metadata.get('update_channel'))
     )
 
+@app.route('/api/setup/certificate', methods=['POST'])
+def api_setup_certificate():
+    if is_setup_completed():
+        return setup_error('Setup is already completed.', 409)
+
+    try:
+        locale = normalize_setup_locale(request.form.get('language'))
+        cert_upload = request.files.get('cert_file')
+        key_upload = request.files.get('key_file')
+        cert_data = _read_uploaded_file(cert_upload, translate_locale(locale, 'logs.certLabel'), locale)
+        key_data = _read_uploaded_file(key_upload, translate_locale(locale, 'logs.keyLabel'), locale)
+
+        cert_info = _validate_certificate_bytes(cert_data, locale)
+        _validate_private_key_bytes(key_data, locale)
+        _validate_certificate_pair(cert_data, key_data, locale)
+
+        _atomic_write_bytes(SETUP_PENDING_CERT_FILE, cert_data, 0o644)
+        _atomic_write_bytes(SETUP_PENDING_KEY_FILE, key_data, 0o600)
+
+        write_audit(
+            'INFO',
+            'CONFIG',
+            'SETUP_CERTIFICATE_UPLOAD',
+            '初始化 HTTPS 证书已校验，等待完成配置后生效',
+            details={
+                'expires_at': cert_info.get('expires_at_str'),
+                'days_left': cert_info.get('days_left')
+            },
+            operator=get_client_ip()
+        )
+        return jsonify({
+            'status': 'success',
+            'message': translate_locale(locale, 'logs.certUploadSaved'),
+            'certificate': {
+                **cert_info,
+                'installed': False,
+                'pending': True,
+                'cert_path': DEFAULT_CERT_FILE,
+                'key_path': DEFAULT_KEY_FILE,
+                'https_active': HAS_CERT
+            }
+        })
+    except ValueError as e:
+        return setup_error(str(e))
+    except Exception as e:
+        logging.exception('Setup certificate upload failed')
+        return setup_error(str(e), 500)
+
 @app.route('/api/setup/complete', methods=['POST'])
 def api_setup_complete():
-    global config, SERVER_NAME, LOGIN_PASSWORD, RETENTION_DAYS, PORT
+    global config, SERVER_NAME, LOGIN_PASSWORD, RETENTION_DAYS, PORT, SECRET_KEY
 
     if is_setup_completed():
         return setup_error('Setup is already completed.', 409)
@@ -5240,6 +5297,8 @@ def api_setup_complete():
     if update_mode not in ('auto', 'notify'):
         return setup_error('Auto update mode is invalid.')
     update_channel = normalize_update_channel(data.get('updateChannel'))
+    certificate_configured = parse_bool(data.get('certificateConfigured'), False)
+    certificate_info = None
 
     has_gpu = parse_bool(data.get('hasGpu'), False)
     try:
@@ -5274,10 +5333,49 @@ def api_setup_complete():
         if not email_receivers or not all(validate_setup_email(item) for item in email_receivers):
             return setup_error('Email recipients are invalid.')
 
+    if certificate_configured:
+        try:
+            with open(SETUP_PENDING_CERT_FILE, 'rb') as f:
+                pending_cert_data = f.read()
+            with open(SETUP_PENDING_KEY_FILE, 'rb') as f:
+                pending_key_data = f.read()
+        except OSError:
+            return setup_error('HTTPS certificate upload is required before continuing.')
+        try:
+            certificate_info = _validate_certificate_bytes(pending_cert_data, locale)
+            _validate_private_key_bytes(pending_key_data, locale)
+            _validate_certificate_pair(pending_cert_data, pending_key_data, locale)
+            _atomic_write_bytes(DEFAULT_CERT_FILE, pending_cert_data, 0o644)
+            _atomic_write_bytes(DEFAULT_KEY_FILE, pending_key_data, 0o600)
+        except ValueError as e:
+            return setup_error(str(e))
+        except Exception as e:
+            logging.exception('Failed to apply setup certificate')
+            return setup_error(str(e), 500)
+        finally:
+            _remove_file_quietly(SETUP_PENDING_CERT_FILE)
+            _remove_file_quietly(SETUP_PENDING_KEY_FILE)
+    else:
+        _remove_file_quietly(SETUP_PENDING_CERT_FILE)
+        _remove_file_quietly(SETUP_PENDING_KEY_FILE)
+
+    redirect_url = url_for('hardware_page', setup=1)
+    restart_required = False
+    access_domain = request.url_root.rstrip('/')
+    if certificate_configured:
+        restart_required = True
+        https_origin = f'https://{request.host}'
+        redirect_url = urllib.parse.urljoin(https_origin, url_for('hardware_page', setup=1))
+        access_domain = https_origin
+
     new_config = json.loads(json.dumps(config))
     new_config.setdefault('DATABASE', {})
     new_config.setdefault('SERVER', {})
     new_config.setdefault('SECURITY', {})
+    stable_secret_key = str(new_config['SECURITY'].get('secret_key') or '').strip()
+    if not stable_secret_key:
+        stable_secret_key = secrets.token_urlsafe(48)
+        new_config['SECURITY']['secret_key'] = stable_secret_key
     new_config['DATABASE']['path'] = DB_FILE
     new_config['DATABASE']['retention_days'] = retention_days
     new_config['SERVER']['port'] = port
@@ -5297,7 +5395,7 @@ def api_setup_complete():
         set_config_value(conn, 'auto_update_mode', update_mode)
         set_config_value(conn, 'auto_update_enabled', 'true' if update_mode == 'auto' else 'false')
         set_config_value(conn, 'update_channel', update_channel)
-        set_config_value(conn, 'last_access_domain', request.url_root.rstrip('/'))
+        set_config_value(conn, 'last_access_domain', access_domain)
 
         if skip_email:
             set_config_value(conn, 'email_enabled', 'false')
@@ -5331,6 +5429,7 @@ def api_setup_complete():
             'port': port,
             'auto_update_mode': update_mode,
             'update_channel': update_channel,
+            'https_configured': certificate_configured,
             'setup_required': False,
             'setup_completed_at': int(time.time())
         })
@@ -5343,6 +5442,8 @@ def api_setup_complete():
     LOGIN_PASSWORD = password
     RETENTION_DAYS = retention_days
     PORT = port
+    SECRET_KEY = stable_secret_key
+    app.secret_key = stable_secret_key
     session.permanent = True
     session['logged_in'] = True
     session['setup_completed_at'] = int(time.time())
@@ -5358,11 +5459,19 @@ def api_setup_complete():
             'gpu_enabled': has_gpu,
             'email_enabled': not skip_email,
             'auto_update_mode': update_mode,
-            'update_channel': update_channel
+            'update_channel': update_channel,
+            'https_configured': certificate_configured,
+            'certificate_expires_at': certificate_info.get('expires_at_str') if certificate_info else ''
         },
         operator=get_client_ip()
     )
-    return jsonify({'status': 'ok', 'redirect': url_for('hardware_page', setup=1)})
+    if restart_required:
+        threading.Timer(0.8, restart_current_process).start()
+    return jsonify({
+        'status': 'ok',
+        'redirect': redirect_url,
+        'restart_required': restart_required
+    })
 
 @app.route('/logout')
 def logout(): session.pop('logged_in', None); return redirect(url_for('login'))

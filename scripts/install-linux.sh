@@ -22,6 +22,7 @@ DATA_DIR="$(prompt_default "Data directory" "/var/lib/ipmi-web")"
 PORT="$(prompt_default "HTTP port" "90")"
 SERVICE_NAME="$(prompt_default "Systemd service name" "ipmi-web")"
 RUN_USER="$(prompt_default "Run as Linux user" "ipmi-web")"
+INSTALL_DEPENDENCIES="$(prompt_default "Install system and Python dependencies automatically? (Y/n)" "Y")"
 
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
     echo "Invalid port: $PORT"
@@ -44,8 +45,12 @@ install_packages() {
     fi
 }
 
-echo "Installing system dependencies..."
-install_packages
+if [[ "$INSTALL_DEPENDENCIES" =~ ^[Nn]$ ]]; then
+    echo "Skipping dependency installation. The selected Python environment must already provide the project requirements."
+else
+    echo "Installing system dependencies..."
+    install_packages
+fi
 
 if ! id "$RUN_USER" >/dev/null 2>&1; then
     useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$RUN_USER"
@@ -60,17 +65,30 @@ rsync -a \
     --exclude 'data.db*' \
     "$SOURCE_DIR"/ "$INSTALL_DIR"/
 
-python3 -m venv "$INSTALL_DIR/.venv"
-"$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip
-"$INSTALL_DIR/.venv/bin/python" -m pip install -r "$INSTALL_DIR/requirements.txt"
+if [[ "$INSTALL_DEPENDENCIES" =~ ^[Nn]$ ]]; then
+    APP_PYTHON="$(command -v python3 || true)"
+    if [ -z "$APP_PYTHON" ]; then
+        APP_PYTHON="$(command -v python || true)"
+    fi
+    if [ -z "$APP_PYTHON" ]; then
+        echo "Python was not found. Install Python and the project requirements manually, then rerun the installer."
+        exit 1
+    fi
+else
+    python3 -m venv "$INSTALL_DIR/.venv"
+    APP_PYTHON="$INSTALL_DIR/.venv/bin/python"
+    "$APP_PYTHON" -m pip install --upgrade pip
+    "$APP_PYTHON" -m pip install -r "$INSTALL_DIR/requirements.txt"
+fi
 
-BOOTSTRAP_PASSWORD="$("$INSTALL_DIR/.venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(24))")"
+BOOTSTRAP_PASSWORD="$("$APP_PYTHON" -c "import secrets; print(secrets.token_urlsafe(24))")"
+BOOTSTRAP_SECRET="$("$APP_PYTHON" -c "import secrets; print(secrets.token_urlsafe(48))")"
 REPO_URL="$(git -C "$SOURCE_DIR" config --get remote.origin.url 2>/dev/null || true)"
 REPO_BRANCH="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 CURRENT_COMMIT="$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true)"
 
-export INSTALL_DIR DATA_DIR PORT SERVICE_NAME BOOTSTRAP_PASSWORD REPO_URL REPO_BRANCH CURRENT_COMMIT
-"$INSTALL_DIR/.venv/bin/python" - <<'PY'
+export INSTALL_DIR DATA_DIR PORT SERVICE_NAME APP_PYTHON BOOTSTRAP_PASSWORD BOOTSTRAP_SECRET REPO_URL REPO_BRANCH CURRENT_COMMIT
+"$APP_PYTHON" - <<'PY'
 import json
 import os
 
@@ -91,6 +109,7 @@ config = {
     },
     "SECURITY": {
         "login_password": os.environ["BOOTSTRAP_PASSWORD"],
+        "secret_key": os.environ["BOOTSTRAP_SECRET"],
         "trusted_proxies": []
     }
 }
@@ -102,7 +121,7 @@ metadata = {
     "data_root": data_dir,
     "db_path": db_path,
     "port": port,
-    "python": os.path.join(install_dir, ".venv", "bin", "python"),
+    "python": os.environ["APP_PYTHON"],
     "entrypoint": os.path.join(install_dir, "app.py"),
     "auto_update_mode": "auto",
     "update_channel": "release",
@@ -134,7 +153,7 @@ Wants=network-online.target
 Type=simple
 User=${RUN_USER}
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/.venv/bin/python ${INSTALL_DIR}/app.py
+ExecStart=${APP_PYTHON} ${INSTALL_DIR}/app.py
 Restart=on-failure
 RestartSec=3
 

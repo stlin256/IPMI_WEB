@@ -6,7 +6,7 @@
 
 IPMI_WEB is a lightweight self-hosted operations panel for IPMI-capable servers. It brings hardware telemetry, fan policy control, system resource charts, optional NVIDIA GPU telemetry, historical analysis, audit logs, storage lifecycle management, certificate handling, alerting, and summary emails into one browser interface.
 
-[中文文档](readme-cn.md) | [Changelog](CHANGELOG.md) | [Frontend modernization notes](docs/frontend-modernization-plan.md)
+[中文文档](readme-cn.md) | [Quick Start](#quick-start) | [Changelog](CHANGELOG.md) | [Frontend modernization notes](docs/frontend-modernization-plan.md)
 
 ## Current Status
 
@@ -209,7 +209,7 @@ flowchart TD
 
 | Route | Page | Notes |
 | --- | --- | --- |
-| `/setup` | First-run setup wizard | One-time token flow created by the installer |
+| `/setup` | First-run setup wizard | First-run mode created by the installer |
 | `/login` | Login | Password login with progressive delay and audit logging |
 | `/hardware` | Hardware dashboard | Default authenticated landing page |
 | `/resources` | Resource dashboard | CPU, memory, network, disk, CPU package power |
@@ -222,6 +222,7 @@ Important API families:
 - `/api/status_*` returns latest in-memory status.
 - `/api/history`, `/api/history_custom`, `/api/history_gpu`, `/api/sensor_history_detail` return chart data with downsampling or backend aggregation.
 - `/api/settings`, `/api/config`, `/api/config/gpu`, `/api/alert_rules` manage runtime settings.
+- `/api/setup/certificate` validates a first-run HTTPS certificate/key pair before setup completion.
 - `/api/setup/complete` saves first-run setup values and creates the first logged-in session.
 - `/api/storage_status`, `/api/export_data`, `/api/config/export`, `/api/config/import` support maintenance and portability.
 - `/api/certificate` validates and saves HTTPS certificate files.
@@ -260,13 +261,14 @@ sudo bash scripts/install-linux.sh
 The Linux installer:
 
 - checks that it is running as root, so it does not fail later on systems without usable `sudo`;
-- installs Python, `ipmitool`, `lm-sensors`, Git, rsync, and the Python requirements;
+- asks whether to install dependencies; entering `n` skips both system package installation and Python requirement installation;
+- installs Python, `ipmitool`, `lm-sensors`, Git, rsync, and the Python requirements when dependency installation is enabled;
 - asks for the HTTP port, install directory, data directory, systemd service name, and service user;
 - writes `config.json` and `install.json`, including the first-run setup mode flag;
 - enables and starts a systemd service;
 - prints a URL like `http://server-ip:90/setup`.
 
-Open that setup URL in a browser. The setup wizard configures the display server name, administrator password, database retention, low disk space protection, optional GPU Agent, optional SMTP alerts, automatic update mode, and the update channel. The default channel is `release`; switch to `dev` only when you want updates that track commits on `main`. After completion it signs you in automatically and enters `/hardware`.
+Open that setup URL in a browser. The setup wizard configures the display server name, administrator password, database retention, low disk space protection, optional HTTPS certificate, optional GPU Agent, optional SMTP alerts, automatic update mode, and the update channel. The default channel is `release`; switch to `dev` only when you want updates that track commits on `main`. If a certificate is configured, the app validates the certificate/key pair, restarts after completion, and redirects to the HTTPS hardware page. Otherwise it signs you in automatically and enters `/hardware` over HTTP.
 
 On Windows, run PowerShell as Administrator:
 
@@ -276,7 +278,7 @@ cd IPMI_WEB
 .\scripts\install-windows.ps1
 ```
 
-The Windows installer uses an elevated scheduled task as the startup manager because this Python app is not yet packaged as a native Windows Service. It uses the same setup wizard and writes the same `config.json`, `install.json`, and one-time token files.
+The Windows installer uses an elevated scheduled task as the startup manager because this Python app is not yet packaged as a native Windows Service. It asks the same dependency-installation question, uses the same setup wizard, and writes the same `config.json` and `install.json` files.
 
 ### Release Packages
 
@@ -340,7 +342,7 @@ cert/server.pem
 
 When a certificate is present, the app enables secure cookies and redirects plain HTTP to HTTPS unless the request comes from a trusted proxy with `X-Forwarded-Proto: https`.
 
-The Settings page can also upload and validate certificate/key files. The backend checks PEM format, validity dates, and private-key matching before saving.
+The first-run setup wizard and Settings page can upload and validate certificate/key files. The backend checks PEM format, validity dates, and private-key matching before saving. During first-run setup, a valid certificate causes the service to restart and the browser to continue on the HTTPS URL.
 
 ## Trusted Proxies
 

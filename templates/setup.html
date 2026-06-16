@@ -453,7 +453,7 @@
         }
         .setup-track {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-template-columns: repeat(8, 1fr);
             gap: 0.45rem;
             margin-bottom: 1.35rem;
         }
@@ -768,6 +768,46 @@
             justify-self: end;
             margin-top: -0.1rem;
         }
+        .setup-inline-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+        }
+        .setup-cert-status {
+            display: none;
+            align-items: flex-start;
+            gap: 0.7rem;
+            padding: 0.78rem 0.9rem;
+            border: 1px solid color-mix(in srgb, var(--accent-green) 28%, transparent);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--accent-green) 10%, transparent);
+            color: var(--text-main);
+            font-size: 0.82rem;
+            font-weight: 850;
+        }
+        .setup-cert-status.is-visible {
+            display: flex;
+            animation: setup-message-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        .setup-cert-status.is-error {
+            border-color: color-mix(in srgb, var(--accent-red) 34%, transparent);
+            background: color-mix(in srgb, var(--accent-red) 12%, transparent);
+        }
+        .setup-cert-status i {
+            color: var(--accent-yellow);
+            margin-top: 0.1rem;
+        }
+        .setup-cert-status strong {
+            display: block;
+            margin-bottom: 0.16rem;
+            font-size: 0.86rem;
+        }
+        .setup-cert-status span {
+            color: var(--text-muted);
+            overflow-wrap: anywhere;
+        }
         .setup-actions .btn-outline-secondary:hover,
         .setup-actions .btn-outline-secondary:focus-visible {
             color: var(--text-main) !important;
@@ -985,10 +1025,11 @@
                     <div>
                         <h1 class="setup-title" data-l10n="setup.title">初始化配置</h1>
                     </div>
-                    <div class="setup-count"><span id="setup-current">01</span> / 07</div>
+                    <div class="setup-count"><span id="setup-current">01</span> / 08</div>
                 </div>
                 <div class="setup-track" aria-hidden="true">
                     <span class="setup-dot is-active"></span>
+                    <span class="setup-dot"></span>
                     <span class="setup-dot"></span>
                     <span class="setup-dot"></span>
                     <span class="setup-dot"></span>
@@ -1091,7 +1132,42 @@
                         </div>
                     </section>
 
-                    <section class="setup-step" data-step="3" data-title-key="step.gpu.title">
+                    <section class="setup-step" data-step="3" data-title-key="step.cert.title">
+                        <div class="setup-icon"><i class="fas fa-certificate"></i></div>
+                        <h2 data-l10n="step.cert.heading">HTTPS 证书</h2>
+                        <p class="setup-step-copy" data-l10n="step.cert.copy">用于启用 HTTPS 访问和安全 Cookie，适合远程访问或反向代理前的直连部署。</p>
+                        <div class="setup-fieldset">
+                            <div class="setup-grid">
+                                <div>
+                                    <label class="setup-label" for="cert-file" data-l10n="field.certFile">证书文件</label>
+                                    <input id="cert-file" name="certFile" class="form-control" type="file" accept=".crt,.cer,.pem">
+                                </div>
+                                <div>
+                                    <label class="setup-label" for="key-file" data-l10n="field.keyFile">私钥文件</label>
+                                    <input id="key-file" name="keyFile" class="form-control" type="file" accept=".key,.pem">
+                                </div>
+                            </div>
+                            <div id="cert-status" class="setup-cert-status" aria-live="polite">
+                                <i class="fas fa-circle-check"></i>
+                                <div>
+                                    <strong id="cert-status-title"></strong>
+                                    <span id="cert-status-detail"></span>
+                                </div>
+                            </div>
+                            <div class="setup-inline-actions">
+                                <button class="setup-inline-skip" id="certificate-skip" type="button">
+                                    <i class="fas fa-forward-step"></i>
+                                    <span data-l10n="button.skipCertificate">跳过证书配置</span>
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm" id="certificate-upload" type="button">
+                                    <i class="fas fa-shield-halved me-1"></i>
+                                    <span data-l10n="button.validateCertificate">上传并检查</span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="setup-step" data-step="4" data-title-key="step.gpu.title">
                         <div class="setup-icon"><i class="fas fa-microchip"></i></div>
                         <h2 data-l10n="step.gpu.heading">GPU 监控</h2>
                         <p class="setup-step-copy" data-l10n="step.gpu.copy">如果这台机器需要 GPU 监控，启用后填写 Agent 地址。</p>
@@ -1119,7 +1195,7 @@
                         </div>
                     </section>
 
-                    <section class="setup-step" data-step="4" data-title-key="step.mail.title">
+                    <section class="setup-step" data-step="5" data-title-key="step.mail.title">
                         <div class="setup-icon"><i class="fas fa-envelope"></i></div>
                         <h2 data-l10n="step.mail.heading">邮件告警</h2>
                         <p class="setup-step-copy" data-l10n="step.mail.copy">用于发送硬件异常、数据中断和更新结果通知。</p>
@@ -1153,7 +1229,7 @@
                         </div>
                     </section>
 
-                    <section class="setup-step" data-step="5" data-title-key="step.update.title">
+                    <section class="setup-step" data-step="6" data-title-key="step.update.title">
                         <div class="setup-icon"><i class="fas fa-arrows-rotate"></i></div>
                         <h2 data-l10n="step.update.heading">自动更新</h2>
                         <p class="setup-step-copy" data-l10n="step.update.copy">用于自动获取修复、安全改进和新版本功能。</p>
@@ -1187,7 +1263,7 @@
                         </div>
                     </section>
 
-                    <section class="setup-step" data-step="6" data-title-key="step.finish.title">
+                    <section class="setup-step" data-step="7" data-title-key="step.finish.title">
                         <div class="setup-icon"><i class="fas fa-rocket"></i></div>
                         <h2 data-l10n="step.finish.heading">确认配置</h2>
                         <div class="setup-summary" id="setup-summary"></div>
@@ -1254,6 +1330,9 @@
                 'step.data.title': '数据策略',
                 'step.data.heading': '数据策略',
                 'step.data.copy': '确认数据库路径和历史数据保留周期。',
+                'step.cert.title': 'HTTPS 证书',
+                'step.cert.heading': 'HTTPS 证书',
+                'step.cert.copy': '用于启用 HTTPS 访问和安全 Cookie，适合远程访问或反向代理前的直连部署。',
                 'step.gpu.title': 'GPU 监控',
                 'step.gpu.heading': 'GPU 监控',
                 'step.gpu.copy': '如果这台机器需要 GPU 监控，启用后填写 Agent 地址。',
@@ -1275,6 +1354,8 @@
                 'field.dbPath': '数据库路径',
                 'field.retentionDays': '历史保留',
                 'field.lowDiskGuard': '低磁盘空间保护',
+                'field.certFile': '证书文件',
+                'field.keyFile': '私钥文件',
                 'field.hasGpu': '我有 GPU',
                 'field.gpuAgent': 'GPU Agent 地址',
                 'field.gpuNote': '备注',
@@ -1293,6 +1374,8 @@
                 'button.next': '下一步',
                 'button.finish': '完成',
                 'button.skipEmail': '跳过邮件配置',
+                'button.skipCertificate': '跳过证书配置',
+                'button.validateCertificate': '上传并检查',
                 'toast.preview': '正在提交初始化配置。',
                 'progress.title': '正在应用配置',
                 'progress.write': '写入初始化配置',
@@ -1329,6 +1412,7 @@
                 'summary.installRoot': '安装目录',
                 'summary.dbPath': '数据库路径',
                 'summary.serverName': '服务器名称',
+                'summary.certificate': 'HTTPS 证书',
                 'summary.gpu': 'GPU 监控',
                 'summary.mail': '邮件告警',
                 'summary.channel': '更新通道',
@@ -1338,6 +1422,8 @@
                 'status.skipped': '跳过',
                 'status.configured': '已配置',
                 'status.notConfigured': '未配置',
+                'status.certReady': '证书校验通过',
+                'status.certExpiry': '到期时间：{time}（剩余 {days} 天）',
                 'error.required': '请填写当前步骤的必填项。',
                 'error.port': '端口必须在 1 到 65535 之间。',
                 'error.passwordLength': '登录密码至少需要 8 位。',
@@ -1349,6 +1435,9 @@
                 'error.smtpHost': 'SMTP 服务器格式不正确。',
                 'error.senderEmail': '发件账号需要是有效的邮箱地址。',
                 'error.receiverEmail': '收件人需要是有效的邮箱地址，多个地址用逗号或分号分隔。',
+                'error.certificateRequired': '请上传证书和私钥，或者跳过证书配置。',
+                'error.certificateUnchecked': '证书文件已变化，请重新上传并检查。',
+                'error.certificateUpload': '证书上传校验失败，请检查证书、私钥和有效期。',
                 'error.submit': '初始化配置提交失败，请检查服务状态后重试。'
             },
             en: {
@@ -1364,6 +1453,9 @@
                 'step.data.title': 'Data Policy',
                 'step.data.heading': 'Data Policy',
                 'step.data.copy': 'Confirm the database path and history retention period.',
+                'step.cert.title': 'HTTPS Certificate',
+                'step.cert.heading': 'HTTPS Certificate',
+                'step.cert.copy': 'Enables HTTPS access and secure cookies, useful for remote access or direct deployments before a reverse proxy.',
                 'step.gpu.title': 'GPU Monitoring',
                 'step.gpu.heading': 'GPU Monitoring',
                 'step.gpu.copy': 'Enable this only when this machine needs GPU monitoring, then enter the Agent URL.',
@@ -1385,6 +1477,8 @@
                 'field.dbPath': 'Database Path',
                 'field.retentionDays': 'History Retention',
                 'field.lowDiskGuard': 'Low Disk Space Protection',
+                'field.certFile': 'Certificate File',
+                'field.keyFile': 'Private Key File',
                 'field.hasGpu': 'I have a GPU',
                 'field.gpuAgent': 'GPU Agent URL',
                 'field.gpuNote': 'Note',
@@ -1403,6 +1497,8 @@
                 'button.next': 'Next',
                 'button.finish': 'Finish',
                 'button.skipEmail': 'Skip Email Setup',
+                'button.skipCertificate': 'Skip Certificate Setup',
+                'button.validateCertificate': 'Upload and Check',
                 'toast.preview': 'Submitting initial configuration.',
                 'progress.title': 'Applying Configuration',
                 'progress.write': 'Saving initial settings',
@@ -1439,6 +1535,7 @@
                 'summary.installRoot': 'Install Directory',
                 'summary.dbPath': 'Database Path',
                 'summary.serverName': 'Server Name',
+                'summary.certificate': 'HTTPS Certificate',
                 'summary.gpu': 'GPU Monitoring',
                 'summary.mail': 'Email Alerts',
                 'summary.channel': 'Update Channel',
@@ -1448,6 +1545,8 @@
                 'status.skipped': 'Skipped',
                 'status.configured': 'Configured',
                 'status.notConfigured': 'Not configured',
+                'status.certReady': 'Certificate validated',
+                'status.certExpiry': 'Expires at {time} ({days} days left)',
                 'error.required': 'Fill in the required fields for this step.',
                 'error.port': 'Port must be between 1 and 65535.',
                 'error.passwordLength': 'The password must be at least 8 characters.',
@@ -1459,6 +1558,9 @@
                 'error.smtpHost': 'SMTP server format is invalid.',
                 'error.senderEmail': 'Sender account must be a valid email address.',
                 'error.receiverEmail': 'Recipients must be valid email addresses separated by commas or semicolons.',
+                'error.certificateRequired': 'Upload the certificate and private key, or skip certificate setup.',
+                'error.certificateUnchecked': 'The certificate files changed. Upload and check them again.',
+                'error.certificateUpload': 'Certificate upload validation failed. Check the certificate, private key, and validity period.',
                 'error.submit': 'Failed to submit initial configuration. Check the service and try again.'
             }
         };
@@ -1483,6 +1585,13 @@
         const hasGpu = document.getElementById('has-gpu');
         const gpuFields = document.getElementById('gpu-fields');
         const emailSkip = document.getElementById('email-skip');
+        const certificateSkip = document.getElementById('certificate-skip');
+        const certificateUpload = document.getElementById('certificate-upload');
+        const certFile = document.getElementById('cert-file');
+        const keyFile = document.getElementById('key-file');
+        const certStatus = document.getElementById('cert-status');
+        const certStatusTitle = document.getElementById('cert-status-title');
+        const certStatusDetail = document.getElementById('cert-status-detail');
         function browserSetupLanguage() {
             const langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'zh'];
             return langs.some((lang) => String(lang).toLowerCase().startsWith('zh')) ? 'zh' : 'en';
@@ -1491,6 +1600,11 @@
         let currentLang = browserSetupLanguage();
         let currentStep = 0;
         let emailSkipped = false;
+        let certificateSkipped = false;
+        let certificateConfigured = false;
+        let certificateInfo = null;
+        let certificateFingerprint = '';
+        let certificateUploading = false;
         let brandCopySwapTimer = 0;
         let brandCopySettleTimer = 0;
         let cardMorphTimer = 0;
@@ -1498,6 +1612,10 @@
 
         function msg(key) {
             return setupMessages[currentLang][key] || setupMessages.zh[key] || key;
+        }
+
+        function formatMsg(key, values = {}) {
+            return msg(key).replace(/\{(\w+)\}/g, (_match, name) => values[name] ?? '');
         }
 
         function updateBrandCopy() {
@@ -1536,6 +1654,7 @@
             document.querySelectorAll('[data-placeholder-key]').forEach((node) => {
                 node.placeholder = msg(node.dataset.placeholderKey);
             });
+            renderCertificateStatus();
             renderStep();
         }
 
@@ -1578,6 +1697,99 @@
         function markInvalid(node, invalid) {
             if (!node) return;
             node.classList.toggle('is-invalid', Boolean(invalid));
+        }
+
+        function selectedCertificateFingerprint() {
+            const cert = certFile.files && certFile.files[0];
+            const key = keyFile.files && keyFile.files[0];
+            if (!cert || !key) return '';
+            return [
+                cert.name,
+                cert.size,
+                cert.lastModified,
+                key.name,
+                key.size,
+                key.lastModified
+            ].join('|');
+        }
+
+        function renderCertificateStatus(errorMessage = '') {
+            if (!certStatus) return;
+            certStatus.classList.remove('is-visible', 'is-error');
+            if (errorMessage) {
+                certStatus.classList.add('is-visible', 'is-error');
+                certStatusTitle.textContent = msg('error.certificateUpload');
+                certStatusDetail.textContent = errorMessage;
+                return;
+            }
+            if (!certificateConfigured || !certificateInfo) {
+                certStatusTitle.textContent = '';
+                certStatusDetail.textContent = '';
+                return;
+            }
+            certStatus.classList.add('is-visible');
+            certStatusTitle.textContent = msg('status.certReady');
+            certStatusDetail.textContent = formatMsg('status.certExpiry', {
+                time: certificateInfo.expires_at_str || '-',
+                days: certificateInfo.days_left ?? '-'
+            });
+        }
+
+        function resetCertificateState() {
+            certificateSkipped = false;
+            certificateConfigured = false;
+            certificateInfo = null;
+            certificateFingerprint = '';
+            renderCertificateStatus();
+        }
+
+        async function uploadCertificate() {
+            if (certificateUploading) return false;
+            const fingerprint = selectedCertificateFingerprint();
+            markInvalid(certFile, !certFile.files.length);
+            markInvalid(keyFile, !keyFile.files.length);
+            if (!fingerprint) {
+                setError(msg('error.certificateRequired'));
+                renderCertificateStatus();
+                return false;
+            }
+
+            certificateUploading = true;
+            certificateUpload.disabled = true;
+            certificateUpload.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i><span data-l10n="button.validateCertificate">${escapeHtml(msg('button.validateCertificate'))}</span>`;
+            setError('');
+            try {
+                const formData = new FormData();
+                formData.append('language', currentLang);
+                formData.append('cert_file', certFile.files[0]);
+                formData.append('key_file', keyFile.files[0]);
+                const response = await fetch('/api/setup/certificate', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || result.status === 'error') {
+                    throw new Error(result.message || msg('error.certificateUpload'));
+                }
+                certificateSkipped = false;
+                certificateConfigured = true;
+                certificateInfo = result.certificate || {};
+                certificateFingerprint = fingerprint;
+                renderCertificateStatus();
+                return true;
+            } catch (error) {
+                certificateConfigured = false;
+                certificateInfo = null;
+                certificateFingerprint = '';
+                const message = error.message || msg('error.certificateUpload');
+                renderCertificateStatus(message);
+                setError(message);
+                return false;
+            } finally {
+                certificateUploading = false;
+                certificateUpload.disabled = false;
+                certificateUpload.innerHTML = `<i class="fas fa-shield-halved me-1"></i><span data-l10n="button.validateCertificate">${escapeHtml(msg('button.validateCertificate'))}</span>`;
+            }
         }
 
         function validPort(raw) {
@@ -1666,7 +1878,23 @@
                     return false;
                 }
             }
-            if (currentStep === 3 && hasGpu.checked) {
+            if (currentStep === 3) {
+                const fingerprint = selectedCertificateFingerprint();
+                if (certificateSkipped && !fingerprint) {
+                    return true;
+                }
+                if (!fingerprint) {
+                    markInvalid(certFile, true);
+                    markInvalid(keyFile, true);
+                    setError(msg('error.certificateRequired'));
+                    return false;
+                }
+                if (!certificateConfigured || certificateFingerprint !== fingerprint) {
+                    setError(msg('error.certificateUnchecked'));
+                    return false;
+                }
+            }
+            if (currentStep === 4 && hasGpu.checked) {
                 const agent = field('gpuAgent');
                 if (!validUrl(agent.value.trim())) {
                     markInvalid(agent, true);
@@ -1675,7 +1903,7 @@
                     return false;
                 }
             }
-            if (currentStep === 4 && !emailSkipped) {
+            if (currentStep === 5 && !emailSkipped) {
                 const requiredEmail = ['smtpHost', 'smtpUser', 'smtpPassword', 'mailReceivers'];
                 for (const name of requiredEmail) {
                     const item = field(name);
@@ -1732,12 +1960,19 @@
             };
             const updateMode = updateModeLabels[selectedUpdateMode] || msg('choice.notify');
             const updateChannel = updateChannelLabels[selectedUpdateChannel] || msg('choice.release');
+            const certificateSummary = certificateConfigured && certificateInfo
+                ? formatMsg('status.certExpiry', {
+                    time: certificateInfo.expires_at_str || '-',
+                    days: certificateInfo.days_left ?? '-'
+                })
+                : (certificateSkipped ? msg('status.skipped') : msg('status.notConfigured'));
             const rows = [
                 [msg('summary.serviceName'), value('serviceName')],
                 [msg('summary.port'), value('port')],
                 [msg('summary.installRoot'), value('installRoot')],
                 [msg('summary.dbPath'), value('dbPath')],
                 [msg('summary.serverName'), value('serverName')],
+                [msg('summary.certificate'), certificateSummary],
                 [msg('summary.gpu'), hasGpu.checked ? `${msg('status.enabled')} - ${value('gpuAgent')}` : msg('status.disabled')],
                 [msg('summary.mail'), emailSkipped ? msg('status.skipped') : value('mailReceivers')],
                 [msg('summary.channel'), updateChannel],
@@ -1763,6 +1998,7 @@
                 password: value('password'),
                 retentionDays: Number(value('retentionDays')),
                 lowDiskGuard: Boolean(value('lowDiskGuard')),
+                certificateConfigured: certificateConfigured,
                 hasGpu: hasGpu.checked,
                 gpuAgent: value('gpuAgent'),
                 gpuNote: value('gpuNote'),
@@ -1794,7 +2030,8 @@
                 if (!response.ok || result.status === 'error') {
                     throw new Error(result.message || msg('error.submit'));
                 }
-                const wait = Math.max(760, 1220 - (Date.now() - started));
+                const targetWait = result.restart_required ? 2600 : 1220;
+                const wait = Math.max(result.restart_required ? 1800 : 760, targetWait - (Date.now() - started));
                 window.setTimeout(() => {
                     window.location.href = result.redirect || '/hardware?setup=1';
                 }, wait);
@@ -1948,17 +2185,44 @@
             renderStep();
         });
 
+        certificateSkip.addEventListener('click', () => {
+            certificateSkipped = true;
+            certificateConfigured = false;
+            certificateInfo = null;
+            certificateFingerprint = '';
+            certFile.value = '';
+            keyFile.value = '';
+            markInvalid(certFile, false);
+            markInvalid(keyFile, false);
+            renderCertificateStatus();
+            setError('');
+            currentStep = Math.min(steps.length - 1, currentStep + 1);
+            renderStep();
+        });
+
+        certificateUpload.addEventListener('click', uploadCertificate);
+
         document.querySelectorAll('input, select').forEach((item) => {
             item.addEventListener('input', () => {
                 markInvalid(item, false);
                 setError('');
-                if (item.closest('[data-step="4"]')) {
+                if (item === certFile || item === keyFile) {
+                    resetCertificateState();
+                }
+                if (item.closest('[data-step="5"]')) {
                     emailSkipped = false;
                 }
                 if (currentStep === steps.length - 1) updateSummary();
             });
         });
         hasGpu.addEventListener('change', updateConditionalBlocks);
+        [certFile, keyFile].forEach((item) => {
+            item.addEventListener('change', () => {
+                markInvalid(item, false);
+                setError('');
+                resetCertificateState();
+            });
+        });
         document.querySelectorAll('[name="updateMode"], [name="updateChannel"]').forEach((item) => {
             item.addEventListener('change', () => {
                 if (currentStep === steps.length - 1) updateSummary();
