@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.1 - 2026-06-21
+
+### 中文
+
+- 优化风扇调控策略：手动曲线改为温度插值、平滑调速和安全下限组合，减少 5°C 档位跳变和高温前响应滞后。
+- 目标温度模式在高温区升速更快、降速更保守，并缓存风扇模式和 PWM 下发结果，减少对 BMC 的重复写入。
+- 优化硬件页曲线编辑：移动端滑块保留纵向滚动手势并过滤滚动误触，PC 端支持直接拖动曲线点同步调整参数。
+
+### English
+
+- Optimized fan control: manual curves now use temperature interpolation, smoothing, and safety floors to reduce 5°C step jumps and late high-temperature response.
+- Target-temperature mode now ramps up faster in hot ranges, ramps down more conservatively, and caches fan mode/PWM writes to reduce repeated BMC commands.
+- Improved Hardware curve editing: mobile sliders preserve vertical scrolling and suppress scroll mis-touches, while desktop users can drag curve points directly to adjust parameters.
+
 ## 1.6.0 - 2026-06-16
 
 ### 中文
