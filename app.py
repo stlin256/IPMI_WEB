@@ -2172,6 +2172,22 @@ rpm_map = {}
 max_rpm = 0
 min_rpm = 0
 
+FAN_CURVE_TEMPS = tuple(range(30, 95, 5))
+DEFAULT_FAN_CURVE_POINTS = {
+    30: 20,
+    35: 20,
+    40: 22,
+    45: 25,
+    50: 30,
+    55: 36,
+    60: 45,
+    65: 55,
+    70: 68,
+    75: 80,
+    80: 92,
+    85: 100,
+    90: 100,
+}
 # 全局变量：存放全速异步采集的硬件数据
 latest_hw_data = {
     'ipmi_dump': '',
@@ -2236,7 +2252,7 @@ def hardware_home_display_snapshot(hw):
 def hardware_control_snapshot():
     defaults = {
         'ready': False,
-        'curve': {},
+        'curve': default_fan_curve(),
         'fixed_fan_speed_enabled': False,
         'fixed_fan_speed_target': 30,
         'target_temp_mode_enabled': False,
@@ -2257,7 +2273,7 @@ def hardware_control_snapshot():
         target_temp_enabled_raw = parse_bool(res_target_temp_enabled[0] if res_target_temp_enabled else False)
         return {
             'ready': True,
-            'curve': json.loads(res_curve[0]) if res_curve and res_curve[0] else {},
+            'curve': normalize_fan_curve(res_curve[0] if res_curve and res_curve[0] else {}),
             'fixed_fan_speed_enabled': parse_bool(res_fixed_enabled[0] if res_fixed_enabled else False),
             'fixed_fan_speed_target': clamp_int(res_fixed_target[0] if res_fixed_target else 30, 30, 10, 100),
             'target_temp_mode_enabled': target_temp_enabled_raw and calibration_ready,
@@ -2567,8 +2583,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('mode', 'auto')")
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('last_log_check', '0')")
   
-    default_curve = {}
-    for t in range(30, 95, 5): default_curve[str(t)] = 20
+    default_curve = default_fan_curve()
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('curve', ?)", (json.dumps(default_curve),))
     c.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('calibration_data', '{}')")
   
@@ -2865,6 +2880,81 @@ def parse_bool(value, default_value=False):
     if value is None:
         return default_value
     return str(value).strip().lower() == 'true'
+
+def default_fan_curve():
+    return {str(temp): DEFAULT_FAN_CURVE_POINTS[temp] for temp in FAN_CURVE_TEMPS}
+
+def normalize_fan_curve(curve):
+    if isinstance(curve, str):
+        try:
+            curve = json.loads(curve)
+        except Exception:
+            curve = {}
+    if not isinstance(curve, dict):
+        curve = {}
+
+    defaults = default_fan_curve()
+    normalized = {}
+    previous = 10
+    for temp in FAN_CURVE_TEMPS:
+        raw_value = curve.get(str(temp), curve.get(temp, defaults[str(temp)]))
+        value = clamp_int(raw_value, defaults[str(temp)], 10, 100)
+        value = max(previous, value)
+        normalized[str(temp)] = value
+        previous = value
+    return normalized
+
+def fan_safety_floor_percent(cpu_temp):
+    try:
+        temp = float(cpu_temp)
+    except (TypeError, ValueError):
+        return 20
+    if not math.isfinite(temp) or temp <= 0:
+        return 20
+
+    floor_points = (
+        (30.0, 10),
+        (60.0, 22),
+        (70.0, 35),
+        (75.0, 48),
+        (80.0, 62),
+        (85.0, 88),
+        (88.0, 100),
+    )
+    if temp <= floor_points[0][0]:
+        return floor_points[0][1]
+    for idx in range(len(floor_points) - 1):
+        low_temp, low_pct = floor_points[idx]
+        high_temp, high_pct = floor_points[idx + 1]
+        if temp <= high_temp:
+            ratio = (temp - low_temp) / (high_temp - low_temp)
+            return clamp_int(round(low_pct + (high_pct - low_pct) * ratio), low_pct, 10, 100)
+    return 100
+
+def interpolate_fan_curve_percent(curve, cpu_temp):
+    normalized = normalize_fan_curve(curve)
+    try:
+        temp = float(cpu_temp)
+    except (TypeError, ValueError):
+        temp = FAN_CURVE_TEMPS[0]
+    if not math.isfinite(temp):
+        temp = FAN_CURVE_TEMPS[0]
+
+    if temp <= FAN_CURVE_TEMPS[0]:
+        return normalized[str(FAN_CURVE_TEMPS[0])]
+    if temp >= FAN_CURVE_TEMPS[-1]:
+        return normalized[str(FAN_CURVE_TEMPS[-1])]
+
+    lower_temp = int(math.floor(temp / 5.0) * 5)
+    upper_temp = lower_temp + 5
+    lower_temp = max(FAN_CURVE_TEMPS[0], min(FAN_CURVE_TEMPS[-1], lower_temp))
+    upper_temp = max(FAN_CURVE_TEMPS[0], min(FAN_CURVE_TEMPS[-1], upper_temp))
+    lower_value = normalized[str(lower_temp)]
+    upper_value = normalized[str(upper_temp)]
+    if upper_temp == lower_temp:
+        return lower_value
+    ratio = (temp - lower_temp) / (upper_temp - lower_temp)
+    return clamp_int(round(lower_value + (upper_value - lower_value) * ratio), lower_value, 10, 100)
 
 def is_calibration_ready():
     return bool(rpm_map) and max_rpm > 0
@@ -4355,6 +4445,37 @@ def background_worker():
     target_temp_last_applied_percent = None
     target_temp_initialized = False
     target_temp_mode_enter_ts = 0.0
+
+    # 风扇下发状态：避免每秒重复写 BMC，同时在必要时定期刷新
+    last_fan_control_mode = None
+    last_applied_pwm = None
+    last_pwm_apply_ts = 0.0
+    curve_temp_filtered = None
+    curve_fan_percent = None
+    curve_last_adjust_ts = 0.0
+    curve_active_last = False
+
+    def apply_control_mode(next_mode):
+        nonlocal last_fan_control_mode, last_applied_pwm
+        if last_fan_control_mode != next_mode:
+            set_fan_mode(next_mode)
+            last_fan_control_mode = next_mode
+            last_applied_pwm = None
+
+    def apply_pwm_percent(target_percent, now_ts, min_delta=1, force_interval=30.0):
+        nonlocal last_applied_pwm, last_pwm_apply_ts
+        percent = clamp_int(round(target_percent), 20, 10, 100)
+        pwm = clamp_int(get_pwm_from_rpm_percent(percent), percent, 10, 100)
+        should_apply = (
+            last_applied_pwm is None or
+            abs(pwm - last_applied_pwm) >= min_delta or
+            (now_ts - last_pwm_apply_ts) >= force_interval
+        )
+        if should_apply:
+            set_raw_pwm(pwm)
+            last_applied_pwm = pwm
+            last_pwm_apply_ts = now_ts
+        return pwm
     
     # CPU RAPL 功耗采集状态
     rapl_sources = []
@@ -4508,15 +4629,20 @@ def background_worker():
             calibration_ready = is_calibration_ready()
           
             if fixed_enabled:
-                set_fan_mode('manual')
-                set_raw_pwm(get_pwm_from_rpm_percent(fixed_target))
+                apply_control_mode('manual')
+                apply_pwm_percent(fixed_target, now, force_interval=45.0)
                 mode = 'fixed' # 更新模式状态
                 target_temp_active_last = False
+                target_temp_filtered = None
                 target_temp_last_applied_percent = None
                 target_temp_initialized = False
                 target_temp_mode_enter_ts = 0.0
+                curve_active_last = False
+                curve_temp_filtered = None
             elif target_mode_enabled and calibration_ready:
-                set_fan_mode('manual')
+                apply_control_mode('manual')
+                curve_active_last = False
+                curve_temp_filtered = None
                 
                 if not target_temp_active_last:
                     target_temp_mode_enter_ts = now
@@ -4531,8 +4657,12 @@ def background_worker():
                 can_run_closed_loop = False
 
                 # 高温保护必须优先触发，不受启动等待限制
-                if cpu_temp >= 85:
+                if cpu_temp >= 88:
                     target_temp_fan_percent = 100
+                    target_temp_initialized = True
+                    can_run_closed_loop = True
+                elif cpu_temp >= 85:
+                    target_temp_fan_percent = max(target_temp_fan_percent, 92)
                     target_temp_initialized = True
                     can_run_closed_loop = True
                 else:
@@ -4555,62 +4685,86 @@ def background_worker():
                             target_temp_filtered = cpu_temp if cpu_temp > 0 else target_temp_target
                         
                         if cpu_temp > 0:
-                            # 更强平滑，避免短时波动触发剧烈调速
-                            alpha = 0.20
+                            # 平滑温度，但高温区提高响应速度
+                            alpha = 0.45 if cpu_temp >= 80 else 0.25
                             target_temp_filtered = alpha * cpu_temp + (1 - alpha) * target_temp_filtered
                         
                         err = target_temp_filtered - target_temp_target
-                        # 目标温度闭环：设置死区 + 升降速不同节奏（降速更慢）
                         deadband = 2.0
                         step = 0
                         adjust_interval = None
                         
                         if err >= deadband:
-                            # 升速也放慢：更长间隔 + 更小步进，减少温度/风扇振荡
-                            adjust_interval = 4.0
                             if err >= 15:
-                                step = 2
+                                step = 5
+                                adjust_interval = 2.0
+                            elif err >= 8:
+                                step = 3
+                                adjust_interval = 3.0
                             else:
                                 step = 1
+                                adjust_interval = 4.0
                         elif err <= -deadband:
-                            adjust_interval = 4.0
                             if err <= -12:
                                 step = -2
+                                adjust_interval = 8.0
                             else:
                                 step = -1
+                                adjust_interval = 10.0
                         
                         if adjust_interval is not None and (now - target_temp_last_adjust_ts) >= adjust_interval:
                             target_temp_fan_percent += step
                             target_temp_last_adjust_ts = now
                 
+                if cpu_temp > 0:
+                    target_temp_fan_percent = max(target_temp_fan_percent, fan_safety_floor_percent(cpu_temp))
                 if target_temp_initialized:
                     target_temp_fan_percent = clamp_int(round(target_temp_fan_percent), 20, 10, 100)
-                    # 仅在目标变化时下发 PWM，避免每秒重复写入造成风扇抖动
-                    if target_temp_last_applied_percent is None or target_temp_fan_percent != target_temp_last_applied_percent:
-                        set_raw_pwm(get_pwm_from_rpm_percent(target_temp_fan_percent))
-                        target_temp_last_applied_percent = target_temp_fan_percent
+                    apply_pwm_percent(target_temp_fan_percent, now, force_interval=30.0)
+                    target_temp_last_applied_percent = target_temp_fan_percent
                 mode = 'target_temp'
                 target_temp_active_last = True
             elif mode == 'auto':
-                set_fan_mode('auto')
+                apply_control_mode('auto')
                 target_temp_active_last = False
+                target_temp_filtered = None
                 target_temp_last_applied_percent = None
                 target_temp_initialized = False
                 target_temp_mode_enter_ts = 0.0
+                curve_active_last = False
+                curve_temp_filtered = None
             else: # curve mode
-                set_fan_mode('manual')
-                step = 5
-                target_key = str(int(cpu_temp // step) * step)
-                if int(target_key) < 30: target_key = '30'
-                if int(target_key) > 90: target_key = '90'
-                target_percent = int(curve.get(target_key, 20))
-                if cpu_temp >= 85: target_percent = 100
-              
-                set_raw_pwm(get_pwm_from_rpm_percent(target_percent))
+                apply_control_mode('manual')
+                if cpu_temp > 0:
+                    if not curve_active_last or curve_temp_filtered is None:
+                        curve_temp_filtered = cpu_temp
+                    else:
+                        alpha = 0.55 if cpu_temp >= 80 else 0.35
+                        curve_temp_filtered = alpha * cpu_temp + (1 - alpha) * curve_temp_filtered
+
+                curve_temp = curve_temp_filtered if curve_temp_filtered is not None else cpu_temp
+                desired_percent = interpolate_fan_curve_percent(curve, curve_temp)
+                desired_percent = max(desired_percent, fan_safety_floor_percent(cpu_temp))
+
+                if curve_fan_percent is None or not curve_active_last:
+                    curve_fan_percent = desired_percent
+                    curve_last_adjust_ts = now
+                elif desired_percent > curve_fan_percent:
+                    rise_step = 12 if cpu_temp >= 85 else 6 if cpu_temp >= 80 else 3
+                    curve_fan_percent = min(desired_percent, curve_fan_percent + rise_step)
+                    curve_last_adjust_ts = now
+                elif desired_percent < curve_fan_percent and (now - curve_last_adjust_ts) >= 6.0:
+                    curve_fan_percent = max(desired_percent, curve_fan_percent - 1)
+                    curve_last_adjust_ts = now
+
+                curve_fan_percent = clamp_int(round(curve_fan_percent), 20, 10, 100)
+                apply_pwm_percent(curve_fan_percent, now, force_interval=30.0)
                 target_temp_active_last = False
+                target_temp_filtered = None
                 target_temp_last_applied_percent = None
                 target_temp_initialized = False
                 target_temp_mode_enter_ts = 0.0
+                curve_active_last = True
 
             # Update Cache
             with cache_lock:
@@ -7643,7 +7797,7 @@ def api_config():
             # 处理数据，给默认值防止 NoneType 错误
             curve_data = json.loads(res_curve[0]) if res_curve and res_curve[0] else {}
             if not curve_data:
-                curve_data = {str(i): 20 for i in range(30, 95, 5)}
+                curve_data = default_fan_curve()
 
             fixed_enabled = parse_bool(res_fixed_enabled[0] if res_fixed_enabled else False)
             fixed_target = clamp_int(res_fixed_target[0] if res_fixed_target else 30, 30, 10, 100)
@@ -7653,7 +7807,7 @@ def api_config():
             target_temp_target = clamp_int(res_target_temp_target[0] if res_target_temp_target else 65, 65, 20, 85)
 
             return jsonify({
-                'curve': curve_data,
+                'curve': normalize_fan_curve(curve_data),
                 'fixed_fan_speed_enabled': fixed_enabled,
                 'fixed_fan_speed_target': fixed_target,
                 'target_temp_mode_enabled': target_temp_enabled,
@@ -7680,7 +7834,8 @@ def api_config():
                 msg_parts.append(f"模式->{data['mode']}")
           
             if 'curve' in data: 
-                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('curve', ?)", (json.dumps(data['curve']),))
+                curve_payload = normalize_fan_curve(data['curve'])
+                c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('curve', ?)", (json.dumps(curve_payload),))
                 details['curve_updated'] = True
                 msg_parts.append("更新曲线")
           

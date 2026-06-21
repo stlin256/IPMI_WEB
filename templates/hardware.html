@@ -80,7 +80,15 @@
         #chk-temp:checked + .btn { background-color: color-mix(in srgb, var(--accent-blue) 14%, transparent); color: var(--accent-blue); border-color: var(--accent-blue); }
         #chk-fan:checked + .btn { background-color: color-mix(in srgb, var(--accent-green) 14%, transparent); color: var(--accent-green); border-color: var(--accent-green); }
 
-        input[type=range] { touch-action: none; cursor: pointer; }
+        input[type=range] { touch-action: pan-y; cursor: pointer; }
+        .curve-form-scroll { max-height: min(54vh, 34rem); overflow-y: auto; overscroll-behavior: contain; padding-right: 0.25rem; }
+        .fan-curve-row { border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent); padding-bottom: 0.45rem; }
+        .fan-curve-row:last-child { border-bottom: 0; }
+        #curvePreviewChart { touch-action: pan-y; }
+        @media (hover: hover) and (pointer: fine) {
+            #curvePreviewChart { cursor: grab; }
+            #curvePreviewChart.curve-dragging { cursor: grabbing; }
+        }
         
         /* 新增样式：处理禁用状态的视觉效果 */
         .fixed-control-group { transition: opacity 0.3s ease, filter 0.3s ease; }
@@ -812,7 +820,7 @@
                 <div class="row">
                     <div class="col-md-7 mb-3"><canvas id="curvePreviewChart" height="220"></canvas></div>
                     <div class="col-md-5" style="max-height: 300px; overflow-y: auto;">
-                        <form id="curveForm"></form>
+                        <form id="curveForm" class="curve-form-scroll"></form>
                     </div>
                 </div>
             </div>
@@ -934,6 +942,8 @@
     let calibrationModal = null;
     let dashboardOptions = null;
     let sensorHistoryAbortController = null;
+    let activeCurveDragTemp = null;
+    const rangeScrollGuardState = new WeakMap();
     const sensorHistoryCache = new Map();
     const SENSOR_HISTORY_CACHE_TTL_MS = 30000;
 
@@ -989,6 +999,58 @@
         red: cssVar('--accent-red', '#c35f4b')
     });
 
+
+    function installRangeScrollGuards(root = document) {
+        root.querySelectorAll('input[type="range"]:not([data-scroll-guard="1"])').forEach((range) => {
+            range.dataset.scrollGuard = '1';
+            range.addEventListener('pointerdown', (event) => {
+                if (event.pointerType !== 'touch') return;
+                rangeScrollGuardState.set(range, {
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    startValue: range.value,
+                    suppress: false
+                });
+            }, { passive: true });
+
+            range.addEventListener('pointermove', (event) => {
+                const state = rangeScrollGuardState.get(range);
+                if (!state || event.pointerType !== 'touch' || state.suppress) return;
+                const dx = Math.abs(event.clientX - state.startX);
+                const dy = Math.abs(event.clientY - state.startY);
+                if (dy > 12 && dy > dx * 1.25) {
+                    state.suppress = true;
+                    range.value = state.startValue;
+                }
+            }, { passive: true });
+
+            range.addEventListener('input', (event) => {
+                const state = rangeScrollGuardState.get(range);
+                if (!state || !state.suppress) return;
+                range.value = state.startValue;
+                event.stopImmediatePropagation();
+            }, true);
+
+            range.addEventListener('change', (event) => {
+                const state = rangeScrollGuardState.get(range);
+                if (!state || !state.suppress) return;
+                range.value = state.startValue;
+                rangeScrollGuardState.delete(range);
+                event.stopImmediatePropagation();
+            }, true);
+
+            ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((type) => {
+                range.addEventListener(type, () => {
+                    const state = rangeScrollGuardState.get(range);
+                    if (state && state.suppress) {
+                        setTimeout(() => rangeScrollGuardState.delete(range), 0);
+                        return;
+                    }
+                    rangeScrollGuardState.delete(range);
+                }, { passive: true });
+            });
+        });
+    }
     const commonChartOptions = {
         responsive: true, maintainAspectRatio: false,
         animation: false,
@@ -1016,6 +1078,8 @@
                 elements: { point: { radius: 0 }, line: { borderWidth: 2, borderColor: chartInk().temp, tension: 0.3 } }
             }
         });
+
+        installRangeScrollGuards();
 
         // 初始化加载顺序
         loadPrefs();
@@ -1054,9 +1118,9 @@
         if(!d) return false;
 
         if(d.curve) {
-            currentCurve = d.curve || {};
-            const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
-            const data = labels.map(k=>currentCurve[k]);
+            currentCurve = normalizeCurveData(d.curve || {});
+            const labels = curveLabels();
+            const data = curveValues();
             miniCurveChart.data.labels = labels;
             miniCurveChart.data.datasets = [{data: data, borderColor: chartInk().temp, borderWidth: 2, fill: true, backgroundColor: colorWithAlpha(chartInk().temp, 0.14), tension: 0.3}];
             miniCurveChart.update('none');
@@ -1647,50 +1711,214 @@
     }
 
     // Modal 和曲线设置部分
-    function openCurveModal() {
-        fetch('/api/config').then(r => r.json()).then(d => {
-            currentCurve = d.curve || {}; 
-            const f = document.getElementById('curveForm');
-            f.innerHTML = '';
-            for (let t = 30; t <= 90; t += 5) {
-                const pct = currentCurve[t]||20;
-                const estRpm = maxRPM > 0 ? Math.round(maxRPM * (pct/100)) : '--';
-                f.innerHTML += `
-                <div class="mb-2">
+    const CURVE_TEMPS = Array.from({ length: 13 }, (_, index) => 30 + index * 5);
+    const DEFAULT_CURVE = { 30: 20, 35: 20, 40: 22, 45: 25, 50: 30, 55: 36, 60: 45, 65: 55, 70: 68, 75: 80, 80: 92, 85: 100, 90: 100 };
+
+    function clampNumber(value, min, max, fallback = min) {
+        const number = parseInt(value, 10);
+        if (!Number.isFinite(number)) return fallback;
+        return Math.max(min, Math.min(max, number));
+    }
+
+    function normalizeCurveData(curve = {}) {
+        const normalized = {};
+        let previous = 10;
+        CURVE_TEMPS.forEach((temp) => {
+            const raw = curve[String(temp)] ?? curve[temp] ?? DEFAULT_CURVE[temp] ?? previous;
+            const value = Math.max(previous, clampNumber(raw, 10, 100, DEFAULT_CURVE[temp] || previous));
+            normalized[String(temp)] = value;
+            previous = value;
+        });
+        return normalized;
+    }
+
+    function curveValueBounds(temp) {
+        const index = CURVE_TEMPS.indexOf(parseInt(temp, 10));
+        const previousTemp = CURVE_TEMPS[index - 1];
+        const nextTemp = CURVE_TEMPS[index + 1];
+        const min = previousTemp ? clampNumber(currentCurve[String(previousTemp)], 10, 100, 10) : 10;
+        const max = nextTemp ? clampNumber(currentCurve[String(nextTemp)], 10, 100, 100) : 100;
+        return { min, max };
+    }
+
+    function estimatedRpmText(percent) {
+        const rpm = maxRPM > 0 ? Math.round(maxRPM * (percent / 100)) : '--';
+        return `~${rpm} RPM`;
+    }
+
+    function setCurvePoint(temp, value, { updateChart = true } = {}) {
+        const targetTemp = parseInt(temp, 10);
+        const bounds = curveValueBounds(targetTemp);
+        const nextValue = clampNumber(value, bounds.min, bounds.max, bounds.min);
+        currentCurve[String(targetTemp)] = nextValue;
+
+        const input = document.getElementById(`curve-range-${targetTemp}`);
+        if (input && input.value !== String(nextValue)) input.value = nextValue;
+        setTextIfChanged(`val-${targetTemp}`, nextValue);
+        setTextIfChanged(`rpm-${targetTemp}`, estimatedRpmText(nextValue));
+
+        if (updateChart && curveChart) {
+            const labels = curveChart.data.labels.map((label) => parseInt(label, 10));
+            const index = labels.indexOf(targetTemp);
+            if (index >= 0) {
+                curveChart.data.datasets[0].data[index] = nextValue;
+                curveChart.update('none');
+            }
+        }
+        return nextValue;
+    }
+
+    function renderCurveForm() {
+        const form = document.getElementById('curveForm');
+        form.innerHTML = CURVE_TEMPS.map((temp) => {
+            const pct = currentCurve[String(temp)] || DEFAULT_CURVE[temp] || 20;
+            return `
+                <div class="fan-curve-row mb-2">
                     <div class="d-flex justify-content-between text-muted small">
-                        <span>${t}°C</span>
-                        <span id="rpm-${t}">~${estRpm} RPM</span>
+                        <span>${temp}°C</span>
+                        <span id="rpm-${temp}">${estimatedRpmText(pct)}</span>
                     </div>
                     <div class="d-flex align-items-center">
-                        <input type="range" class="form-range flex-grow-1 me-2" min="10" max="100" 
-                               value="${pct}" oninput="updateCurvePreview(${t}, this.value)">
-                        <span class="font-monospace text-info" style="width: 35px; text-align:right" id="val-${t}">${pct}</span>
+                        <input type="range" class="form-range fan-curve-range flex-grow-1 me-2" min="10" max="100"
+                               id="curve-range-${temp}" data-curve-temp="${temp}"
+                               value="${pct}" oninput="updateCurvePreview(${temp}, this.value)">
+                        <span class="font-monospace text-info" style="width: 35px; text-align:right" id="val-${temp}">${pct}</span>
                     </div>
                 </div>`;
-            }
+        }).join('');
+        installRangeScrollGuards(form);
+    }
+
+    function openCurveModal() {
+        fetch('/api/config').then(r => r.json()).then(d => {
+            currentCurve = normalizeCurveData(d.curve || {});
+            renderCurveForm();
             new bootstrap.Modal(document.getElementById('curveModal')).show();
-            setTimeout(drawCurvePreview, 300);
+            setTimeout(() => drawCurvePreview('none'), 120);
         });
     }
 
     function updateCurvePreview(temp, val) {
-        currentCurve[temp] = parseInt(val);
-        document.getElementById(`val-${temp}`).innerText = val;
-        const estRpm = maxRPM > 0 ? Math.round(maxRPM * (val/100)) : '--';
-        const rpmSpan = document.getElementById(`rpm-${temp}`);
-        if(rpmSpan) rpmSpan.innerText = `~${estRpm} RPM`;
-        drawCurvePreview();
+        setCurvePoint(temp, val);
     }
 
-    function drawCurvePreview() {
+    function curveLabels() {
+        return CURVE_TEMPS.map((temp) => String(temp));
+    }
+
+    function curveValues() {
+        return CURVE_TEMPS.map((temp) => currentCurve[String(temp)] || DEFAULT_CURVE[temp] || 20);
+    }
+
+    function bindCurveChartDrag() {
+        const canvas = document.getElementById('curvePreviewChart');
+        if (!canvas || canvas.dataset.curveDragBound === '1') return;
+        canvas.dataset.curveDragBound = '1';
+        canvas.addEventListener('pointerdown', handleCurveChartPointerDown);
+        canvas.addEventListener('pointermove', handleCurveChartPointerMove);
+        canvas.addEventListener('pointerup', handleCurveChartPointerEnd);
+        canvas.addEventListener('pointercancel', handleCurveChartPointerEnd);
+        canvas.addEventListener('lostpointercapture', handleCurveChartPointerEnd);
+    }
+
+    function isCurveChartDragPointer(event) {
+        if (event.pointerType === 'mouse') return true;
+        if (event.pointerType === 'pen') return window.matchMedia('(pointer: fine)').matches;
+        return false;
+    }
+
+    function curveChartPointFromEvent(event) {
+        if (!curveChart) return null;
+        const canvas = curveChart.canvas;
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const area = curveChart.chartArea;
+        const xScale = curveChart.scales.x;
+        const yScale = curveChart.scales.y;
+        if (!area || !xScale || !yScale) return null;
+
+        const clampedX = Math.max(area.left, Math.min(area.right, x));
+        const clampedY = Math.max(area.top, Math.min(area.bottom, y));
+        let nearestTemp = CURVE_TEMPS[0];
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        CURVE_TEMPS.forEach((temp, index) => {
+            let pixel = xScale.getPixelForValue(String(temp), index);
+            if (!Number.isFinite(pixel) && typeof xScale.getPixelForTick === 'function') {
+                pixel = xScale.getPixelForTick(index);
+            }
+            const distance = Math.abs(pixel - clampedX);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestTemp = temp;
+            }
+        });
+
+        const rawValue = yScale.getValueForPixel(clampedY);
+        return { temp: nearestTemp, value: Math.round(rawValue) };
+    }
+
+    function applyCurveChartPoint(event, lockPoint = false) {
+        const point = curveChartPointFromEvent(event);
+        if (!point) return;
+        if (lockPoint || activeCurveDragTemp === null) activeCurveDragTemp = point.temp;
+        setCurvePoint(activeCurveDragTemp, point.value);
+    }
+
+    function handleCurveChartPointerDown(event) {
+        if (!isCurveChartDragPointer(event)) return;
+        event.preventDefault();
+        event.currentTarget.classList.add('curve-dragging');
+        event.currentTarget.setPointerCapture(event.pointerId);
+        applyCurveChartPoint(event, true);
+    }
+
+    function handleCurveChartPointerMove(event) {
+        if (activeCurveDragTemp === null || !isCurveChartDragPointer(event)) return;
+        event.preventDefault();
+        applyCurveChartPoint(event);
+    }
+
+    function handleCurveChartPointerEnd(event) {
+        activeCurveDragTemp = null;
+        event.currentTarget.classList.remove('curve-dragging');
+        if (event.currentTarget.hasPointerCapture && event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    }
+
+    function drawCurvePreview(updateMode = 'none') {
         const ctx = document.getElementById('curvePreviewChart');
-        if (curveChart) curveChart.destroy();
-        const labels = Object.keys(currentCurve).sort((a,b)=>a-b);
+        const labels = curveLabels();
+        const data = curveValues();
+        if (curveChart) {
+            curveChart.data.labels = labels;
+            curveChart.data.datasets[0].data = data;
+            curveChart.update(updateMode);
+            return;
+        }
+
         curveChart = new Chart(ctx, {
             type: 'line', data: {
-                labels: labels, datasets: [{ data: labels.map(k => currentCurve[k]), borderColor: chartInk().temp, borderWidth: 2, tension: 0.3 }]
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    borderColor: chartInk().temp,
+                    backgroundColor: colorWithAlpha(chartInk().temp, 0.14),
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.25,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointHitRadius: 16,
+                    pointBackgroundColor: chartInk().temp
+                }]
             },
             options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: { mode: 'nearest', intersect: false },
                 plugins: { 
                     legend: { display: false },
                     tooltip: {
@@ -1703,21 +1931,25 @@
                         }
                     }
                 }, 
-                scales: { y: { min: 0, max: 100, grid: { color: chartInk().grid } }, x: { grid: { color: chartInk().grid } } }
+                scales: {
+                    y: { min: 0, max: 100, grid: { color: chartInk().grid }, ticks: { color: chartInk().muted } },
+                    x: { grid: { color: chartInk().grid }, ticks: { color: chartInk().muted } }
+                }
             }
         });
+        bindCurveChartDrag();
     }
 
     function saveCurve() {
+        currentCurve = normalizeCurveData(currentCurve);
         fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ curve: currentCurve }) })
             .then(() => { 
                 bootstrap.Modal.getInstance(document.getElementById('curveModal')).hide();
                 showToast(t('hardware.fanCurveSaved'));
                 loadInitialConfig();
-                refreshData(); // <--- 关键修改：立刻强制刷新
+                refreshData();
             }).catch(() => showToast(t('hardware.fanCurveSaveFailed'), true));
     }
-
     let pendingMode = null;
     const modeModal = new bootstrap.Modal(document.getElementById('modeConfirmModal'));
 
